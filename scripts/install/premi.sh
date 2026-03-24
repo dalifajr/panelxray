@@ -21,6 +21,29 @@ sanitize_apt_sources() {
     fi
 }
 
+restore_official_ubuntu_sources() {
+    local codename
+    codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-noble}")"
+
+    mkdir -p /etc/apt/sources.list.d
+    cat >/etc/apt/sources.list.d/ubuntu.sources <<EOF
+Types: deb
+URIs: http://mirrors.digitalocean.com/ubuntu/
+Suites: ${codename} ${codename}-updates ${codename}-backports
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: http://security.ubuntu.com/ubuntu/
+Suites: ${codename}-security
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+EOF
+
+    # Disable legacy monolithic list to avoid duplicate or stale third-party entries.
+    : > /etc/apt/sources.list
+}
+
 safe_apt_update() {
     local tmplog bad_url log_file
     log_file="/var/log/kyt-apt-sanitize.log"
@@ -55,12 +78,27 @@ safe_apt_update() {
         return 0
     fi
 
+    # Last resort for Ubuntu: rebuild official sources and retry.
+    if [[ "$(. /etc/os-release && echo "$ID")" == "ubuntu" ]]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: fallback to official Ubuntu sources" >> "$log_file"
+        restore_official_ubuntu_sources
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+        if apt-get update -y; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: apt update success after official source restore" >> "$log_file"
+            return 0
+        fi
+    fi
+
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: apt update failed after sanitize" >> "$log_file"
     return 1
 }
 
 sanitize_apt_sources
-safe_apt_update
+if ! safe_apt_update; then
+    echo "Apt repository still broken. Check /var/log/kyt-apt-sanitize.log"
+    exit 1
+fi
 apt upgrade -y
 apt install -y curl
 apt install wondershaper -y
