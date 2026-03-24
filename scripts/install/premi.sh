@@ -1,5 +1,33 @@
 #!/bin/bash
 ### Color
+OFFICIAL_UBUNTU24_REPOS_ONLY="${OFFICIAL_UBUNTU24_REPOS_ONLY:-1}"
+
+enforce_official_ubuntu24_repos() {
+    local os_id os_ver src_file keep_file disabled_dir base_name
+    os_id="$(. /etc/os-release && echo "$ID")"
+    os_ver="$(. /etc/os-release && echo "$VERSION_ID")"
+
+    if [[ "$OFFICIAL_UBUNTU24_REPOS_ONLY" != "1" ]]; then
+        return 0
+    fi
+
+    if [[ "$os_id" != "ubuntu" ]] || [[ "$os_ver" != 24.04* ]]; then
+        return 0
+    fi
+
+    disabled_dir="/etc/apt/sources.list.d/disabled-kyt"
+    mkdir -p "$disabled_dir"
+
+    # Keep only official Ubuntu source file, disable everything else.
+    keep_file="/etc/apt/sources.list.d/ubuntu.sources"
+    for src_file in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+        [[ -e "$src_file" ]] || continue
+        [[ "$src_file" == "$keep_file" ]] && continue
+        base_name="$(basename "$src_file")"
+        mv -f "$src_file" "$disabled_dir/${base_name}.disabled"
+    done
+}
+
 sanitize_apt_sources() {
     local codename
     codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
@@ -101,6 +129,7 @@ safe_apt_update() {
     return 1
 }
 
+enforce_official_ubuntu24_repos
 sanitize_apt_sources
 if ! safe_apt_update; then
     echo "Apt repository still broken. Check /var/log/kyt-apt-sanitize.log"
