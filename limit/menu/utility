@@ -36,6 +36,7 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 17 "SPEEDTEST"
    thm_menu_item 18 "AutoReboot"
    thm_menu_item 19 "INFO PORT"
+   thm_menu_item 20 "LIST SUSPENDED ACCOUNT"
    thm_menu_item 0 "Back To Menu"
    thm_footer
 else
@@ -61,6 +62,7 @@ else
    echo -e "  ${Blue}[17] ${NC}${GREEN}SPEEDTEST ${NC}"
    echo -e "  ${Blue}[18] ${NC}${GREEN}AutoReboot ${NC}"
    echo -e "  ${Blue}[19] ${NC}${GREEN}INFO PORT ${NC}"
+   echo -e "  ${Blue}[20] ${NC}${GREEN}LIST SUSPENDED ACCOUNT${NC}"
    echo -e " \033[36m══════════════════════════════════════════════════════════${NC}"
    echo -e ""
    echo -e "  ${Blue}[0] ${NC} ${GREEN}Back To Menu${NC}"
@@ -126,6 +128,9 @@ case $menu in
 19) clear ;
    prot
    ;;    
+20) clear ;
+   ceksuspend
+   ;;
 0) clear ;
    menu
    ;;

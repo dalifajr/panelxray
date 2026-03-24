@@ -33,6 +33,8 @@ fi
 user=$(grep -E "^### " "/etc/xray/config.json" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
 domain=$(cat /etc/xray/domain)
 iplim=$(cat /etc/kyt/limit/vmess/ip/$user)
+status_badge="ACTIVE"
+[[ -f "/etc/kyt/suspended/vmess/$user" ]] && status_badge="SUSPENDED"
 Quota=$(cat /etc/vmess/$user)
 uuid=$(grep -E "^### " "/etc/vmess/.vmess.db" | cut -d ' ' -f 4 | sed -n "${CLIENT_NUMBER}"p)
 #Quota=$(grep -E "^### " "/etc/xray/config.json" | cut -d ' ' -f 5 | sed -n "${CLIENT_NUMBER}"p)
@@ -166,6 +168,7 @@ echo -e "\033[1;93m◇━━━━━━━━━━━━━━━━━◇\033
 echo -e " Xray/Vmess Account "
 echo -e "\033[1;93m◇━━━━━━━━━━━━━━━━━◇\033[0m"
 echo -e "Remarks          : ${user}"
+echo -e "Status           : ${status_badge}"
 echo -e "Domain           : ${domain}"
 echo -e "User Quota       : ${Quota} GB"
 echo -e "User Ip            : ${iplimit} IP"

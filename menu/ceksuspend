@@ -1,0 +1,46 @@
+#!/bin/bash
+
+service_arg="$1"
+services=("vmess" "vless" "trojan")
+
+if [[ -n "$service_arg" ]]; then
+  case "$service_arg" in
+    vmess|vless|trojan)
+      services=("$service_arg")
+      ;;
+    *)
+      echo "Usage: ceksuspend [vmess|vless|trojan]"
+      exit 1
+      ;;
+  esac
+fi
+
+clear
+for svc in "${services[@]}"; do
+  dir="/etc/kyt/suspended/${svc}"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo " SUSPENDED ACCOUNT LIST - ${svc^^}"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  if [[ ! -d "$dir" ]] || [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+    echo "No suspended account"
+    echo ""
+    continue
+  fi
+
+  printf '%-4s %-20s %-12s %-10s\n' "No" "Username" "Expired" "Status"
+  echo "----------------------------------------"
+
+  no=1
+  for file in "$dir"/*; do
+    [[ -f "$file" ]] || continue
+    user="$(basename "$file")"
+    read -r exp uuid reason < "$file"
+    printf '%-4s %-20s %-12s %-10s\n' "$no" "$user" "$exp" "SUSPENDED"
+    no=$((no + 1))
+  done
+  echo ""
+done
+
+read -n 1 -s -r -p "Press [ Enter ] to back"
+utility

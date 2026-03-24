@@ -33,6 +33,8 @@ fi
 user=$(grep -E "^#! " "/etc/xray/config.json" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
 iplim=$(cat /etc/kyt/limit/trojan/ip/$user)
 domain=$(cat /etc/xray/domain)
+status_badge="ACTIVE"
+[[ -f "/etc/kyt/suspended/trojan/$user" ]] && status_badge="SUSPENDED"
 uuid=$(grep -E "^### " "/etc/trojan/.trojan.db" | cut -d ' ' -f 4 | sed -n "${CLIENT_NUMBER}"p)
 Quota=$(grep -E "^### " "/etc/trojan/.trojan.db" | cut -d ' ' -f 5 | sed -n "${CLIENT_NUMBER}"p)
 exp=$(grep -E "^#! " "/etc/xray/config.json" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
@@ -82,6 +84,7 @@ echo -e "\033[1;93m====================\033[0m"
 echo -e " CREATE TROJAN ACCOUNT          "
 echo -e "\033[1;93m====================\033[0m"
 echo -e "Remarks          : ${user}" 
+echo -e "Status           : ${status_badge}"
 echo -e "Host/IP          : ${domain}"
 echo -e "Host XrayDNS     : ${NS}"
 echo -e "Pub Key          : ${PUB}"
