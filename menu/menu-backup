@@ -1,4 +1,11 @@
 #!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
 DF='\e[39m'
 Bold='\e[1m'
 Blink='\e[5m'
@@ -47,17 +54,26 @@ echo -e "\e[32mloading...\e[0m"
 clear
 MYIP=$(wget -qO- ipinfo.io/ip);
 clear 
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "             • Backup Menu •         "
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "" 
-echo -e " [\e[36m•1\e[0m] Backup VPS Data"
-echo -e " [\e[36m•2\e[0m] Restore VPS Data"
-echo -e "" 
-echo -e " [\e[31m•0\e[0m] \e[31mBack To Menu\033[0m"
-echo -e "" 
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e ""
+if declare -F thm_title >/dev/null; then
+  thm_title "BACKUP MENU"
+  thm_menu_item 1 "Backup VPS Data"
+  thm_menu_item 2 "Restore VPS Data"
+  thm_menu_item 0 "Back To Menu"
+  thm_footer
+else
+  echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+  echo -e "             • Backup Menu •         "
+  echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+  echo -e "" 
+  echo -e " [\e[36m•1\e[0m] Backup VPS Data"
+  echo -e " [\e[36m•2\e[0m] Restore VPS Data"
+  echo -e "" 
+  echo -e " [\e[31m•0\e[0m] \e[31mBack To Menu\033[0m"
+  echo -e ""
+  echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
+  echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+  echo -e ""
+fi
 read -p " Select menu :  "  opt
 echo -e   ""
 case $opt in

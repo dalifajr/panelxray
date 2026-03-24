@@ -1,4 +1,11 @@
 #!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+	THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+	. "$THEME_FILE"
+fi
 # SL
 # ==========================================
 # Color
@@ -110,6 +117,11 @@ echo -e "3. Ganti Email Penerima"
 echo -e "4. Ganti Email Pengirim"
 echo -e "5. Test kirim Email"
 echo -e "=============================="
+if declare -F thm_footer >/dev/null; then
+	thm_footer
+else
+	echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
+fi
 read -rp "Please Enter The Correct Number : " -e num
 case $num in
 1)

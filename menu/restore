@@ -1,4 +1,11 @@
 #!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+    THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+    . "$THEME_FILE"
+fi
 # ==========================================
 # Color
 RED='\033[0;31m'
@@ -14,6 +21,9 @@ KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
+if declare -F thm_title >/dev/null; then
+    thm_title "RESTORE VPS DATA"
+fi
 function notif_restore() {
     CHATID="$CHATID"
 KEY="$KEY"
@@ -85,3 +95,8 @@ restore_copy_if_exists .shadowsocks.db /etc/shadowsocks/
 notif_restore
 rm -rf /root/backup
 echo ""
+if declare -F thm_footer >/dev/null; then
+    thm_footer
+else
+    echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
+fi

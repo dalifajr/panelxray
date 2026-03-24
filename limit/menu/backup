@@ -1,4 +1,11 @@
 #!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+	THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+	. "$THEME_FILE"
+fi
 # My Telegram : https://t.me/sampiiiiuu
 # ==========================================
 # Color
@@ -16,6 +23,9 @@ export KEY="6751589620:AAHwjP6dzZhuqeyUOdYFc6742Q1YUVF1EjM"
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
+if declare -F thm_title >/dev/null; then
+	thm_title "BACKUP VPS DATA"
+fi
 IP=$(curl -sS ipv4.icanhazip.com)
 domain=$(cat /etc/xray/domain)
 date=$(date +"%Y-%m-%d")
@@ -118,3 +128,8 @@ Domain        : $domain
 "
 echo "Silahkan copy Link dan restore di VPS baru"
 echo ""
+if declare -F thm_footer >/dev/null; then
+	thm_footer
+else
+	echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
+fi
