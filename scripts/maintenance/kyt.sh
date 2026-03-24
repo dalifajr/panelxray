@@ -123,6 +123,14 @@ PY
   fi
 fi
 
+if ! "${VENV_DIR}/bin/python" -m py_compile /usr/bin/kyt/__init__.py /usr/bin/kyt/__main__.py /usr/bin/kyt/modules/*.py 2>/tmp/kyt-pycompile.log; then
+	echo "Gagal validasi syntax modul bot."
+	cat /tmp/kyt-pycompile.log
+	rm -f /tmp/kyt-pycompile.log
+	exit 1
+fi
+rm -f /tmp/kyt-pycompile.log
+
 #isi data
 echo ""
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"

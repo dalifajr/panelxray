@@ -147,17 +147,15 @@ Button.inline(" 60 Menit ","60")]])
 		await event.edit("`Wait.. Setting up an Account`")
 		cmd = f'printf "%s\n" "{exp}" | trialws'
 		try:
-			 a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-    except:
-      await event.respond("**User Already Exist**")
-    else:
-      b = [x.group() for x in re.finditer("vmess://(.*)",a)]
-      print(b)
-#      z = base64.b64decode(b[0].replace("vmess://","")).decode("ascii")
-#      z = json.loads(z)
-#      z1 = base64.b64decode(b[1].replace("vmess://","")).decode("ascii")
-#      z1 = json.loads(z1)
-      msg = f"""
+			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		except:
+			await event.respond("**User Already Exist**")
+		else:
+			b = [x.group() for x in re.finditer("vmess://(.*)",a)]
+			print(b)
+			z = base64.b64decode(b[0].replace("vmess://","")).decode("ascii")
+			z = json.loads(z)
+			msg = f"""
 **◇━━━━━━━━━━━━━━━━━◇**
 **⟨ Xray/Vmess Account ⟩**
 **◇━━━━━━━━━━━━━━━━━◇**
@@ -192,14 +190,14 @@ Button.inline(" 60 Menit ","60")]])
 **» Expired Until:** ` {exp} Minutes`
 **◇━━━━━━━━━━━━━━━━━◇**
 """
-      await event.respond(msg)
-  chat = event.chat_id
-  sender = await event.get_sender()
-  a = valid(str(sender.id))
-  if a == "true":
-    await trial_vmess_(event)
-  else:
-    await event.answer("Akses Ditolak",alert=True)
+			await event.respond(msg)
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await trial_vmess_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
 
 #CEK VMESS
 @bot.on(events.CallbackQuery(data=b'cek-vmess'))
