@@ -3,14 +3,21 @@
 sanitize_apt_sources() {
     local codename
     codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+    local bad_patterns
+
+    bad_patterns='vbernat/haproxy-2\.0|ppa\.launchpadcontent\.net/vbernat'
 
     rm -f /etc/apt/sources.list.d/vbernat-ubuntu-haproxy-2_0-*.list
     rm -f /etc/apt/sources.list.d/vbernat-ubuntu-haproxy-2_0-*.sources
     rm -f /etc/apt/sources.list.d/haproxy.list
 
-    if grep -Rqs "launchpadcontent.net/vbernat/haproxy-2.0" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
-        find /etc/apt/sources.list.d -maxdepth 1 -type f -name "*.list" -exec sed -i '/launchpadcontent\.net\/vbernat\/haproxy-2\.0/d' {} +
-        sed -i '/launchpadcontent\.net\/vbernat\/haproxy-2\.0/d' /etc/apt/sources.list 2>/dev/null || true
+    # Remove any source file containing known incompatible repositories.
+    while IFS= read -r bad_file; do
+        rm -f "$bad_file"
+    done < <(grep -RlsE "$bad_patterns" /etc/apt/sources.list.d 2>/dev/null || true)
+
+    if grep -RqsE "$bad_patterns" /etc/apt/sources.list 2>/dev/null; then
+        sed -i -E '/vbernat\/haproxy-2\.0|ppa\.launchpadcontent\.net\/vbernat/d' /etc/apt/sources.list 2>/dev/null || true
     fi
 
     if [[ -n "$codename" ]] && [[ -f /etc/apt/sources.list.d/nginx.list ]]; then
