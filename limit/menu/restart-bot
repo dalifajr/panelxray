@@ -38,6 +38,44 @@ res1() {
     if [[ -f /usr/bin/kyt/__main__.py ]]; then
         sed -i '/usr.local.bin/d' /usr/bin/kyt/__main__.py
     fi
+    if [[ -x /usr/bin/kyt/.venv/bin/python ]] && ! /usr/bin/kyt/.venv/bin/python -c "import imghdr" >/dev/null 2>&1; then
+        SITE_PKG="$(/usr/bin/kyt/.venv/bin/python -c 'import site; print(next((p for p in site.getsitepackages() if p.endswith("site-packages")), ""))' 2>/dev/null || true)"
+        if [[ -n "$SITE_PKG" ]]; then
+            cat > "$SITE_PKG/imghdr.py" <<'PY'
+"""Compatibility shim for Python 3.13+ where stdlib imghdr was removed."""
+
+from pathlib import Path
+
+
+def what(file, h=None):
+    if h is None:
+        if file is None:
+            return None
+        p = Path(file)
+        if not p.exists():
+            return None
+        with p.open("rb") as f:
+            h = f.read(32)
+    if isinstance(h, str):
+        h = h.encode("latin1", "ignore")
+
+    if h.startswith(b"\xFF\xD8\xFF"):
+        return "jpeg"
+    if h.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if h[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if h.startswith(b"RIFF") and h[8:12] == b"WEBP":
+        return "webp"
+    if h.startswith(b"BM"):
+        return "bmp"
+    if h[:4] in (b"II*\x00", b"MM\x00*"):
+        return "tiff"
+
+    return None
+PY
+        fi
+    fi
     systemctl restart kyt
 }
 netfilter-persistent

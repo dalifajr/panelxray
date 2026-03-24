@@ -83,6 +83,46 @@ python3 -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
 "${VENV_DIR}/bin/pip" install -r /usr/bin/kyt/requirements.txt
 
+# Python 3.13 removed imghdr from stdlib; Telethon still imports it.
+if ! "${VENV_DIR}/bin/python" -c "import imghdr" >/dev/null 2>&1; then
+  SITE_PKG="$("${VENV_DIR}/bin/python" -c 'import site; print(next((p for p in site.getsitepackages() if p.endswith("site-packages")), ""))' 2>/dev/null || true)"
+  if [[ -n "${SITE_PKG}" ]]; then
+	cat > "${SITE_PKG}/imghdr.py" <<'PY'
+"""Compatibility shim for Python 3.13+ where stdlib imghdr was removed."""
+
+from pathlib import Path
+
+
+def what(file, h=None):
+	if h is None:
+		if file is None:
+			return None
+		p = Path(file)
+		if not p.exists():
+			return None
+		with p.open("rb") as f:
+			h = f.read(32)
+	if isinstance(h, str):
+		h = h.encode("latin1", "ignore")
+
+	if h.startswith(b"\xFF\xD8\xFF"):
+		return "jpeg"
+	if h.startswith(b"\x89PNG\r\n\x1a\n"):
+		return "png"
+	if h[:6] in (b"GIF87a", b"GIF89a"):
+		return "gif"
+	if h.startswith(b"RIFF") and h[8:12] == b"WEBP":
+		return "webp"
+	if h.startswith(b"BM"):
+		return "bmp"
+	if h[:4] in (b"II*\x00", b"MM\x00*"):
+		return "tiff"
+
+	return None
+PY
+  fi
+fi
+
 #isi data
 echo ""
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
