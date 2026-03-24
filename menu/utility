@@ -35,6 +35,7 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 17 "Auto Reboot"
    thm_menu_item 18 "Info Port"
    thm_menu_item 19 "Daftar Akun Suspend"
+   thm_menu_item 20 "Perbaiki xray.crt & hap.pem"
    thm_menu_item 0 "Kembali Ke Menu Utama"
    thm_footer
 else
@@ -60,13 +61,14 @@ else
    echo -e "  ${Blue}[17] ${NC}${GREEN}Auto Reboot ${NC}"
    echo -e "  ${Blue}[18] ${NC}${GREEN}Info Port ${NC}"
    echo -e "  ${Blue}[19] ${NC}${GREEN}Daftar Akun Suspend${NC}"
+   echo -e "  ${Blue}[20] ${NC}${GREEN}Perbaiki xray.crt & hap.pem${NC}"
    echo -e " \033[36m══════════════════════════════════════════════════════════${NC}"
    echo -e ""
    echo -e "  ${Blue}[0] ${NC} ${GREEN}Kembali Ke Menu Utama${NC}"
    echo -e ""
    echo -e "${GREEN}PanelXray Service Menu${NC}"
 fi
-read -p "  Pilih Menu [ 1 - 19 atau 0 untuk kembali ] : " menu
+read -p "  Pilih Menu [ 1 - 20 atau 0 untuk kembali ] : " menu
 case $menu in
 1) clear ;
     cek-service
@@ -124,6 +126,9 @@ case $menu in
    ;;    
 19) clear ;
    ceksuspend
+   ;;
+20) clear ;
+   fix-xray-hap
    ;;
 0) clear ;
    menu

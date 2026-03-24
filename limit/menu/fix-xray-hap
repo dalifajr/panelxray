@@ -1,0 +1,199 @@
+#!/bin/bash
+set -e
+
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+print_step() {
+  echo -e "${GREEN}[*]${NC} $1"
+}
+
+print_warn() {
+  echo -e "${YELLOW}[!]${NC} $1"
+}
+
+print_err() {
+  echo -e "${RED}[x]${NC} $1"
+}
+
+print_status() {
+  local label="$1"
+  local ok="$2"
+  local detail="$3"
+  local color="$RED"
+  local mark="FAIL"
+  if [[ "$ok" -eq 1 ]]; then
+    color="$GREEN"
+    mark="OK"
+  fi
+  echo -e "${color}[${mark}]${NC} ${label}: ${detail}"
+}
+
+clear
+if declare -F thm_title >/dev/null; then
+  thm_title "FIX XRAY CERT & HAPROXY PEM"
+fi
+
+domain="$(cat /etc/xray/domain 2>/dev/null || true)"
+if [[ -z "$domain" ]]; then
+  domain="$(cat /root/domain 2>/dev/null || true)"
+fi
+
+if [[ -z "$domain" ]]; then
+  print_warn "Domain belum terdeteksi."
+  read -rp "Masukkan domain: " domain
+fi
+
+if [[ -z "$domain" ]]; then
+  print_err "Domain kosong, proses dibatalkan."
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
+  utility
+  exit 1
+fi
+
+mkdir -p /etc/xray /etc/haproxy
+
+ACME_BIN="/root/.acme.sh/acme.sh"
+if [[ ! -x "$ACME_BIN" ]]; then
+  print_step "Menginstal acme.sh"
+  curl -fsSL https://get.acme.sh | sh -s email=admin@${domain} >/dev/null 2>&1 || true
+fi
+
+if [[ ! -x "$ACME_BIN" ]]; then
+  print_err "Gagal menyiapkan acme.sh"
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
+  utility
+  exit 1
+fi
+
+print_step "Menghentikan nginx dan haproxy sementara"
+systemctl stop nginx >/dev/null 2>&1 || true
+systemctl stop haproxy >/dev/null 2>&1 || true
+
+request_ok=0
+print_step "Meminta sertifikat SSL untuk ${domain}"
+$ACME_BIN --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+if $ACME_BIN --issue -d "$domain" --standalone -k ec-256 --force >/dev/null 2>&1; then
+  if $ACME_BIN --install-cert -d "$domain" --ecc --fullchain-file /etc/xray/xray.crt --key-file /etc/xray/xray.key >/dev/null 2>&1; then
+    request_ok=1
+  fi
+fi
+
+if [[ "$request_ok" -ne 1 ]]; then
+  print_warn "Request sertifikat gagal, memakai sertifikat self-signed sementara"
+  openssl req -x509 -nodes -newkey rsa:2048 \
+    -keyout /etc/xray/xray.key \
+    -out /etc/xray/xray.crt \
+    -days 3650 \
+    -subj "/CN=${domain}" >/dev/null 2>&1
+fi
+
+if ! openssl x509 -in /etc/xray/xray.crt -noout >/dev/null 2>&1; then
+  print_err "xray.crt tidak valid"
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
+  utility
+  exit 1
+fi
+
+if ! openssl pkey -in /etc/xray/xray.key -noout >/dev/null 2>&1; then
+  print_err "xray.key tidak valid"
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
+  utility
+  exit 1
+fi
+
+print_step "Menggabungkan xray.crt + xray.key menjadi hap.pem"
+cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/haproxy/hap.pem
+chmod 600 /etc/haproxy/hap.pem
+
+print_step "Validasi konfigurasi nginx"
+nginx_cfg_ok=1
+if ! nginx -t >/dev/null 2>&1; then
+  print_err "Konfigurasi nginx masih bermasalah"
+  nginx_cfg_ok=0
+fi
+
+print_step "Validasi konfigurasi haproxy"
+haproxy_cfg_ok=1
+if ! haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+  print_err "Konfigurasi haproxy masih bermasalah"
+  haproxy_cfg_ok=0
+fi
+
+print_step "Menjalankan ulang service"
+systemctl restart xray >/dev/null 2>&1 || true
+systemctl restart nginx >/dev/null 2>&1 || true
+systemctl restart haproxy >/dev/null 2>&1 || true
+
+crt_ok=1
+key_ok=1
+pem_ok=0
+if [[ -s /etc/haproxy/hap.pem ]] && openssl x509 -in /etc/haproxy/hap.pem -noout >/dev/null 2>&1; then
+  pem_ok=1
+fi
+
+xray_active=0
+nginx_active=0
+haproxy_active=0
+if [[ "$(systemctl is-active xray 2>/dev/null || echo inactive)" == "active" ]]; then
+  xray_active=1
+fi
+if [[ "$(systemctl is-active nginx 2>/dev/null || echo inactive)" == "active" ]]; then
+  nginx_active=1
+fi
+if [[ "$(systemctl is-active haproxy 2>/dev/null || echo inactive)" == "active" ]]; then
+  haproxy_active=1
+fi
+
+cert_source="LetsEncrypt"
+if [[ "$request_ok" -ne 1 ]]; then
+  cert_source="Self-Signed"
+fi
+
+overall_ok=1
+if [[ "$crt_ok" -ne 1 || "$key_ok" -ne 1 || "$pem_ok" -ne 1 || "$nginx_cfg_ok" -ne 1 || "$haproxy_cfg_ok" -ne 1 || "$xray_active" -ne 1 || "$nginx_active" -ne 1 || "$haproxy_active" -ne 1 ]]; then
+  overall_ok=0
+fi
+
+echo
+if [[ "$overall_ok" -eq 1 ]]; then
+  echo -e "${GREEN}Selesai.${NC}"
+else
+  echo -e "${RED}Selesai dengan catatan.${NC}"
+fi
+echo -e "- Domain   : ${domain}"
+echo -e "- Sumber CRT: ${cert_source}"
+echo -e "- File      : /etc/xray/xray.crt, /etc/xray/xray.key, /etc/haproxy/hap.pem"
+
+echo
+echo "========================================"
+if [[ "$overall_ok" -eq 1 ]]; then
+  echo -e "${GREEN}RINGKASAN VERIFIKASI${NC}"
+else
+  echo -e "${RED}RINGKASAN VERIFIKASI${NC}"
+fi
+print_status "xray.crt valid" "$crt_ok" "/etc/xray/xray.crt"
+print_status "xray.key valid" "$key_ok" "/etc/xray/xray.key"
+print_status "hap.pem valid" "$pem_ok" "/etc/haproxy/hap.pem"
+print_status "Konfigurasi nginx" "$nginx_cfg_ok" "nginx -t"
+print_status "Konfigurasi haproxy" "$haproxy_cfg_ok" "haproxy -c"
+print_status "Service xray" "$xray_active" "$(systemctl is-active xray 2>/dev/null || echo unknown)"
+print_status "Service nginx" "$nginx_active" "$(systemctl is-active nginx 2>/dev/null || echo unknown)"
+print_status "Service haproxy" "$haproxy_active" "$(systemctl is-active haproxy 2>/dev/null || echo unknown)"
+if [[ "$overall_ok" -eq 1 ]]; then
+  echo -e "${GREEN}HASIL AKHIR: SUKSES${NC}"
+else
+  echo -e "${RED}HASIL AKHIR: GAGAL (cek item FAIL di atas)${NC}"
+fi
+echo "========================================"
+
+echo
+read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
+utility

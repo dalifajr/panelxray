@@ -129,18 +129,6 @@ safe_apt_update() {
     return 1
 }
 
-configure_bottom_install_progress() {
-    # Keep dpkg/apt fancy progress tied to terminal bottom during package operations.
-    mkdir -p /etc/apt/apt.conf.d
-    cat >/etc/apt/apt.conf.d/99panelxray-progress <<EOF
-Dpkg::Use-Pty "1";
-Dpkg::Progress-Fancy "1";
-APT::Color "1";
-EOF
-    export DPKG_PROGRESS_FANCY=1
-}
-
-configure_bottom_install_progress
 enforce_official_ubuntu24_repos
 sanitize_apt_sources
 if ! safe_apt_update; then
@@ -286,6 +274,28 @@ start=$(date +%s)
 secs_to_human() {
     echo "Installation time : $((${1} / 3600)) hours $(((${1} / 60) % 60)) minute's $((${1} % 60)) seconds"
 }
+
+INSTALL_TOTAL_STEPS=25
+INSTALL_CURRENT_STEP=0
+
+draw_install_progress() {
+    local label="$1" width=40 filled percent bar empty
+    percent=$((INSTALL_CURRENT_STEP * 100 / INSTALL_TOTAL_STEPS))
+    filled=$((percent * width / 100))
+    empty=$((width - filled))
+    bar="$(printf '%*s' "$filled" '' | tr ' ' '#')"
+    bar+="$(printf '%*s' "$empty" '' | tr ' ' '-')"
+    printf "\r${YELLOW}Progress:${NC} [%2d/%2d] [%s] %3d%% - %s\n" \
+        "$INSTALL_CURRENT_STEP" "$INSTALL_TOTAL_STEPS" "$bar" "$percent" "$label"
+}
+
+run_install_step() {
+    local label="$1" fn="$2"
+    INSTALL_CURRENT_STEP=$((INSTALL_CURRENT_STEP + 1))
+    draw_install_progress "$label"
+    "$fn"
+}
+
 ### Status
 function print_ok() {
     echo -e "${OK} ${BLUE} $1 ${FONT}"
@@ -1349,31 +1359,32 @@ print_install "Enable Service"
 # Fingsi Install Script
 function instal(){
 clear
-    preflight_check
-    first_setup
-    nginx_install
-    base_package
-    make_folder_xray
-    pasang_domain
-    password_default
-    pasang_ssl
-    install_xray
-    ssh
-    udp_mini
-    ssh_slow
-    ins_SSHD
-    ins_dropbear
-    ins_vnstat
-    ins_openvpn
-    ins_backup
-    ins_swab
-    ins_Fail2ban
-    ins_epro
-    ins_restart
-    menu
-    profile
-    enable_services
-    restart_system
+    run_install_step "Preflight Check" preflight_check
+    run_install_step "Setup Dasar Sistem" first_setup
+    run_install_step "Install Nginx" nginx_install
+    run_install_step "Install Paket Dasar" base_package
+    run_install_step "Siapkan Folder Xray" make_folder_xray
+    run_install_step "Konfigurasi Domain" pasang_domain
+    run_install_step "Atur Password Default" password_default
+    run_install_step "Pasang Sertifikat SSL" pasang_ssl
+    run_install_step "Install Xray Core" install_xray
+    run_install_step "Setup SSH" ssh
+    run_install_step "Setup Limit/UDP" udp_mini
+    run_install_step "Setup SlowDNS" ssh_slow
+    run_install_step "Konfigurasi SSHD" ins_SSHD
+    run_install_step "Install Dropbear" ins_dropbear
+    run_install_step "Install Vnstat" ins_vnstat
+    run_install_step "Install OpenVPN" ins_openvpn
+    run_install_step "Setup Backup" ins_backup
+    run_install_step "Setup Bandwidth Limiter" ins_swab
+    run_install_step "Setup Fail2ban" ins_Fail2ban
+    run_install_step "Setup WebSocket Proxy" ins_epro
+    run_install_step "Restart Semua Layanan" ins_restart
+    run_install_step "Install Menu" menu
+    run_install_step "Setup Profil" profile
+    run_install_step "Enable Service" enable_services
+    run_install_step "Kirim Notifikasi" restart_system
+    echo -e "${GREEN}Progress instalasi: 100% selesai.${NC}"
 }
 instal
 echo ""
