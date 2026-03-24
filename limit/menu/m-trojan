@@ -1,78 +1,50 @@
 #!/bin/bash
-Green="\e[92;1m"
-RED="\033[31m"
-YELLOW="\033[33m"
-BLUE="\033[36m"
-FONT="\033[0m"
-GREENBG="\033[42;37m"
-REDBG="\033[41;37m"
-OK="${Green}--->${FONT}"
-ERROR="${RED}[ERROR]${FONT}"
-GRAY="\e[1;30m"
-NC='\e[0m'
-red='\e[1;31m'
-green='\e[0;32m'
-DF='\e[39m'
-Bold='\e[1m'
-Blink='\e[5m'
-yell='\e[33m'
-red='\e[31m'
-green='\e[32m'
-blue='\e[34m'
-PURPLE='\e[35m'
-cyan='\e[36m'
-Lred='\e[91m'
-Lgreen='\e[92m'
-Lyellow='\e[93m'
-NC='\e[0m'
-GREEN='\033[0;32m'
-ORANGE='\033[0;33m'
-LIGHT='\033[0;37m'
-grenbo="\e[92;1m"
-
-// Bersihkan
 clear
-echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
-echo -e "                 MENU TROJAN              $NC"
-echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
-echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
-echo -e "  ${ORANGE}1.${NC} \033[0;36m Create Account XRAY Trojan WS/GRPC${NC}"
-echo -e "  ${ORANGE}2.${NC} \033[0;36m Create Trial XRAY Trojan WS/GRPC${NC}"
-echo -e "  ${ORANGE}3.${NC} \033[0;36m Delete Account XRAY Trojan WS/GRPC${NC}"
-echo -e "  ${ORANGE}4.${NC} \033[0;36m Renew Trojan Account${NC}"
-echo -e "  ${ORANGE}5.${NC} \033[0;36m Check Trojan login Account${NC}"
-echo -e "  ${ORANGE}6.${NC} \033[0;36m Check Config Trojan  Account${NC}"
-echo -e "  ${ORANGE}7.${NC} \033[0;36m Suspend Trojan Account${NC}"
-echo -e "  ${ORANGE}8.${NC} \033[0;36m Unsuspend Trojan Account${NC}"
-echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
-echo -e ""
-read -p "Select From Options [ 1 - 8 ] : " menu
+
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ -r "$THEME_FILE" ]]; then
+    . "$THEME_FILE"
+fi
+
+panel_user="$(cat /usr/bin/user 2>/dev/null || echo User)"
+
+if declare -F thm_title >/dev/null; then
+    thm_title "MENU TROJAN"
+    thm_welcome "$panel_user"
+    thm_menu_item 1 "Buat Akun XRAY Trojan WS/GRPC"
+    thm_menu_item 2 "Buat Akun Trial XRAY Trojan WS/GRPC"
+    thm_menu_item 3 "Hapus Akun XRAY Trojan WS/GRPC"
+    thm_menu_item 4 "Perpanjang Akun Trojan"
+    thm_menu_item 5 "Cek Login Akun Trojan"
+    thm_menu_item 6 "Lihat Konfigurasi Trojan"
+    thm_menu_item 7 "Suspend Akun Trojan"
+    thm_menu_item 8 "Aktifkan Kembali Akun Trojan"
+    thm_menu_item 0 "Kembali Ke Menu Utama"
+    thm_footer
+else
+    echo "MENU TROJAN"
+    echo "1) Buat Akun XRAY Trojan WS/GRPC"
+    echo "2) Buat Akun Trial XRAY Trojan WS/GRPC"
+    echo "3) Hapus Akun XRAY Trojan WS/GRPC"
+    echo "4) Perpanjang Akun Trojan"
+    echo "5) Cek Login Akun Trojan"
+    echo "6) Lihat Konfigurasi Trojan"
+    echo "7) Suspend Akun Trojan"
+    echo "8) Aktifkan Kembali Akun Trojan"
+    echo "0) Kembali Ke Menu Utama"
+fi
+
+read -p "Pilih Menu [ 0 - 8 ] : " menu
+
 case $menu in
-1)
-    addtr
-    ;;
-2)
-    trialtr
-    ;;
-3)
-    deltr
-    ;;
-4)
-    renewtr
-    ;;
-5)
-    cektr
-    ;;
-6)
-    user-tr
-    ;;
-7)
-    susptr
-    ;;
-8)
-    unsusptr
-    ;;
-*)
-    menu
-    ;;
+1) addtr ;;
+2) trialtr ;;
+3) deltr ;;
+4) renewtr ;;
+5) cektr ;;
+6) user-tr ;;
+7) susptr ;;
+8) unsusptr ;;
+0) menu ;;
+*) menu ;;
 esac

@@ -201,14 +201,14 @@ echo -e "                        ${z}SHADOWSOCKS${NC}$y ➤$NC $ssa${NC}"
 echo -e "                     ${LURUS}${LURUS2}${LURUS}${LURUS2}${LURUS}${LURUS2}"
 #echo -e "                   ${z}╰════════════════╯$NC"
 echo -e " ${z}╭══════════════════════════════════════════════════════════╮${NC}"
-echo -e " \033[36m│$NC   [${green}01${NC}] MENU SSH $status_ssh        ${z}│$NC   [${green}06${NC}] MENU SYSTEM ${z}         │$NC" 
-echo -e " \033[36m│$NC   [${green}02${NC}] MENU VMESS $status_xray      ${z}│$NC   [${green}07${NC}] Check Bandwith      ${z} │$NC"    
-echo -e " \033[36m│$NC   [${green}03${NC}] MENU VLESS  $status_xray     ${z}│$NC   [${green}08${NC}] SPEEDTEST   ${z}         │$NC"  
-echo -e " \033[36m│$NC   [${green}04${NC}] MENU TROJAN $status_xray     ${z}│$NC   [${green}09${NC}] LIMIT SPEED ${z}         │$NC"
-echo -e " \033[36m│$NC   [${green}05${NC}] MENU SHADOW $status_xray     ${z}│$NC   [${green}10${NC}] BACKUP/RESTORE ${z}      │$NC"
-echo -e " \033[36m│$NC   [${green}11${NC}] MENU ON/OFF LIMIT IP\033[36m│$NC   [${green}12${NC}] MENU Add Bot Telegram│$NC"
-echo -e " \033[36m│$NC   [${green}13${NC}] MENU UNINSTALL PANEL         ${z}│$NC   [${green}14${NC}] UPDATE PROGRAM   ${z}    │$NC"
-echo -e " \033[36m│$NC   [${green}15${NC}] CEK STATUS SERVICE           ${z}│$NC                                 ${z}    │$NC"
+echo -e " \033[36m│$NC   [${green}01${NC}] Menu SSH $status_ssh             ${z}│$NC   [${green}06${NC}] Menu Utilitas ${z}       │$NC" 
+echo -e " \033[36m│$NC   [${green}02${NC}] Menu Vmess $status_xray           ${z}│$NC   [${green}07${NC}] Cek Bandwidth ${z}      │$NC"    
+echo -e " \033[36m│$NC   [${green}03${NC}] Menu Vless $status_xray           ${z}│$NC   [${green}08${NC}] Speedtest ${z}          │$NC"  
+echo -e " \033[36m│$NC   [${green}04${NC}] Menu Trojan $status_xray          ${z}│$NC   [${green}09${NC}] Batas Kecepatan ${z}    │$NC"
+echo -e " \033[36m│$NC   [${green}05${NC}] Menu Shadowsocks $status_xray     ${z}│$NC   [${green}10${NC}] Backup/Restore ${z}     │$NC"
+echo -e " \033[36m│$NC   [${green}11${NC}] On/Off Limit IP\033[36m            │$NC   [${green}12${NC}] Bot Telegram ${z}       │$NC"
+echo -e " \033[36m│$NC   [${green}13${NC}] Uninstall Panel                ${z}│$NC   [${green}14${NC}] Update Program ${z}      │$NC"
+echo -e " \033[36m│$NC   [${green}15${NC}] Cek Status Service            ${z}│$NC                                  ${z}   │$NC"
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 #echo -e " ${z}╭════════════════╮╭══════════════════╮╭════════════════════╮${NC}"
 #echo -e " ${z}│ ${NC}${z} SSH$NC : $status_ssh" "        ${z} NGINX$NC : $status_nginx" "        ${z} XRAY$NC : $status_xray      $NC${z}│$NC" 
@@ -216,10 +216,10 @@ echo -e " ${z}╰═════════════════════
 #echo -e " ${z}╰════════════════╯╰══════════════════╯╰════════════════════╯${NC}"
 echo -e " ${z}╭══════════════════════════════════════════════════════════╮${NC}"
 echo -e " ${z}│$NC${z} Version$NC       ${z}=$NC V1.2"
-echo -e " ${z}│$NC${z} Welcome$NC       ${z}=$NC Welcome, $username"
+echo -e " ${z}│$NC${z} Welcome$NC       ${z}=$NC Selamat Datang, $username"
 echo -e " ${z}│$NC${z} ID$NC            ${z}=$NC $username"
-echo -e " ${z}│$NC${z} Script Status$NC ${z}=$NC $sts "
-echo -e " ${z}│$NC${z} Exp Script$NC    ${z}=$green $exp $certifacate Days$NC "
+echo -e " ${z}│$NC${z} Status Script$NC ${z}=$NC $sts "
+echo -e " ${z}│$NC${z} Expired Script$NC ${z}=$green $exp ($certifacate Hari)$NC "
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 if declare -F thm_footer >/dev/null; then
    thm_footer
@@ -227,7 +227,7 @@ else
    echo -e "${green}created by dzulfikrialifajri store${NC}"
 fi
 echo
-read -p " Select menu : " opt
+read -p " Pilih Menu : " opt
 echo -e ""
 case $opt in
 1)

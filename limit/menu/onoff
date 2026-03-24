@@ -1,48 +1,40 @@
 #!/bin/bash
-#Color
-DF='\e[39m'
-Bold='\e[1m'
-Blink='\e[5m'
-yell='\e[33m'
-RED='\033[0;31m'
-green='\e[32m'
-PURPLE='\e[35m'
-cyan='\e[36m'
-LRED='\e[91m'
-Lgreen='\e[92m'
-Lyellow='\e[93m'
+clear
+
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ -r "$THEME_FILE" ]]; then
+    . "$THEME_FILE"
+fi
+
 NC='\e[0m'
 GREEN='\033[0;32m'
-ORANGE='\033[0;33m'
-LIGHT='\033[0;37m'
-grenbo="\e[92;1m"
-blue="\033[0;34m"
-Blue="\033[36m"
-clear
+RED='\033[0;31m'
 
 badvpn1=$(systemctl status vmip | grep running | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
 
-# STATUS SERVICE  BADVPN 1
+# STATUS SERVICE LIMIT IP
 if [[ $badvpn1 == "running" ]]; then 
-   status_udp1="${GREEN}Online$NC${blue} │$NC"
-   else
-   status_udp1="${RED}Offline${NC} "
+     status_udp1="${GREEN}AKTIF${NC}"
+else
+     status_udp1="${RED}TIDAK AKTIF${NC}"
 fi
 
-echo -e "\e[32mloading...\e[0m"
-clear
+if declare -F thm_title >/dev/null; then
+    thm_title "MENU LIMIT IP"
+    thm_info_row "Status Limit IP" "$status_udp1"
+    thm_menu_item 1 "Nonaktifkan Limit IP"
+    thm_menu_item 2 "Aktifkan Limit IP"
+    thm_menu_item 0 "Kembali Ke Menu Utama"
+    thm_footer
+else
+    echo "MENU LIMIT IP"
+    echo "Status Limit IP: $status_udp1"
+    echo "1) Nonaktifkan Limit IP"
+    echo "2) Aktifkan Limit IP"
+    echo "0) Kembali Ke Menu Utama"
+fi
 
-echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
-echo -e "status limit ip $status_udp1 "
-echo -e "                 MENU ON OFF LIMIT IP              $NC"
-echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
-echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
-echo -e "  ${ORANGE}1.${NC} \033[0;36m TURN OFF LIMIT IP${NC}"
-echo -e "  ${ORANGE}2.${NC} \033[0;36m TURN ON LIMIT IP${NC}"
-echo -e "  ${ORANGE}0.${NC} \033[0;36m Back To Main Menu ${NC}"
-echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
-echo -e ""
-read -p "Select From Options [ 1 - 3 ] : " menu
+read -p "Pilih Menu [ 1 - 2 atau 0 ] : " menu
 case $menu in
 1)   clear ;
     cd /etc/systemd/system/
@@ -105,6 +97,9 @@ systemctl restart trip
 systemctl enable trip
 #SERVICE LIMIT QUOTA
 reboot
+    ;;
+0) clear ;
+    menu
     ;;
 *) clear ;
     menu

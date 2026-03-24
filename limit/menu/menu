@@ -214,23 +214,23 @@ echo -e "                        ${BG_RED}ACCOUNT INFO${NC}"
 echo -e "        SSH & OPENVPN : $ssh1 TROJAN : $trb  SHADOWSOCKS-R : $ssa"
 echo -e "                        VLESS : $vla VMESS : $vma"
 echo -e " ${z}╭══════════════════════════════════════════════════════════╮${NC}"
-echo -e " ${z}│$NC   [${green}01${NC}] ssh / Libev              [${green}07${NC}] check Bandwith    ${z}  │$NC" 
-echo -e " ${z}│$NC   [${green}02${NC}] vmess / xray             [${green}08${NC}] Test SpedTest     ${z}  │$NC"    
-echo -e " ${z}│$NC   [${green}03${NC}] vLess / xray             [${green}09${NC}] Limiting Speed    ${z}  │$NC"  
-echo -e " ${z}│$NC   [${green}04${NC}] Trojan / xray            [${green}10${NC}] Backup \ Restored ${z}  │$NC"
-echo -e " ${z}│$NC   [${green}05${NC}] shadowsock               [${green}11${NC}] Gett Bot Tele.    ${z}  │$NC"
-echo -e " ${z}│$NC   [${green}06${NC}] Manager/ Settings.       [${green}12${NC}] Add Bot Telegram  ${z}  │$NC"
-echo -e " ${z}│$NC   [${green}13${NC}] Uninstall Program        [${green}14${NC}] Update Program    ${z}  │$NC"
-echo -e " ${z}│$NC   [${green}15${NC}] Cek Status Service       [${green}00${NC}] Back To Menu      ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}01${NC}] Menu SSH                [${green}07${NC}] Cek Bandwidth     ${z}  │$NC" 
+echo -e " ${z}│$NC   [${green}02${NC}] Menu Vmess              [${green}08${NC}] Speedtest         ${z}  │$NC"    
+echo -e " ${z}│$NC   [${green}03${NC}] Menu Vless              [${green}09${NC}] Batas Kecepatan   ${z}  │$NC"  
+echo -e " ${z}│$NC   [${green}04${NC}] Menu Trojan             [${green}10${NC}] Backup/Restore    ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}05${NC}] Menu Shadowsocks        [${green}11${NC}] On/Off Limit IP   ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}06${NC}] Menu Utilitas           [${green}12${NC}] Bot Telegram      ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}13${NC}] Uninstall Program       [${green}14${NC}] Update Program    ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}15${NC}] Cek Status Service      [${green}00${NC}] Kembali Ke Menu   ${z}  │$NC"
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 #echo -e " ${z}╭════════════════╮╭══════════════════╮╭════════════════════╮${NC}"
 #echo -e " ${z}│ ${NC}${z} SSH$NC : $status_ssh" "        ${z} NGINX$NC : $status_nginx" "        ${z} XRAY$NC : $status_xray      $NC${z}│$NC" 
 #echo -e " ${z}│ ${NC}${z} WS-EPRO$NC : $status_ws_epro" "    ${z} DROPBEAR$NC : $status_dropbear" "     ${z} HAPROXY$NC : $status_haproxy   $NC${z}│$NC" 
 #echo -e " ${z}╰════════════════╯╰══════════════════╯╰════════════════════╯${NC}"
 echo -e " ${z}╭══════════════════════════════════════════════════════════╮${NC}"
-echo -e " ${z}│$NC${z} Welcome$NC       ${z}=$NC Welcome, $username"
-echo -e " ${z}│$NC${z} Client/Regist$NC ${z}=$NC $username [$sts]"
-echo -e " ${z}│$NC${z} Exp Script$NC    ${z}=$NC $exp / $certifacate Days$NC "
+echo -e " ${z}│$NC${z} Welcome$NC       ${z}=$NC Selamat Datang, $username"
+echo -e " ${z}│$NC${z} Klien/Status$NC  ${z}=$NC $username [$sts]"
+echo -e " ${z}│$NC${z} Expired Script$NC ${z}=$NC $exp ($certifacate Hari)$NC "
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 if declare -F thm_footer >/dev/null; then
    thm_footer
@@ -240,7 +240,7 @@ fi
 echo -e "                        ${vers}"
 echo -e "                        ${TZ} ${NC}"
 echo
-read -p " Select Options 1/15 : " wZtXtQ
+read -p " Pilih Menu 1/15 : " wZtXtQ
 echo -e ""
 case $wZtXtQ in
 1)
@@ -285,7 +285,7 @@ menu-backup
 ;;
 11)
 clear
-add-bot-panel
+onoff
 ;;
 12)
 clear

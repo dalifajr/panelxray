@@ -42,22 +42,22 @@ checking_sc
 
 if declare -F thm_title >/dev/null; then
   thm_title "MENU BOT"
-  thm_menu_item 1 "Add Bot Notifikasi"
-  thm_menu_item 2 "Delete Bot Notifikasi"
-  thm_menu_item 0 "Back To Menu"
+  thm_menu_item 1 "Tambah Bot Notifikasi"
+  thm_menu_item 2 "Hapus Bot Notifikasi"
+  thm_menu_item 0 "Kembali Ke Menu"
   thm_footer
 else
   echo -e "\033[96m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e " \e[1;971m                      MENU BOT                \e[0m"
   echo -e "\033[96m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "  ${grenbo}[1]${NC}${YELL} Add Bot Notifikasi${NC}"
-  echo -e "  ${grenbo}[2]${NC}${YELL} Delete Bot Notifikasi${NC}"
+  echo -e "  ${grenbo}[1]${NC}${YELL} Tambah Bot Notifikasi${NC}"
+  echo -e "  ${grenbo}[2]${NC}${YELL} Hapus Bot Notifikasi${NC}"
   echo -e ""
-  echo -e "  ${grenbo}[0]${NC}${YELL} Back To Menu${NC}"
+  echo -e "  ${grenbo}[0]${NC}${YELL} Kembali Ke Menu${NC}"
   echo -e ""
   echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
 fi
-read -p "  Select From Options [ 1 - 2 or 0 ] : " menu
+read -p "  Pilih Menu [ 1 - 2 atau 0 ] : " menu
 case $menu in
 1) clear ;
     add-bot-notif

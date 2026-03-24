@@ -18,7 +18,7 @@ BOT="https://abc.xcodehoster.com/"
 ipsaya=$(wget -qO- ipinfo.io/ip)
 data_server=$(curl -v --insecure --silent https://google.com/ 2>&1 | grep Date | sed -e 's/< Date: //')
 date_list=$(date +"%Y-%m-%d" -d "$data_server")
-data_ip="https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci"
+data_ip="https://raw.githubusercontent.com/nishikazekazata/izin/main/ip"
 checking_sc() {
   useexp=$(wget -qO- $data_ip | grep $ipsaya | awk '{print $3}')
   if [[ $date_list < $useexp ]]; then
@@ -32,8 +32,8 @@ checking_sc() {
     echo -e "   \033[0;33mYour VPS${NC} $ipsaya \033[0;33mHas been Banned${NC}"
     echo -e "     \033[0;33mBuy access permissions for scripts${NC}"
     echo -e "             \033[0;33mContact Admin :${NC}"
-    echo -e "      \033[0;36mTelegram${NC} t.me/LunaticTunnel"
-    echo -e "      ${GREEN}WhatsApp${NC} wa.me/6282240074362"
+    echo -e "      \033[0;36mTelegram${NC} t.me/Kytxz"
+    echo -e "      ${GREEN}WhatsApp${NC} wa.me/6281774970898"
     echo -e "\033[1;93m────────────────────────────────────────────\033[0m"
     exit
   fi
@@ -42,22 +42,22 @@ checking_sc
 
 if declare -F thm_title >/dev/null; then
   thm_title "MENU BOT"
-  thm_menu_item 1 "Add Bot Notifikasi"
-  thm_menu_item 2 "Delete Bot Notifikasi"
-  thm_menu_item 0 "Back To Menu"
+  thm_menu_item 1 "Tambah Bot Notifikasi"
+  thm_menu_item 2 "Hapus Bot Notifikasi"
+  thm_menu_item 0 "Kembali Ke Menu"
   thm_footer
 else
   echo -e "\033[96m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e " \e[1;971m                      MENU BOT                \e[0m"
   echo -e "\033[96m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "  ${grenbo}[1]${NC}${YELL} Add Bot Notifikasi${NC}"
-  echo -e "  ${grenbo}[2]${NC}${YELL} Delete Bot Notifikasi${NC}"
+  echo -e "  ${grenbo}[1]${NC}${YELL} Tambah Bot Notifikasi${NC}"
+  echo -e "  ${grenbo}[2]${NC}${YELL} Hapus Bot Notifikasi${NC}"
   echo -e ""
-  echo -e "  ${grenbo}[0]${NC}${YELL} Back To Menu${NC}"
+  echo -e "  ${grenbo}[0]${NC}${YELL} Kembali Ke Menu${NC}"
   echo -e ""
   echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
 fi
-read -p "  Select From Options [ 1 - 2 or 0 ] : " menu
+read -p "  Pilih Menu [ 1 - 2 atau 0 ] : " menu
 case $menu in
 1) clear ;
     add-bot-notif

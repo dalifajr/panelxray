@@ -55,26 +55,26 @@ clear
 MYIP=$(wget -qO- ipinfo.io/ip);
 clear 
 if declare -F thm_title >/dev/null; then
-  thm_title "BACKUP MENU"
-  thm_menu_item 1 "Backup VPS Data"
-  thm_menu_item 2 "Restore VPS Data"
-  thm_menu_item 0 "Back To Menu"
+  thm_title "MENU BACKUP"
+  thm_menu_item 1 "Backup Data VPS"
+  thm_menu_item 2 "Restore Data VPS"
+  thm_menu_item 0 "Kembali Ke Menu"
   thm_footer
 else
   echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
   echo -e "             • Backup Menu •         "
   echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
   echo -e "" 
-  echo -e " [\e[36m•1\e[0m] Backup VPS Data"
-  echo -e " [\e[36m•2\e[0m] Restore VPS Data"
+  echo -e " [\e[36m•1\e[0m] Backup Data VPS"
+  echo -e " [\e[36m•2\e[0m] Restore Data VPS"
   echo -e "" 
-  echo -e " [\e[31m•0\e[0m] \e[31mBack To Menu\033[0m"
+  echo -e " [\e[31m•0\e[0m] \e[31mKembali Ke Menu\033[0m"
   echo -e ""
   echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
   echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
   echo -e ""
 fi
-read -p " Select menu :  "  opt
+read -p " Pilih Menu : " opt
 echo -e   ""
 case $opt in
 01 | 1) clear ; backup ;;
