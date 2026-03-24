@@ -26,6 +26,8 @@ if [[ -z "$user" ]]; then
   read -rp "Input Username : " user
 fi
 
+user="$(echo "$user" | tr -d '\r' | xargs)"
+
 [[ -z "$user" ]] && exit 0
 [[ ! -f "$STATE_DIR/$user" ]] && { echo "User not suspended"; exit 1; }
 if grep -qwE "^### $user " "$CONFIG"; then

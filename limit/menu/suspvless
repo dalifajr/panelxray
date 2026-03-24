@@ -32,6 +32,8 @@ if [[ -z "$user" ]]; then
   read -rp "Input Username : " user
 fi
 
+user="$(echo "$user" | tr -d '\r' | xargs)"
+
 [[ -z "$user" ]] && exit 0
 mkdir -p "$STATE_DIR"
 if [[ -f "$STATE_DIR/$user" ]]; then
@@ -41,6 +43,20 @@ fi
 
 exp=$(grep -wE "^#& $user " "$CONFIG" | awk '{print $3}' | head -n1)
 uuid=$(grep -wE "^### $user " "$DB_FILE" | awk '{print $4}' | head -n1)
+
+if [[ -z "$uuid" ]]; then
+  uuid=$(awk -v u="$user" '
+    index($0, "\"email\": \"" u "\"") {
+      if (match($0, /"id": *"[^"]+"/)) {
+        v = substr($0, RSTART, RLENGTH)
+        sub(/.*"id": *"/, "", v)
+        sub(/"$/, "", v)
+        print v
+        exit
+      }
+    }
+  ' "$CONFIG")
+fi
 
 if [[ -z "$exp" || -z "$uuid" ]]; then
   echo "User not found"
