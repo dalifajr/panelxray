@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# Clean Cyan unified theme for panel menus.
+# Ocean style theme for panel menus.
 THM_NC='\033[0m'
 THM_CYAN='\033[1;36m'
+THM_BLUE='\033[1;34m'
 THM_GREEN='\033[0;32m'
 THM_YELLOW='\033[1;33m'
 THM_RED='\033[0;31m'
@@ -15,7 +16,14 @@ thm_line() {
 thm_title() {
     local title="$1"
     thm_line
-    printf "${THM_CYAN}|${THM_NC} ${THM_WHITE}%-56s${THM_NC} ${THM_CYAN}|${THM_NC}\n" "$title"
+    printf "${THM_CYAN}|${THM_NC} ${THM_BLUE}%-56s${THM_NC} ${THM_CYAN}|${THM_NC}\n" "$title"
+    thm_line
+}
+
+thm_welcome() {
+    local user_name="${1:-User}"
+    thm_line
+    printf "${THM_CYAN}|${THM_NC} ${THM_WHITE}%-56s${THM_NC} ${THM_CYAN}|${THM_NC}\n" "Welcome, ${user_name}"
     thm_line
 }
 
@@ -33,6 +41,6 @@ thm_menu_item() {
 
 thm_footer() {
     thm_line
-    printf "${THM_CYAN}|${THM_NC} ${THM_GREEN}created by dzulfikrialifajri store${THM_NC}%-22s${THM_CYAN}|${THM_NC}\n" ""
+    printf "${THM_CYAN}|${THM_NC} ${THM_GREEN}PanelXray Service Menu${THM_NC}%-33s${THM_CYAN}|${THM_NC}\n" ""
     thm_line
 }

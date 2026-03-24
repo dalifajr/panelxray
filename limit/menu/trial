@@ -168,6 +168,6 @@ echo -e "Berakhir Pada  : $pup Menit"
 echo -e "----------------------------------------------------------------------"
 echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "               Premium Script                      "
-echo -e "                YOU ARE FREE       "
+echo -e "                Welcome, $(cat /usr/bin/user 2>/dev/null || echo User)       "
 echo -e "----------------------------------------------------------------------"
 echo userdel -f "$Login" | at now + $pup minutes &> /dev/null

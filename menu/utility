@@ -11,7 +11,6 @@ Blue="\033[1;36m"
 GREEN='\033[0;32m'
 
 BGX="\033[42m"
-UPDATE="https://raw.githubusercontent.com/nishikazekazata/vip/main/"
 #BOT="https://raw.githubusercontent.com/myridwan/src/ipuk/"
 UDPCORE="https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1S3IE25v_fyUfCLslnujFBSBMNunDHDk2' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1S3IE25v_fyUfCLslnujFBSBMNunDHDk2"
 clear
@@ -20,23 +19,22 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 1 "RUNNING SERVICE"
    thm_menu_item 2 "INSTALL UDP"
    thm_menu_item 3 "Registrasi IP VPS"
-   thm_menu_item 4 "Update Script"
-   thm_menu_item 5 "RESTART SERVICE"
-   thm_menu_item 6 "CHANGE BANNER"
-   thm_menu_item 7 "CHANGE DOMAIN"
-   thm_menu_item 8 "Fix Missing Pointing Domain"
-   thm_menu_item 9 "CLEAR LOGS"
-   thm_menu_item 10 "CLEAR CACHE"
-   thm_menu_item 11 "BCKUP/RESTORE BOT"
-   thm_menu_item 12 "DELL ALL EXP"
-   thm_menu_item 13 "Add Bot Notifikasi"
-   thm_menu_item 14 "Monitor"
-   thm_menu_item 15 "Install DNS Nonton"
-   thm_menu_item 16 "Install Panel"
-   thm_menu_item 17 "SPEEDTEST"
-   thm_menu_item 18 "AutoReboot"
-   thm_menu_item 19 "INFO PORT"
-   thm_menu_item 20 "LIST SUSPENDED ACCOUNT"
+   thm_menu_item 4 "RESTART SERVICE"
+   thm_menu_item 5 "CHANGE BANNER"
+   thm_menu_item 6 "CHANGE DOMAIN"
+   thm_menu_item 7 "Fix Missing Pointing Domain"
+   thm_menu_item 8 "CLEAR LOGS"
+   thm_menu_item 9 "CLEAR CACHE"
+   thm_menu_item 10 "BCKUP/RESTORE BOT"
+   thm_menu_item 11 "DELL ALL EXP"
+   thm_menu_item 12 "Add Bot Notifikasi"
+   thm_menu_item 13 "Monitor"
+   thm_menu_item 14 "Install DNS Nonton"
+   thm_menu_item 15 "Install Panel"
+   thm_menu_item 16 "SPEEDTEST"
+   thm_menu_item 17 "AutoReboot"
+   thm_menu_item 18 "INFO PORT"
+   thm_menu_item 19 "LIST SUSPENDED ACCOUNT"
    thm_menu_item 0 "Back To Menu"
    thm_footer
 else
@@ -46,30 +44,29 @@ else
    echo -e "  ${Blue}[01] ${NC}${GREEN}RUNNING SERVICE${NC}"
    echo -e "  ${Blue}[02] ${NC}${GREEN}INSTALL UDP ${NC}"
    echo -e "  ${Blue}[03] ${NC}${GREEN}Registrasi IP VPS${NC}"
-   echo -e "  ${Blue}[04] ${NC}${GREEN}Update Script ${NC}"
-   echo -e "  ${Blue}[05] ${NC}${GREEN}RESTART SERVICE${NC}"
-   echo -e "  ${Blue}[06] ${NC}${GREEN}CHANGE BANNER${NC}"
-   echo -e "  ${Blue}[07] ${NC}${GREEN}CHANGE DOMAIN${NC}"
-   echo -e "  ${Blue}[08] ${NC}${GREEN}Fix Missing Pointing Domain${NC}"
-   echo -e "  ${Blue}[09] ${NC}${GREEN}CLEAR LOGS${NC}"
-   echo -e "  ${Blue}[10] ${NC}${GREEN}CLEAR CACHE${NC}"
-   echo -e "  ${Blue}[11] ${NC}${GREEN}BCKUP/RESTORE BOT ${NC}"
-   echo -e "  ${Blue}[12] ${NC}${GREEN}DELL ALL EXP${NC}"
-   echo -e "  ${Blue}[13] ${NC}${GREEN}Add Bot Notifikasi ${NC}"
-   echo -e "  ${Blue}[14] ${NC}${GREEN}Monitor${NC}"
-   echo -e "  ${Blue}[15] ${NC}${GREEN}Install DNS Nonton ${NC}"
-   echo -e "  ${Blue}[16] ${NC}${GREEN}Install Panel ${NC}"
-   echo -e "  ${Blue}[17] ${NC}${GREEN}SPEEDTEST ${NC}"
-   echo -e "  ${Blue}[18] ${NC}${GREEN}AutoReboot ${NC}"
-   echo -e "  ${Blue}[19] ${NC}${GREEN}INFO PORT ${NC}"
-   echo -e "  ${Blue}[20] ${NC}${GREEN}LIST SUSPENDED ACCOUNT${NC}"
+   echo -e "  ${Blue}[04] ${NC}${GREEN}RESTART SERVICE${NC}"
+   echo -e "  ${Blue}[05] ${NC}${GREEN}CHANGE BANNER${NC}"
+   echo -e "  ${Blue}[06] ${NC}${GREEN}CHANGE DOMAIN${NC}"
+   echo -e "  ${Blue}[07] ${NC}${GREEN}Fix Missing Pointing Domain${NC}"
+   echo -e "  ${Blue}[08] ${NC}${GREEN}CLEAR LOGS${NC}"
+   echo -e "  ${Blue}[09] ${NC}${GREEN}CLEAR CACHE${NC}"
+   echo -e "  ${Blue}[10] ${NC}${GREEN}BCKUP/RESTORE BOT ${NC}"
+   echo -e "  ${Blue}[11] ${NC}${GREEN}DELL ALL EXP${NC}"
+   echo -e "  ${Blue}[12] ${NC}${GREEN}Add Bot Notifikasi ${NC}"
+   echo -e "  ${Blue}[13] ${NC}${GREEN}Monitor${NC}"
+   echo -e "  ${Blue}[14] ${NC}${GREEN}Install DNS Nonton ${NC}"
+   echo -e "  ${Blue}[15] ${NC}${GREEN}Install Panel ${NC}"
+   echo -e "  ${Blue}[16] ${NC}${GREEN}SPEEDTEST ${NC}"
+   echo -e "  ${Blue}[17] ${NC}${GREEN}AutoReboot ${NC}"
+   echo -e "  ${Blue}[18] ${NC}${GREEN}INFO PORT ${NC}"
+   echo -e "  ${Blue}[19] ${NC}${GREEN}LIST SUSPENDED ACCOUNT${NC}"
    echo -e " \033[36m══════════════════════════════════════════════════════════${NC}"
    echo -e ""
    echo -e "  ${Blue}[0] ${NC} ${GREEN}Back To Menu${NC}"
    echo -e ""
    echo -e "${GREEN}created by dzulfikrialifajri store${NC}"
 fi
-read -p "  Select From Options [ 1 - 20 or 0 back to menu ] : " menu
+read -p "  Select From Options [ 1 - 19 or 0 back to menu ] : " menu
 case $menu in
 1) clear ;
     run
@@ -81,54 +78,51 @@ case $menu in
     add-ip
     ;;    
 4) clear ;   
-    wget ${UPDATE}update.sh && chmod +x update.sh && ./update.sh
-    ;;
-5) clear ;    
     reset
     ;;
-6) clear ;   
+5) clear ;   
     nano /etc/kyt.txt
     ;;
-7) clear ; 
+6) clear ; 
     addhost
     ;;
-8) clear ;
+7) clear ;
    fixcert
    ;;
-9) clear ;
+8) clear ;
    clearlog
    ;;
-10) clear ;
+9) clear ;
    clearcache
    ;;
-11) clear ;
+10) clear ;
    menu-backup
    ;;
-12) clear ;
+11) clear ;
    xp
     ;;
-13) clear ;
+12) clear ;
    bot
    ;;
-14) clear ;
+13) clear ;
    gotop
    ;;
-15) clear ;
+14) clear ;
    wget https://raw.githubusercontent.com/Jengkolonline/nonton/main/nf.sh && chmod +x nf.sh && ./nf.sh
    ;;
-16) clear ;
+15) clear ;
    m-panel
    ;;
-17) clear ;
+16) clear ;
    speedtest
    ;;      
-18) clear ;
+17) clear ;
    autoreboot
    ;;  
-19) clear ;
+18) clear ;
    prot
    ;;    
-20) clear ;
+19) clear ;
    ceksuspend
    ;;
 0) clear ;

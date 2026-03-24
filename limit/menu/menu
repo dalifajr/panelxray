@@ -183,9 +183,11 @@ r="\033[1;31m"  #REDTERANG
 a=" ${z}ACCOUNT PREMIUM" 
 BG_RED="\033[45;1m"
 echo -e " "
-echo -e "${z} ╭══════════════════════════════════════════════════════════╮${NC}"
-echo -e " ${z}│$NC\033[5;33m                        YOU ARE FREE                  $NC${z}│$NC"
-echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
+if declare -F thm_welcome >/dev/null; then
+   thm_welcome "$username"
+else
+   echo -e "${z} Welcome, $username ${NC}"
+fi
 echo -e " ${z}╭══════════════════════════════════════════════════════════╮${NC}"
 echo -e " ${z}│$NC • $NC${z} System OS ${NC}     ${z}=$NC $MODEL${NC}"
 echo -e " ${z}│$NC • $NC${z} Core Cpu ${NC}      ${z}=$NC $CORE${NC}"
@@ -201,7 +203,7 @@ echo -e " ${z}╰═════════════════════
 #echo -e "        ${z}❒════════════════════════════════════════════❒${NC}"
 
 #echo -e "        ${z}❒════════════════════════════════════════════❒${NC}" 
-#echo -e "                ${KIRI}${z}YOU ARE FREE${z}${KANAN}"
+#echo -e "                ${KIRI}${z}WELCOME USER${z}${KANAN}"
 #echo -e "                ${LURUS}${LURUS2}${LURUS}${LURUS2}${LURUS}${LURUS2}${LURUS}${LURUS2}${LURUS}${LURUS2}"
 echo -e "    ${zx} NGINX$NC : $status_nginx ${zx} WS-EPRO$NC : $status_ws_epro ${zx} DROPBEAR$NC : $status_dropbear ${zx} HAPROXY$NC : $status_haproxy   $NC${zx}$NC" 
 
@@ -217,15 +219,16 @@ echo -e " ${z}│$NC   [${green}02${NC}] vmess / xray             [${green}08${N
 echo -e " ${z}│$NC   [${green}03${NC}] vLess / xray             [${green}09${NC}] Limiting Speed    ${z}  │$NC"  
 echo -e " ${z}│$NC   [${green}04${NC}] Trojan / xray            [${green}10${NC}] Backup \ Restored ${z}  │$NC"
 echo -e " ${z}│$NC   [${green}05${NC}] shadowsock               [${green}11${NC}] Gett Bot Tele.    ${z}  │$NC"
-echo -e " ${z}│$NC   [${green}06${NC}] Manager/ Settings.       [${green}12${NC}] Update Sc.Version ${z}  │$NC"
-echo -e " ${z}│$NC   [${green}13${NC}] Uninstall Program        [${green}14${NC}] Cek Update Program${z}  │$NC"
+echo -e " ${z}│$NC   [${green}06${NC}] Manager/ Settings.       [${green}12${NC}] Add Bot Telegram  ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}13${NC}] Uninstall Program        [${green}14${NC}] Update Program    ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}15${NC}] Cek Status Service       [${green}00${NC}] Back To Menu      ${z}  │$NC"
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 #echo -e " ${z}╭════════════════╮╭══════════════════╮╭════════════════════╮${NC}"
 #echo -e " ${z}│ ${NC}${z} SSH$NC : $status_ssh" "        ${z} NGINX$NC : $status_nginx" "        ${z} XRAY$NC : $status_xray      $NC${z}│$NC" 
 #echo -e " ${z}│ ${NC}${z} WS-EPRO$NC : $status_ws_epro" "    ${z} DROPBEAR$NC : $status_dropbear" "     ${z} HAPROXY$NC : $status_haproxy   $NC${z}│$NC" 
 #echo -e " ${z}╰════════════════╯╰══════════════════╯╰════════════════════╯${NC}"
 echo -e " ${z}╭══════════════════════════════════════════════════════════╮${NC}"
-echo -e " ${z}│$NC${z} Dev.Sc$NC        ${z}=$NC YOU ARE FREE"
+echo -e " ${z}│$NC${z} Welcome$NC       ${z}=$NC Welcome, $username"
 echo -e " ${z}│$NC${z} Client/Regist$NC ${z}=$NC $username [$sts]"
 echo -e " ${z}│$NC${z} Exp Script$NC    ${z}=$NC $exp / $certifacate Days$NC "
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
@@ -237,7 +240,7 @@ fi
 echo -e "                        ${vers}"
 echo -e "                        ${TZ} ${NC}"
 echo
-read -p " Select Options 1/14 : " wZtXtQ
+read -p " Select Options 1/15 : " wZtXtQ
 echo -e ""
 case $wZtXtQ in
 1)
@@ -286,7 +289,7 @@ add-bot-panel
 ;;
 12)
 clear
-wget ${REVISI}update.sh && chmod +x update.sh && ./update.sh
+add-bot-panel
 ;;
 13)
 clear
@@ -295,6 +298,10 @@ uninstall-panel
 14)
 clear
 cek-update
+;;
+15)
+clear
+cek-service
 ;;
 *)
 clear

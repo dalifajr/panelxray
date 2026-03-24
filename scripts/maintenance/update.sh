@@ -1,68 +1,55 @@
 #!/bin/bash
-cd /usr/local/
-rm -rf sbin
-cd
-mkdir /usr/local/sbin
-dateFromServer=$(curl -v --insecure --silent https://google.com/ 2>&1 | grep Date | sed -e 's/< Date: //')
-biji=`date +"%Y-%m-%d" -d "$dateFromServer"`
-red() { echo -e "\\033[32;1m${*}\\033[0m"; }
-clear
-fun_bar() {
-    CMD[0]="$1"
-    CMD[1]="$2"
-    (
-        [[ -e $HOME/fim ]] && rm $HOME/fim
-        ${CMD[0]} -y >/dev/null 2>&1
-        ${CMD[1]} -y >/dev/null 2>&1
-        touch $HOME/fim
-    ) >/dev/null 2>&1 &
-    tput civis
-    echo -ne "  \033[0;33mPlease Wait Loading \033[1;37m- \033[0;33m["
-    while true; do
-        for ((i = 0; i < 18; i++)); do
-            echo -ne "\033[0;32m#"
-            sleep 0.1s
-        done
-        [[ -e $HOME/fim ]] && rm $HOME/fim && break
-        echo -e "\033[0;33m]"
-        sleep 1s
-        tput cuu1
-        tput dl1
-        echo -ne "  \033[0;33mPlease Wait Loading \033[1;37m- \033[0;33m["
-    done
-    echo -e "\033[0;33m]\033[1;37m -\033[1;32m OK !\033[1;37m"
-    tput cnorm
+set -euo pipefail
+
+REPO_URL="https://github.com/dalifajr/panelxray.git"
+REPO_API="https://api.github.com/repos/dalifajr/panelxray"
+TARGET_SBIN="/usr/local/sbin"
+STATE_FILE="/etc/kyt/panelxray-revision"
+TMP_DIR="/tmp/panelxray-update.$$"
+BRANCH="${PANELXRAY_BRANCH:-}"
+
+cleanup() {
+    rm -rf "$TMP_DIR"
 }
-res1() {
-    local script_dir repo_root menu_src tmp_repo
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    repo_root="$(cd "${script_dir}/../.." && pwd)"
-    menu_src="${repo_root}/limit/menu"
+trap cleanup EXIT
 
-    if [ ! -d "${menu_src}" ]; then
-        tmp_repo="/tmp/panelxray-assets"
-        rm -rf "${tmp_repo}"
-        git clone --depth 1 https://github.com/dalifajr/panelxray.git "${tmp_repo}" >/dev/null 2>&1 || return 1
-        menu_src="${tmp_repo}/limit/menu"
-    fi
+if [[ -z "$BRANCH" ]]; then
+    BRANCH="$(curl -fsSL "$REPO_API" 2>/dev/null | awk -F '"' '/"default_branch"/ {print $4; exit}')"
+    [[ -n "$BRANCH" ]] || BRANCH="main"
+fi
 
-    mkdir -p /usr/local/sbin
-    cp -rf "${menu_src}/." /usr/local/sbin/
-    chmod +x /usr/local/sbin/*
-    rm -rf /tmp/panelxray-assets
-    rm -rf update.sh
-}
-netfilter-persistent
 clear
-echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e " \e[1;97;101m          UPDATE SCRIPT       \e[0m"
-echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e ""
-echo -e "  \033[1;91m update script service\033[1;37m"
-fun_bar 'res1'
-echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e ""
-read -n 1 -s -r -p "Press [ Enter ] to back on menu"
-menu
+echo -e "\033[1;36m==========================================================\033[0m"
+echo -e "\033[1;33m                 UPDATE PROGRAM (GITHUB)                  \033[0m"
+echo -e "\033[1;36m==========================================================\033[0m"
+echo -e "Branch target : $BRANCH"
 
-###########- COLOR CODE -##############
+if ! command -v git >/dev/null 2>&1; then
+    echo -e "\033[1;31mGit tidak ditemukan. Install git terlebih dahulu.\033[0m"
+    exit 1
+fi
+
+mkdir -p "$TMP_DIR"
+if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1; then
+    echo -e "\033[1;31mGagal clone branch $BRANCH dari repository.\033[0m"
+    exit 1
+fi
+
+if [[ ! -d "$TMP_DIR/limit/menu" ]]; then
+    echo -e "\033[1;31mStruktur repository tidak valid: limit/menu tidak ditemukan.\033[0m"
+    exit 1
+fi
+
+old_sha="unknown"
+[[ -f "$STATE_FILE" ]] && old_sha="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
+new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+
+mkdir -p "$TARGET_SBIN" /etc/kyt
+cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
+chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
+echo "$new_sha" > "$STATE_FILE"
+
+echo -e "\033[0;32mUpdate selesai.\033[0m"
+echo -e "Old revision : $old_sha"
+echo -e "New revision : $new_sha"
+echo -e "Target path  : $TARGET_SBIN"
