@@ -1,0 +1,47 @@
+#!/bin/bash
+SERVICE="vless"
+STATE_DIR="/etc/kyt/suspended/${SERVICE}"
+CONFIG="/etc/xray/config.json"
+
+user=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)
+      user="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$user" ]]; then
+  clear
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo " Unsuspend Vless Account"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  ls "$STATE_DIR" 2>/dev/null | sort
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  read -rp "Input Username : " user
+fi
+
+[[ -z "$user" ]] && exit 0
+[[ ! -f "$STATE_DIR/$user" ]] && { echo "User not suspended"; exit 1; }
+if grep -qwE "^#& $user " "$CONFIG"; then
+  echo "User already active"
+  exit 1
+fi
+
+read -r exp uuid reason < "$STATE_DIR/$user"
+[[ -z "$exp" || -z "$uuid" ]] && { echo "Suspend state invalid"; exit 1; }
+
+sed -i '/#vless$/a\#& '"$user $exp"'\
+},{"id": "'""$uuid""'","email": "'""$user""'"' "$CONFIG"
+sed -i '/#vlessgrpc$/a\#& '"$user $exp"'\
+},{"id": "'""$uuid""'","email": "'""$user""'"' "$CONFIG"
+
+rm -f "$STATE_DIR/$user"
+systemctl restart xray >/dev/null 2>&1
+
+echo "Vless account unsuspended: $user"

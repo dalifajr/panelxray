@@ -246,6 +246,50 @@ async def delete_vmess(event):
 	else:
 		await event.answer("Akses Ditolak",alert=True)
 
+@bot.on(events.CallbackQuery(data=b'suspend-vmess'))
+async def suspend_vmess(event):
+	async def suspend_vmess_(event):
+		async with bot.conversation(chat) as user:
+			await event.respond('**Username:**')
+			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
+			user = (await user).raw_text
+		cmd = f'printf "%s\n" "{user}" | suspws'
+		try:
+			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		except:
+			await event.respond("**Failed to suspend user**")
+		else:
+			await event.respond(f"**{a.strip()}**")
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await suspend_vmess_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
+
+@bot.on(events.CallbackQuery(data=b'unsuspend-vmess'))
+async def unsuspend_vmess(event):
+	async def unsuspend_vmess_(event):
+		async with bot.conversation(chat) as user:
+			await event.respond('**Username:**')
+			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
+			user = (await user).raw_text
+		cmd = f'printf "%s\n" "{user}" | unsuspws'
+		try:
+			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		except:
+			await event.respond("**Failed to unsuspend user**")
+		else:
+			await event.respond(f"**{a.strip()}**")
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await unsuspend_vmess_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
+
 @bot.on(events.CallbackQuery(data=b'vmess'))
 async def vmess(event):
 	async def vmess_(event):
@@ -254,6 +298,8 @@ async def vmess(event):
 Button.inline(" CREATE VMESS ","create-vmess")],
 [Button.inline(" CHECK VMESS ","cek-vmess"),
 Button.inline(" DELETE VMESS ","delete-vmess")],
+[Button.inline(" SUSPEND VMESS ","suspend-vmess"),
+Button.inline(" UNSUSPEND VMESS ","unsuspend-vmess")],
 [Button.inline("‹ Main Menu ›","menu")]]
 		z = requests.get(f"http://ip-api.com/json/?fields=country,region,city,timezone,isp").json()
 		msg = f"""

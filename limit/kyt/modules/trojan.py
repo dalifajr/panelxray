@@ -212,6 +212,50 @@ async def delete_trojan(event):
 	else:
 		await event.answer("Akses Ditolak",alert=True)
 
+@bot.on(events.CallbackQuery(data=b'suspend-trojan'))
+async def suspend_trojan(event):
+	async def suspend_trojan_(event):
+		async with bot.conversation(chat) as user:
+			await event.respond('**Username:**')
+			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
+			user = (await user).raw_text
+		cmd = f'printf "%s\n" "{user}" | susptr'
+		try:
+			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		except:
+			await event.respond("**Failed to suspend user**")
+		else:
+			await event.respond(f"**{a.strip()}**")
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await suspend_trojan_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
+
+@bot.on(events.CallbackQuery(data=b'unsuspend-trojan'))
+async def unsuspend_trojan(event):
+	async def unsuspend_trojan_(event):
+		async with bot.conversation(chat) as user:
+			await event.respond('**Username:**')
+			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
+			user = (await user).raw_text
+		cmd = f'printf "%s\n" "{user}" | unsusptr'
+		try:
+			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		except:
+			await event.respond("**Failed to unsuspend user**")
+		else:
+			await event.respond(f"**{a.strip()}**")
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await unsuspend_trojan_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
+
 @bot.on(events.CallbackQuery(data=b'trojan'))
 async def trojan(event):
 	async def trojan_(event):
@@ -220,6 +264,8 @@ async def trojan(event):
 Button.inline(" CREATE TROJAN ","create-trojan")],
 [Button.inline(" CHECK TROJAN ","cek-trojan"),
 Button.inline(" DELETE TROJAN ","delete-trojan")],
+[Button.inline(" SUSPEND TROJAN ","suspend-trojan"),
+Button.inline(" UNSUSPEND TROJAN ","unsuspend-trojan")],
 [Button.inline("‹ Main Menu ›","menu")]]
 		z = requests.get(f"http://ip-api.com/json/?fields=country,region,city,timezone,isp").json()
 		msg = f"""

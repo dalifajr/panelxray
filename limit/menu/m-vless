@@ -46,9 +46,11 @@ echo -e "  ${ORANGE}3.${NC} \033[0;36m Delete Account XRAY Vless WS/GRPC${NC}"
 echo -e "  ${ORANGE}4.${NC} \033[0;36m Renew Vless Account${NC}"
 echo -e "  ${ORANGE}5.${NC} \033[0;36m Check Vless login Account${NC}"
 echo -e "  ${ORANGE}6.${NC} \033[0;36m Check Config Vless Account${NC}"
+echo -e "  ${ORANGE}7.${NC} \033[0;36m Suspend Vless Account${NC}"
+echo -e "  ${ORANGE}8.${NC} \033[0;36m Unsuspend Vless Account${NC}"
 echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
 echo -e ""
-read -p "Select From Options [ 1 - 6 ] : " menu
+read -p "Select From Options [ 1 - 8 ] : " menu
 case $menu in
 1)  clear ;
     addvless
@@ -67,6 +69,12 @@ case $menu in
     ;;
 6) clear ;
     user-vless
+    ;;
+7) clear ;
+    suspvless
+    ;;
+8) clear ;
+    unsuspvless
     ;;
 *)
     menu
