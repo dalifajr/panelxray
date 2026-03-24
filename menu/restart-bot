@@ -35,6 +35,9 @@ fun_bar() {
     tput cnorm
 }
 res1() {
+    if [[ -f /usr/bin/kyt/__main__.py ]]; then
+        sed -i '/usr.local.bin/d' /usr/bin/kyt/__main__.py
+    fi
     systemctl restart kyt
 }
 netfilter-persistent

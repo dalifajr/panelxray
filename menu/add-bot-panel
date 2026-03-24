@@ -26,10 +26,8 @@ LIGHT='\033[0;37m'
 grenbo="\e[92;1m"
 red() { echo -e "\\033[32;1m${*}\\033[0m"; }
 # Getting
-#satusbot
-bot_kyt=$(systemctl status kyt | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
-# STATUS SERVICE  BOT 
-if [[ $bot_kyt == "running" ]]; then 
+# statusbot
+if systemctl is-active --quiet kyt; then
    status_bot="${GREEN}Online$NC${c} $NC"
 else
    status_bot="${RED}Offline${NC} "

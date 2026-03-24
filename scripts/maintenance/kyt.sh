@@ -94,11 +94,13 @@ echo -e "${grenbo}[*] Info Id Telegram : @MissRose_bot , perintah /info${NC}"
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 read -e -p "[*] Input your Bot Token : " bottoken
 read -e -p "[*] Input Your Id Telegram :" admin
-echo -e BOT_TOKEN='"'$bottoken'"' >> /usr/bin/kyt/var.txt
-echo -e ADMIN='"'$admin'"' >> /usr/bin/kyt/var.txt
-echo -e DOMAIN='"'$domain'"' >> /usr/bin/kyt/var.txt
-echo -e PUB='"'$PUB'"' >> /usr/bin/kyt/var.txt
-echo -e HOST='"'$NS'"' >> /usr/bin/kyt/var.txt
+cat > /usr/bin/kyt/var.txt <<EOF
+BOT_TOKEN='${bottoken}'
+ADMIN='${admin}'
+DOMAIN='${domain}'
+PUB='${PUB}'
+HOST='${NS}'
+EOF
 clear
 
 cat > /etc/systemd/system/kyt.service << END
@@ -115,6 +117,7 @@ Restart=always
 WantedBy=multi-user.target
 END
 
+systemctl daemon-reload
 systemctl start kyt 
 systemctl enable kyt
 systemctl restart kyt
@@ -131,6 +134,14 @@ echo "Pub            : $PUB"
 echo "Host           : $NS"
 echo -e "==============================="
 echo "Setting done"
+
+if systemctl is-active --quiet kyt; then
+	echo "Status bot     : ACTIVE"
+else
+	echo "Status bot     : FAILED"
+	echo "Log terakhir kyt:"
+	journalctl -u kyt -n 20 --no-pager || true
+fi
 clear
 
 echo " Installations complete, type /menu on your bot"

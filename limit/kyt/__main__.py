@@ -5,5 +5,3 @@ for module_name in ALL_MODULES:
         imported_module = import_module("kyt.modules." + module_name)
 bot.run_until_disconnected()
 
-usr.local.bin
-
