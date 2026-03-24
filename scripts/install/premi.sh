@@ -609,8 +609,18 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf
     curl ${REPO}limit/nginx.conf > /etc/nginx/nginx.conf
-    
-cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem
+
+    if [[ -f /etc/xray/xray.crt && -f /etc/xray/xray.key ]]; then
+        cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem >/dev/null
+    fi
+
+    if [[ ! -s /etc/haproxy/hap.pem ]]; then
+        # Avoid boot failure if certificate bundle is not ready yet.
+        sed -i '/haproxy-https accept-proxy ssl crt \/etc\/haproxy\/hap.pem/d' /etc/haproxy/haproxy.cfg
+        sed -i '/loopback-for-https abns@haproxy-https/d' /etc/haproxy/haproxy.cfg
+    fi
+
+    validate_haproxy_config
 
     # > Set Permission
     chmod +x /etc/systemd/system/runn.service
@@ -638,6 +648,76 @@ WantedBy=multi-user.target
 
 EOF
 print_success "Konfigurasi Packet"
+}
+
+validate_haproxy_config() {
+    local log_file backup_file domain
+    log_file="/var/log/panelxray-haproxy-check.log"
+    domain="$(cat /etc/xray/domain 2>/dev/null || echo localhost)"
+    mkdir -p /etc/haproxy
+    touch "$log_file" 2>/dev/null || true
+
+    if [[ ! -s /etc/haproxy/haproxy.cfg ]]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] haproxy.cfg missing, writing fallback config" >>"$log_file"
+        cat >/etc/haproxy/haproxy.cfg <<EOF
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+
+defaults
+    log global
+    mode tcp
+    timeout connect 5s
+    timeout client 50s
+    timeout server 50s
+
+frontend panelxray_tcp
+    bind *:443
+    default_backend panelxray_backend
+
+backend panelxray_backend
+    server local 127.0.0.1:1010 check
+EOF
+    fi
+
+    if ! haproxy -c -f /etc/haproxy/haproxy.cfg >>"$log_file" 2>&1; then
+        backup_file="/etc/haproxy/haproxy.cfg.broken.$(date +%s)"
+        cp -f /etc/haproxy/haproxy.cfg "$backup_file"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] invalid haproxy.cfg, backup: $backup_file" >>"$log_file"
+
+        wget -qO /etc/haproxy/haproxy.cfg "${REPO}limit/haproxy.cfg" || true
+        sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg 2>/dev/null || true
+
+        if [[ ! -s /etc/haproxy/hap.pem ]]; then
+            sed -i '/haproxy-https accept-proxy ssl crt \/etc\/haproxy\/hap.pem/d' /etc/haproxy/haproxy.cfg
+            sed -i '/loopback-for-https abns@haproxy-https/d' /etc/haproxy/haproxy.cfg
+        fi
+
+        if ! haproxy -c -f /etc/haproxy/haproxy.cfg >>"$log_file" 2>&1; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] template still invalid, applying minimal safe config" >>"$log_file"
+            cat >/etc/haproxy/haproxy.cfg <<EOF
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+
+defaults
+    log global
+    mode tcp
+    timeout connect 5s
+    timeout client 50s
+    timeout server 50s
+
+frontend panelxray_tcp
+    bind *:443
+    default_backend panelxray_backend
+
+backend panelxray_backend
+    server local 127.0.0.1:1010 check
+EOF
+        fi
+    fi
 }
 
 function ssh(){
@@ -934,15 +1014,20 @@ print_success "Swap 1 G"
 function ins_Fail2ban(){
 clear
 print_install "Menginstall Fail2ban"
-#apt -y install fail2ban > /dev/null 2>&1
-#sudo systemctl enable --now fail2ban
-#/etc/init.d/fail2ban restart
-#/etc/init.d/fail2ban status
+if ! dpkg -s fail2ban >/dev/null 2>&1; then
+    apt-get install -y fail2ban >/dev/null 2>&1 || apt install -y fail2ban >/dev/null 2>&1
+fi
+systemctl daemon-reload >/dev/null 2>&1
+systemctl enable --now fail2ban >/dev/null 2>&1 || true
+if systemctl is-active --quiet fail2ban; then
+    print_success "Fail2ban service active"
+else
+    print_error "Fail2ban service failed to start"
+fi
 
 # Instal DDOS Flate
 if [ -d '/usr/local/ddos' ]; then
-	echo; echo; echo "Please un-install the previous version first"
-	exit 0
+    echo; echo; echo "Info: /usr/local/ddos already exists, continue setup"
 else
 	mkdir /usr/local/ddos
 fi
@@ -1005,7 +1090,9 @@ print_install "Restarting  All Packet"
 /etc/init.d/openvpn restart
 /etc/init.d/ssh restart
 /etc/init.d/dropbear restart
-/etc/init.d/fail2ban restart
+if systemctl list-unit-files 2>/dev/null | grep -q '^fail2ban\.service'; then
+    systemctl restart fail2ban >/dev/null 2>&1 || true
+fi
 /etc/init.d/vnstat restart
 systemctl restart haproxy
 /etc/init.d/cron restart
