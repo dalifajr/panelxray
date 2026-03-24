@@ -515,6 +515,98 @@ restart_system() {
 }
 clear
 # Pasang SSL
+ensure_valid_xray_certificates() {
+    local domain cert_file key_file log_file
+    cert_file="/etc/xray/xray.crt"
+    key_file="/etc/xray/xray.key"
+    log_file="/var/log/panelxray-nginx-check.log"
+    domain="$(cat /etc/xray/domain 2>/dev/null || echo localhost)"
+
+    mkdir -p /etc/xray
+    touch "$log_file" 2>/dev/null || true
+
+    if openssl x509 -in "$cert_file" -noout >/dev/null 2>&1 && \
+       openssl pkey -in "$key_file" -noout >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] invalid or missing xray cert/key, generating self-signed cert for ${domain}" >>"$log_file"
+    rm -f "$cert_file" "$key_file"
+    openssl req -x509 -nodes -newkey rsa:2048 \
+        -keyout "$key_file" \
+        -out "$cert_file" \
+        -days 3650 \
+        -subj "/CN=${domain}" >/dev/null 2>&1 || true
+    chmod 600 "$key_file" 2>/dev/null || true
+    chmod 644 "$cert_file" 2>/dev/null || true
+}
+
+sanitize_nginx_xray_conf() {
+    local conf_file
+    conf_file="/etc/nginx/conf.d/xray.conf"
+
+    [[ -f "$conf_file" ]] || return 0
+
+    if openssl x509 -in /etc/xray/xray.crt -noout >/dev/null 2>&1 && \
+       openssl pkey -in /etc/xray/xray.key -noout >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Remove SSL-only stanza and directives when certificate material is not usable.
+    awk '
+        BEGIN { in_ssl_server=0 }
+        /listen 81 ssl http2 reuseport;/ { in_ssl_server=1; next }
+        in_ssl_server && /^}/ { in_ssl_server=0; next }
+        in_ssl_server { next }
+        /ssl_certificate / { next }
+        /ssl_certificate_key / { next }
+        /ssl_ciphers / { next }
+        /ssl_protocols / { next }
+        { print }
+    ' "$conf_file" >"${conf_file}.tmp" && mv -f "${conf_file}.tmp" "$conf_file"
+}
+
+validate_nginx_config() {
+    local log_file backup_file domain
+    log_file="/var/log/panelxray-nginx-check.log"
+    domain="$(cat /etc/xray/domain 2>/dev/null || echo localhost)"
+    touch "$log_file" 2>/dev/null || true
+
+    ensure_valid_xray_certificates
+    sanitize_nginx_xray_conf
+
+    if nginx -t >>"$log_file" 2>&1; then
+        return 0
+    fi
+
+    backup_file="/etc/nginx/conf.d/xray.conf.broken.$(date +%s)"
+    cp -f /etc/nginx/conf.d/xray.conf "$backup_file" 2>/dev/null || true
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] invalid nginx config, backup: $backup_file" >>"$log_file"
+
+    wget -qO /etc/nginx/conf.d/xray.conf "${REPO}limit/xray.conf" || true
+    sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+
+    ensure_valid_xray_certificates
+    sanitize_nginx_xray_conf
+
+    if ! nginx -t >>"$log_file" 2>&1; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] template still invalid, applying minimal safe nginx config" >>"$log_file"
+        cat >/etc/nginx/conf.d/xray.conf <<EOF
+server {
+    listen 1010;
+    server_name _;
+    return 200;
+}
+
+server {
+    listen 81;
+    server_name _;
+    root /var/www/html;
+}
+EOF
+    fi
+}
+
 function pasang_ssl() {
 clear
 print_install "Memasang SSL Pada Domain"
@@ -532,6 +624,7 @@ print_install "Memasang SSL Pada Domain"
     /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
     /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
     ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
+    ensure_valid_xray_certificates
     chmod 777 /etc/xray/xray.key
     print_success "SSL Certificate"
 }
@@ -609,6 +702,7 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf
     curl ${REPO}limit/nginx.conf > /etc/nginx/nginx.conf
+    validate_nginx_config
 
     if [[ -f /etc/xray/xray.crt && -f /etc/xray/xray.key ]]; then
         cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem >/dev/null
@@ -1086,6 +1180,7 @@ print_success "ePro WebSocket Proxy"
 function ins_restart(){
 clear
 print_install "Restarting  All Packet"
+validate_nginx_config
 /etc/init.d/nginx restart
 /etc/init.d/openvpn restart
 /etc/init.d/ssh restart
@@ -1225,6 +1320,7 @@ print_success "Menu Packet"
 function enable_services(){
 clear
 print_install "Enable Service"
+    validate_nginx_config
     systemctl daemon-reload
     systemctl start netfilter-persistent
     systemctl enable --now rc-local
