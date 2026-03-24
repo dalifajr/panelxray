@@ -13,7 +13,7 @@ This project no longer relies on packaged archives (`menu.zip`, `bot.zip`, `kyt.
 Updated scripts now use this order:
 
 1. Use local folder assets from this repository (`./limit/...`)
-2. If unavailable, fallback by cloning `https://github.com/dalifajr/vpnxray.git` into `/tmp/vpnxray-assets`
+2. If unavailable, fallback by cloning `https://github.com/dalifajr/panelxray.git` into `/tmp/panelxray-assets`
 3. Copy folder contents directly (no zip extract, no passworded archive)
 
 ## Updated Scripts

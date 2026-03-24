@@ -57,9 +57,9 @@ safe_apt_update() {
 }
 
 if [ ! -d "${ASSET_ROOT}/bot" ] || [ ! -d "${ASSET_ROOT}/kyt" ]; then
-	TMP_ASSET="/tmp/vpnxray-assets"
+	TMP_ASSET="/tmp/panelxray-assets"
 	rm -rf "${TMP_ASSET}"
-	git clone --depth 1 https://github.com/dalifajr/vpnxray.git "${TMP_ASSET}" >/dev/null 2>&1 || {
+	git clone --depth 1 https://github.com/dalifajr/panelxray.git "${TMP_ASSET}" >/dev/null 2>&1 || {
 		echo "Gagal mengambil source bot/kyt"
 		exit 1
 	}
@@ -114,7 +114,7 @@ END
 systemctl start kyt 
 systemctl enable kyt
 systemctl restart kyt
-rm -rf /tmp/vpnxray-assets
+rm -rf /tmp/panelxray-assets
 cd /root
 rm -rf kyt.sh
 echo "Done"

@@ -231,9 +231,9 @@ clear
 #########################
 # USERNAME
 rm -f /usr/bin/user
-username=$(curl https://raw.githubusercontent.com/dalifajr/vpnxray/main/kunci | grep $MYIP | awk '{print $2}')
+username=$(curl https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $MYIP | awk '{print $2}')
 echo "$username" >/usr/bin/user
-expx=$(curl https://raw.githubusercontent.com/dalifajr/vpnxray/main/kunci | grep $MYIP | awk '{print $3}')
+expx=$(curl https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $MYIP | awk '{print $3}')
 echo "$expx" >/usr/bin/e
 # DETAIL ORDER
 username=$(cat /usr/bin/user)
@@ -252,12 +252,12 @@ datediff() {
     echo -e "$COLOR1 $NC Expiry In   : $(( (d1 - d2) / 86400 )) Days"
 }
 mai="datediff "$Exp" "$DATE""
-#https://raw.githubusercontent.com/dalifajr/vpnxray/main/kunci
+#https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci
 # Status ExpiRED Active | Geo Project
 Info="(${green}Active${NC})"
 Error="(${RED}ExpiRED${NC})"
 today=`date -d "0 days" +"%Y-%m-%d"`
-Exp1=$(curl https://raw.githubusercontent.com/dalifajr/vpnxray/main/kunci | grep $MYIP | awk '{print $4}')
+Exp1=$(curl https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $MYIP | awk '{print $4}')
 if [[ $today < $Exp1 ]]; then
 sts="${Info}"
 else
@@ -266,8 +266,8 @@ fi
 echo -e "\e[32mloading...\e[0m"
 clear
 # REPO    
-    REPO="https://raw.githubusercontent.com/dalifajr/vpnxray/main/"
-    #https://raw.githubusercontent.com/dalifajr/vpnxray/main/
+    REPO="https://raw.githubusercontent.com/dalifajr/panelxray/main/"
+    #https://raw.githubusercontent.com/dalifajr/panelxray/main/
 
 ####
 start=$(date +%s)
@@ -495,8 +495,8 @@ clear
 clear
 #GANTI PASSWORD DEFAULT
 restart_system() {
-    USRSC=$(wget -qO- https://raw.githubusercontent.com/dalifajr/vpnxray/main/kunci| grep $ipsaya | awk '{print $2}')
-    EXPSC=$(wget -qO- https://raw.githubusercontent.com/dalifajr/vpnxray/main/kunci | grep $ipsaya | awk '{print $3}')
+    USRSC=$(wget -qO- https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci| grep $ipsaya | awk '{print $2}')
+    EXPSC=$(wget -qO- https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $ipsaya | awk '{print $3}')
     TIMEZONE=$(printf '%(%H:%M:%S)T')
     TEXT="
 <code>────────────────────</code>
@@ -1041,9 +1041,9 @@ function menu(){
     menu_src="${repo_root}/limit/menu"
 
     if [ ! -d "${menu_src}" ]; then
-        tmp_repo="/tmp/vpnxray-assets"
+        tmp_repo="/tmp/panelxray-assets"
         rm -rf "${tmp_repo}"
-        git clone --depth 1 https://github.com/dalifajr/vpnxray.git "${tmp_repo}" >/dev/null 2>&1 || {
+        git clone --depth 1 https://github.com/dalifajr/panelxray.git "${tmp_repo}" >/dev/null 2>&1 || {
             print_error "Gagal mengambil source menu dari repository"
             return 1
         }
@@ -1053,7 +1053,7 @@ function menu(){
     mkdir -p /usr/local/sbin
     cp -rf "${menu_src}/." /usr/local/sbin/
     chmod +x /usr/local/sbin/*
-    rm -rf /tmp/vpnxray-assets
+    rm -rf /tmp/panelxray-assets
 }
 
 # Membaut Default Menu 

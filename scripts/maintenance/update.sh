@@ -40,16 +40,16 @@ res1() {
     menu_src="${repo_root}/limit/menu"
 
     if [ ! -d "${menu_src}" ]; then
-        tmp_repo="/tmp/vpnxray-assets"
+        tmp_repo="/tmp/panelxray-assets"
         rm -rf "${tmp_repo}"
-        git clone --depth 1 https://github.com/dalifajr/vpnxray.git "${tmp_repo}" >/dev/null 2>&1 || return 1
+        git clone --depth 1 https://github.com/dalifajr/panelxray.git "${tmp_repo}" >/dev/null 2>&1 || return 1
         menu_src="${tmp_repo}/limit/menu"
     fi
 
     mkdir -p /usr/local/sbin
     cp -rf "${menu_src}/." /usr/local/sbin/
     chmod +x /usr/local/sbin/*
-    rm -rf /tmp/vpnxray-assets
+    rm -rf /tmp/panelxray-assets
     rm -rf update.sh
 }
 netfilter-persistent

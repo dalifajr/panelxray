@@ -41,4 +41,4 @@ Sumber utama sekarang folder:
 - `limit/bot`
 - `limit/kyt`
 
-Jika folder lokal tidak tersedia (misalnya script dipakai standalone), script akan fallback clone repository ke `/tmp/vpnxray-assets`.
+Jika folder lokal tidak tersedia (misalnya script dipakai standalone), script akan fallback clone repository ke `/tmp/panelxray-assets`.

@@ -401,12 +401,12 @@ download_config() {
     repo_root="$(cd "${script_dir}/../.." && pwd)"
     menu_src="${repo_root}/limit/menu"
     if [ ! -d "${menu_src}" ]; then
-        rm -rf /tmp/vpnxray-assets
-        git clone --depth 1 https://github.com/dalifajr/vpnxray.git /tmp/vpnxray-assets >/dev/null 2>&1 || {
+        rm -rf /tmp/panelxray-assets
+        git clone --depth 1 https://github.com/dalifajr/panelxray.git /tmp/panelxray-assets >/dev/null 2>&1 || {
             echo "Failed to get menu source"
             return 1
         }
-        menu_src="/tmp/vpnxray-assets/limit/menu"
+        menu_src="/tmp/panelxray-assets/limit/menu"
     fi
     mkdir -p /usr/sbin
     cp -rf "${menu_src}/." /usr/sbin/

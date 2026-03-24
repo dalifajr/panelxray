@@ -7,7 +7,7 @@ if [ -f "${TARGET}" ]; then
 	exec bash "${TARGET}" "$@"
 fi
 
-FALLBACK_URL="https://raw.githubusercontent.com/dalifajr/vpnxray/main/scripts/maintenance/kyt.sh"
+FALLBACK_URL="https://raw.githubusercontent.com/dalifajr/panelxray/main/scripts/maintenance/kyt.sh"
 TMP_SCRIPT="/tmp/kyt-maintenance.sh"
 
 if command -v curl >/dev/null 2>&1; then

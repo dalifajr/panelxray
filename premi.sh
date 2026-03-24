@@ -7,7 +7,7 @@ if [ -f "${TARGET}" ]; then
 	exec bash "${TARGET}" "$@"
 fi
 
-FALLBACK_URL="https://raw.githubusercontent.com/dalifajr/vpnxray/main/scripts/install/premi.sh"
+FALLBACK_URL="https://raw.githubusercontent.com/dalifajr/panelxray/main/scripts/install/premi.sh"
 TMP_SCRIPT="/tmp/premi-install.sh"
 
 if command -v curl >/dev/null 2>&1; then
