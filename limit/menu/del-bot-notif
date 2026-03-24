@@ -26,7 +26,7 @@ checking_sc() {
 }
 checking_sc
 clear
-NUMBER_OF_CLIENTS=$(grep -c -E "^#bot# " "/etc/bot/bot.db")
+NUMBER_OF_CLIENTS=$(grep -c -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null)
 if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
     echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo -e " \e[1;97;101m          DELETE BOT NOTIFIKASI          \e[0m"
@@ -42,8 +42,7 @@ fi
 clear
 CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
 KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
-sed -i "/^#bot# $bottken $admin/d" /etc/bot/.bot.db
-rm -rf /etc/bot/.bot.db
+rm -f /etc/bot/.bot.db
 clear
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e " \e[1;97;101m      SUCCES DELETE BOT NOTIFIKASI      \e[0m"

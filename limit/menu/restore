@@ -15,8 +15,6 @@ export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
 function notif_restore() {
-    green "Notif AddHost Tele"
-    sleep 2
     CHATID="$CHATID"
 KEY="$KEY"
 TIME="$TIME"
@@ -33,31 +31,57 @@ TEXT="
 
 curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
 }
+
+restore_copy_if_exists() {
+    src="$1"
+    dst="$2"
+    if [[ -e "$src" ]]; then
+        cp -r "$src" "$dst"
+    fi
+}
 # ==========================================
 # Getting
 clear
 echo "Silahkan Masukin Link Backupnya"
 read -rp "Link File: " -e url
-wget -O backup.zip "$url"
-unzip backup.zip
-rm -f backup.zip
+if [[ -z "$url" ]]; then
+    echo "Link backup tidak boleh kosong"
+    exit 1
+fi
+
+if ! wget -q -O /root/backup.zip "$url"; then
+    echo "Gagal download file backup"
+    exit 1
+fi
+
+if ! unzip -o /root/backup.zip -d /root >/dev/null 2>&1; then
+    echo "Gagal extract file backup"
+    rm -f /root/backup.zip
+    exit 1
+fi
+
+rm -f /root/backup.zip
 sleep 1
 echo Start Restore
+if [[ ! -d /root/backup ]]; then
+    echo "Folder /root/backup tidak ditemukan di dalam arsip"
+    exit 1
+fi
+
 cd /root/backup
-cp passwd /etc/
-cp group /etc/
-cp shadow /etc/
-cp gshadow /etc/
-cp -r kyt /var/lib/
-cp -r xray /etc/
-cp -r html /var/www/
-cp crontab /etc/
-cp .ssh.db /etc/ssh/
-cp .vmess.db /etc/vmess/
-cp .vless.db /etc/vless/
-cp .trojan.db /etc/trojan/
-cp .shadowsocks.db /etc/shadowsocks/
+restore_copy_if_exists passwd /etc/
+restore_copy_if_exists group /etc/
+restore_copy_if_exists shadow /etc/
+restore_copy_if_exists gshadow /etc/
+restore_copy_if_exists kyt /var/lib/
+restore_copy_if_exists xray /etc/
+restore_copy_if_exists html /var/www/
+restore_copy_if_exists crontab /etc/
+restore_copy_if_exists .ssh.db /etc/ssh/
+restore_copy_if_exists .vmess.db /etc/vmess/
+restore_copy_if_exists .vless.db /etc/vless/
+restore_copy_if_exists .trojan.db /etc/trojan/
+restore_copy_if_exists .shadowsocks.db /etc/shadowsocks/
 notif_restore
 rm -rf /root/backup
-rm -f backup.zip
 echo ""

@@ -19,36 +19,53 @@ clear
 IP=$(curl -sS ipv4.icanhazip.com)
 domain=$(cat /etc/xray/domain)
 date=$(date +"%Y-%m-%d")
+BACKUP_DIR="/root/backup"
 clear
-email=$(cat /root/email)
+email=$(cat /root/email 2>/dev/null)
 if [[ "$email" = "" ]]; then
 echo "Masukkan Email Untuk Menerima Backup"
 read -rp "Email : " -e email
-cat <<EOF>>/root/email
+cat <<EOF>/root/email
 $email
 EOF
 fi
 clear
 echo "Mohon Menunggu , Proses Backup sedang berlangsung !!"
-rm -rf /root/backup
-mkdir /root/backup
-cp /etc/passwd backup/
-cp /etc/group backup/
-cp /etc/shadow backup/
-cp /etc/gshadow backup/
-cp /etc/crontab backup/
-cp /etc/vmess/.vmess.db backup/
-cp /etc/ssh/.ssh.db backup/
-cp /etc/vless/.vless.db backup/
-cp /etc/trojan/.trojan.db backup/
-cp /etc/shadowsocks/.shadowsocks.db backup/
-cp -r /var/lib/kyt/ backup/kyt 
-cp -r /etc/xray backup/xray
-cp -r /var/www/html/ backup/html
+rm -rf "$BACKUP_DIR"
+mkdir -p "$BACKUP_DIR"
+cp /etc/passwd "$BACKUP_DIR"/
+cp /etc/group "$BACKUP_DIR"/
+cp /etc/shadow "$BACKUP_DIR"/
+cp /etc/gshadow "$BACKUP_DIR"/
+cp /etc/crontab "$BACKUP_DIR"/
+cp /etc/vmess/.vmess.db "$BACKUP_DIR"/
+cp /etc/ssh/.ssh.db "$BACKUP_DIR"/
+cp /etc/vless/.vless.db "$BACKUP_DIR"/
+cp /etc/trojan/.trojan.db "$BACKUP_DIR"/
+cp /etc/shadowsocks/.shadowsocks.db "$BACKUP_DIR"/
+cp -r /var/lib/kyt/ "$BACKUP_DIR"/kyt
+cp -r /etc/xray "$BACKUP_DIR"/xray
+cp -r /var/www/html/ "$BACKUP_DIR"/html
 cd /root
-zip -r $IP-$date.zip backup > /dev/null 2>&1
-rclone copy /root/$IP-$date.zip dr:backup/
-url=$(rclone link dr:backup/$IP-$date.zip)
+if ! zip -r "$IP-$date.zip" backup >/dev/null 2>&1; then
+echo "Gagal membuat file zip backup"
+exit 1
+fi
+
+if ! rclone copy "/root/$IP-$date.zip" dr:backup/ >/dev/null 2>&1; then
+echo "Gagal upload backup ke rclone remote dr:backup/"
+rm -rf "$BACKUP_DIR"
+rm -f "/root/$IP-$date.zip"
+exit 1
+fi
+
+url=$(rclone link "dr:backup/$IP-$date.zip" 2>/dev/null)
+if [[ -z "$url" ]]; then
+echo "Gagal mendapatkan link backup dari rclone"
+rm -rf "$BACKUP_DIR"
+rm -f "/root/$IP-$date.zip"
+exit 1
+fi
 id=(`echo $url | grep '^https' | cut -d'=' -f2`)
 link="https://drive.google.com/u/4/uc?id=${id}&export=download"
 echo -e "
@@ -59,8 +76,8 @@ Link Backup   : $link
 Tanggal       : $date
 ==================================
 " | mail -s "Backup Data" $email
-rm -rf /root/backup
-rm -r /root/$IP-$date.zip
+rm -rf "$BACKUP_DIR"
+rm -f "/root/$IP-$date.zip"
 clear
 CHATID="$CHATID"
 KEY="$KEY"

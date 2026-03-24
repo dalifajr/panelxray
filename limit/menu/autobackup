@@ -25,14 +25,15 @@ else
 sts="${Error}"
 fi
 function start() {
-email=$(cat /home/email)
+email=$(cat /root/email 2>/dev/null)
 if [[ "$email" = "" ]]; then
 echo "Please enter your email"
 read -rp "Email : " -e email
-cat <<EOF>>/home/email
+cat <<EOF>/root/email
 $email
 EOF
 fi
+sed -i "/^# BEGIN_Backup/,/^# END_Backup/d" /etc/crontab
 cat << EOF >> /etc/crontab
 # BEGIN_Backup
 5 0 * * * root backup
@@ -47,8 +48,8 @@ echo " Data Will Be Backed Up Automatically at 00:05 GMT +7"
 exit 0
 }
 function stop() {
-email=$(cat /home/email)
-sed -i "/^$email/d" /home/email
+email=$(cat /root/email 2>/dev/null)
+sed -i "/^$email/d" /root/email 2>/dev/null
 sed -i "/^# BEGIN_Backup/,/^# END_Backup/d" /etc/crontab
 service cron restart
 sleep 1
@@ -59,10 +60,10 @@ exit 0
 }
 
 function gantipenerima() {
-rm -rf /home/email
+rm -f /root/email
 echo "Please enter your email"
 read -rp "Email : " -e email
-cat <<EOF>>/home/email
+cat <<EOF>/root/email
 $email
 EOF
 }
@@ -88,11 +89,11 @@ logfile ~/.msmtp.log
 EOF
 }
 function testemail() {
-email=$(cat /home/email)
+email=$(cat /root/email 2>/dev/null)
 if [[ "$email" = "" ]]; then
 start
 fi
-email=$(cat /home/email)
+email=$(cat /root/email 2>/dev/null)
 echo -e "
 Ini adalah isi email percobaaan kirim email dari vps
 IP VPS : $IP

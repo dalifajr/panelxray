@@ -1,0 +1,59 @@
+#!/bin/bash
+green='\e[0;32m'
+red='\e[1;31m'
+yellow='\e[1;33m'
+cyan='\e[1;36m'
+NC='\e[0m'
+
+clear
+echo -e "${cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${red}          UNINSTALL PANEL XRAY${NC}"
+echo -e "${cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${yellow}Tindakan ini akan menghapus service & file panel${NC}"
+echo ""
+read -r -p "Ketik YES untuk lanjut uninstall: " confirm
+
+if [ "$confirm" != "YES" ]; then
+  echo -e "${yellow}Uninstall dibatalkan${NC}"
+  sleep 1
+  menu
+  exit 0
+fi
+
+services=(
+  xray nginx haproxy dropbear openvpn ws kyt
+  vmip vlip trip
+  udp-mini-1 udp-mini-2 udp-mini-3
+  limitvmess limitvless limittrojan limitshadowsocks
+  rc-local netfilter-persistent
+)
+
+for svc in "${services[@]}"; do
+  systemctl stop "$svc" >/dev/null 2>&1
+  systemctl disable "$svc" >/dev/null 2>&1
+done
+
+rm -rf /etc/xray /etc/vmess /etc/vless /etc/trojan /etc/shadowsocks
+rm -rf /etc/limit /etc/kyt /etc/bot
+rm -rf /var/log/xray /usr/bin/kyt /usr/local/kyt
+rm -f /etc/systemd/system/ws.service
+rm -f /etc/systemd/system/udp-mini-1.service
+rm -f /etc/systemd/system/udp-mini-2.service
+rm -f /etc/systemd/system/udp-mini-3.service
+rm -f /etc/systemd/system/limitvmess.service
+rm -f /etc/systemd/system/limitvless.service
+rm -f /etc/systemd/system/limittrojan.service
+rm -f /etc/systemd/system/limitshadowsocks.service
+rm -f /etc/systemd/system/runn.service
+rm -f /etc/systemd/system/kyt.service
+rm -f /etc/cron.d/xp_all /etc/cron.d/logclean /etc/cron.d/daily_reboot
+
+# Hapus command menu yang terpasang
+if [ -d /usr/local/sbin ]; then
+  rm -f /usr/local/sbin/{menu,m-sshws,m-vmess,m-vless,m-trojan,m-ssws,utility,bw,speedtest,limitspeed,menu-backup,onoff,add-bot-panel,cek-update,uninstall-panel}
+fi
+
+systemctl daemon-reload
+
+echo -e "${green}Uninstall selesai.${NC}"
+echo -e "${yellow}Disarankan reboot VPS setelah uninstall.${NC}"

@@ -198,6 +198,7 @@ echo -e " \033[36m│$NC   [${green}03${NC}] MENU VLESS  $status_xray     ${z}�
 echo -e " \033[36m│$NC   [${green}04${NC}] MENU TROJAN $status_xray     ${z}│$NC   [${green}09${NC}] LIMIT SPEED ${z}         │$NC"
 echo -e " \033[36m│$NC   [${green}05${NC}] MENU SHADOW $status_xray     ${z}│$NC   [${green}10${NC}] BACKUP/RESTORE ${z}      │$NC"
 echo -e " \033[36m│$NC   [${green}11${NC}] MENU ON/OFF LIMIT IP\033[36m│$NC   [${green}12${NC}] MENU Add Bot Telegram│$NC"
+echo -e " \033[36m│$NC   [${green}13${NC}] MENU UNINSTALL PANEL         ${z}│$NC   [${green}14${NC}] CEK UPDATE PROGRAM ${z}    │$NC"
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 #echo -e " ${z}╭════════════════╮╭══════════════════╮╭════════════════════╮${NC}"
 #echo -e " ${z}│ ${NC}${z} SSH$NC : $status_ssh" "        ${z} NGINX$NC : $status_nginx" "        ${z} XRAY$NC : $status_xray      $NC${z}│$NC" 
@@ -261,6 +262,14 @@ onoff
 12)
 clear
 add-bot-panel
+;;
+13)
+clear
+uninstall-panel
+;;
+14)
+clear
+cek-update
 ;;
 *)
 clear

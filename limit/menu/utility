@@ -71,7 +71,7 @@ case $menu in
    clearcache
    ;;
 11) clear ;
-   menu-backupp
+   menu-backup
    ;;
 12) clear ;
    xp

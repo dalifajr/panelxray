@@ -214,6 +214,7 @@ echo -e " ${z}│$NC   [${green}03${NC}] vLess / xray             [${green}09${N
 echo -e " ${z}│$NC   [${green}04${NC}] Trojan / xray            [${green}10${NC}] Backup \ Restored ${z}  │$NC"
 echo -e " ${z}│$NC   [${green}05${NC}] shadowsock               [${green}11${NC}] Gett Bot Tele.    ${z}  │$NC"
 echo -e " ${z}│$NC   [${green}06${NC}] Manager/ Settings.       [${green}12${NC}] Update Sc.Version ${z}  │$NC"
+echo -e " ${z}│$NC   [${green}13${NC}] Uninstall Program        [${green}14${NC}] Cek Update Program${z}  │$NC"
 echo -e " ${z}╰══════════════════════════════════════════════════════════╯${NC}"
 #echo -e " ${z}╭════════════════╮╭══════════════════╮╭════════════════════╮${NC}"
 #echo -e " ${z}│ ${NC}${z} SSH$NC : $status_ssh" "        ${z} NGINX$NC : $status_nginx" "        ${z} XRAY$NC : $status_xray      $NC${z}│$NC" 
@@ -227,7 +228,7 @@ echo -e " ${z}╰═════════════════════
 echo -e "                        ${vers}"
 echo -e "                        ${TZ} ${NC}"
 echo
-read -p " Select Options 1/12 : " wZtXtQ
+read -p " Select Options 1/14 : " wZtXtQ
 echo -e ""
 case $wZtXtQ in
 1)
@@ -277,6 +278,14 @@ add-bot-panel
 12)
 clear
 wget ${REVISI}update.sh && chmod +x update.sh && ./update.sh
+;;
+13)
+clear
+uninstall-panel
+;;
+14)
+clear
+cek-update
 ;;
 *)
 clear

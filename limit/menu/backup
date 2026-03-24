@@ -19,44 +19,61 @@ clear
 IP=$(curl -sS ipv4.icanhazip.com)
 domain=$(cat /etc/xray/domain)
 date=$(date +"%Y-%m-%d")
+BACKUP_DIR="/root/backup"
 clear
-email=$(cat /root/email)
+email=$(cat /root/email 2>/dev/null)
 if [[ "$email" = "" ]]; then
 echo "Masukkan Email Untuk Menerima Backup"
 read -rp "Email : " -e email
-cat <<EOF>>/root/email
+cat <<EOF>/root/email
 $email
 EOF
 fi
 clear
 echo "Mohon Menunggu , Proses Backup sedang berlangsung !!"
-rm -rf /root/backup
-mkdir /root/backup
-cp /etc/passwd backup/
-cp /etc/group backup/
-cp /etc/shadow backup/
-cp /etc/gshadow backup/
-cp /etc/crontab backup/
-cp -r /etc/vmess/ backup/
-cp -r /etc/ssh/ backup/
-cp -r /etc/vless/ backup/
-cp -r /etc/trojan/ backup/
-cp -r /etc/limit/vmess/ /root/backup/vmessquota
-cp -r /etc/limit/vless/ /root/backup/vlessquota
-cp -r /etc/limit/trojan/ /root/backup/trojanquota
-cp -r /etc/limit/shadowsocks/ /root/backup/shadowsocksquota
-cp -r /etc/kyt/limit/vmess/ip/ /root/backup/vmessip
-cp -r /etc/kyt/limit/vless/ip/ /root/backup/vlessip
-cp -r /etc/kyt/limit/trojan/ip/ /root/backup/trojanip
-cp -r /etc/kyt/limit/shadowsocks/ip/ /root/backup/shadowsocksip
-cp -r /etc/shadowsocks/ backup/
-cp -r /var/lib/kyt/ backup/kyt 
-cp -r /etc/xray backup/xray
-cp -r /var/www/html/ backup/html
+rm -rf "$BACKUP_DIR"
+mkdir -p "$BACKUP_DIR"
+cp /etc/passwd "$BACKUP_DIR"/
+cp /etc/group "$BACKUP_DIR"/
+cp /etc/shadow "$BACKUP_DIR"/
+cp /etc/gshadow "$BACKUP_DIR"/
+cp /etc/crontab "$BACKUP_DIR"/
+cp -r /etc/vmess/ "$BACKUP_DIR"/
+cp -r /etc/ssh/ "$BACKUP_DIR"/
+cp -r /etc/vless/ "$BACKUP_DIR"/
+cp -r /etc/trojan/ "$BACKUP_DIR"/
+cp -r /etc/limit/vmess/ "$BACKUP_DIR"/vmessquota
+cp -r /etc/limit/vless/ "$BACKUP_DIR"/vlessquota
+cp -r /etc/limit/trojan/ "$BACKUP_DIR"/trojanquota
+cp -r /etc/limit/shadowsocks/ "$BACKUP_DIR"/shadowsocksquota
+cp -r /etc/kyt/limit/vmess/ip/ "$BACKUP_DIR"/vmessip
+cp -r /etc/kyt/limit/vless/ip/ "$BACKUP_DIR"/vlessip
+cp -r /etc/kyt/limit/trojan/ip/ "$BACKUP_DIR"/trojanip
+cp -r /etc/kyt/limit/shadowsocks/ip/ "$BACKUP_DIR"/shadowsocksip
+cp -r /etc/shadowsocks/ "$BACKUP_DIR"/
+cp -r /var/lib/kyt/ "$BACKUP_DIR"/kyt
+cp -r /etc/xray "$BACKUP_DIR"/xray
+cp -r /var/www/html/ "$BACKUP_DIR"/html
 cd /root
-zip -r $IP-$date.zip backup > /dev/null 2>&1
-rclone copy /root/$IP-$date.zip dr:backup/
-url=$(rclone link dr:backup/$IP-$date.zip)
+if ! zip -r "$IP-$date.zip" backup >/dev/null 2>&1; then
+echo "Gagal membuat file zip backup"
+exit 1
+fi
+
+if ! rclone copy "/root/$IP-$date.zip" dr:backup/ >/dev/null 2>&1; then
+echo "Gagal upload backup ke rclone remote dr:backup/"
+rm -rf "$BACKUP_DIR"
+rm -f "/root/$IP-$date.zip"
+exit 1
+fi
+
+url=$(rclone link "dr:backup/$IP-$date.zip" 2>/dev/null)
+if [[ -z "$url" ]]; then
+echo "Gagal mendapatkan link backup dari rclone"
+rm -rf "$BACKUP_DIR"
+rm -f "/root/$IP-$date.zip"
+exit 1
+fi
 id=(`echo $url | grep '^https' | cut -d'=' -f2`)
 link="https://drive.google.com/u/4/uc?id=${id}&export=download"
 echo -e "
@@ -67,8 +84,8 @@ Link Backup   : $link
 Tanggal       : $date
 ==================================
 " | mail -s "Backup Data" $email
-rm -rf /root/backup
-rm -r /root/$IP-$date.zip
+rm -rf "$BACKUP_DIR"
+rm -f "/root/$IP-$date.zip"
 clear
 CHATID="$CHATID"
 KEY="$KEY"
