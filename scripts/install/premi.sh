@@ -129,6 +129,18 @@ safe_apt_update() {
     return 1
 }
 
+configure_bottom_install_progress() {
+    # Keep dpkg/apt fancy progress tied to terminal bottom during package operations.
+    mkdir -p /etc/apt/apt.conf.d
+    cat >/etc/apt/apt.conf.d/99panelxray-progress <<EOF
+Dpkg::Use-Pty "1";
+Dpkg::Progress-Fancy "1";
+APT::Color "1";
+EOF
+    export DPKG_PROGRESS_FANCY=1
+}
+
+configure_bottom_install_progress
 enforce_official_ubuntu24_repos
 sanitize_apt_sources
 if ! safe_apt_update; then
