@@ -5,6 +5,7 @@ sanitize_apt_sources() {
     codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
 
     rm -f /etc/apt/sources.list.d/vbernat-ubuntu-haproxy-2_0-*.list
+    rm -f /etc/apt/sources.list.d/vbernat-ubuntu-haproxy-2_0-*.sources
     rm -f /etc/apt/sources.list.d/haproxy.list
 
     if grep -Rqs "launchpadcontent.net/vbernat/haproxy-2.0" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
@@ -37,9 +38,14 @@ safe_apt_update() {
     while IFS= read -r bad_url; do
         [[ -z "$bad_url" ]] && continue
         grep -Rsl "$bad_url" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r src_file; do
-            sed -i "\|$bad_url| s|^deb |# disabled-invalid-repo deb |" "$src_file"
-            sed -i "\|$bad_url| s|^deb-src |# disabled-invalid-repo deb-src |" "$src_file"
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] debian.sh: disabled repo $bad_url in $src_file" >> "$log_file"
+            if [[ "$src_file" == *.sources ]]; then
+                rm -f "$src_file"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] debian.sh: removed invalid deb822 source $src_file for $bad_url" >> "$log_file"
+            else
+                sed -i "\|$bad_url| s|^deb |# disabled-invalid-repo deb |" "$src_file"
+                sed -i "\|$bad_url| s|^deb-src |# disabled-invalid-repo deb-src |" "$src_file"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] debian.sh: disabled repo $bad_url in $src_file" >> "$log_file"
+            fi
         done
     done < <(grep -Eo 'https?://[^ ]+' "$tmplog" | sed 's#/dists/.*##; s#/InRelease##; s#/Release##' | sort -u)
 
