@@ -71,13 +71,17 @@ rm -rf kyt
 rm -rf bot
 sanitize_apt_sources
 safe_apt_update && apt upgrade -y
-apt install -y python3 python3-pip git
+apt install -y python3 python3-pip python3-venv git
 mkdir -p /usr/bin/kyt
 cp -rf "${ASSET_ROOT}/bot/." /usr/bin/
 cp -rf "${ASSET_ROOT}/kyt/." /usr/bin/kyt/
 chmod +x /usr/bin/bot-* 2>/dev/null
 clear
-pip3 install -r /usr/bin/kyt/requirements.txt
+
+VENV_DIR="/usr/bin/kyt/.venv"
+python3 -m venv "${VENV_DIR}"
+"${VENV_DIR}/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
+"${VENV_DIR}/bin/pip" install -r /usr/bin/kyt/requirements.txt
 
 #isi data
 echo ""
@@ -104,7 +108,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=/usr/bin
-ExecStart=/usr/bin/python3 -m kyt
+ExecStart=${VENV_DIR}/bin/python -m kyt
 Restart=always
 
 [Install]
