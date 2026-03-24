@@ -1,0 +1,78 @@
+#!/bin/bash
+PUB=$(cat /etc/slowdns/server.pub)
+NS=$(cat /etc/xray/dns)
+IP=$(curl -sS ifconfig.me)
+CITY=$(cat /etc/xray/city)
+clear
+NUMBER_OF_CLIENTS=$(grep -c -E "#ssh# " "/etc/ssh/.ssh.db")
+        if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
+  echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+  echo -e " \e[1;97;101m          CONFIG SSH ACCOUNT          \E[0m"
+  echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+                echo ""
+                echo "You have no existing clients!"
+                clear
+                exit 1
+        fi
+
+  echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+  echo -e "  \e[1;97;101m        CONFIG SSH ACCOUNT         \E[0m"
+  echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        echo "     No  Expired   User"
+        grep -E "#ssh# " "/etc/ssh/.ssh.db" | cut -d ' ' -f 2-3 | nl -s ') '
+        until [[ ${CLIENT_NUMBER} -ge 1 && ${CLIENT_NUMBER} -le ${NUMBER_OF_CLIENTS} ]]; do
+                if [[ ${CLIENT_NUMBER} == '1' ]]; then
+                        read -rp "Select one client [1]: " CLIENT_NUMBER
+                else
+                        read -rp "Select one client [1-${NUMBER_OF_CLIENTS}]: " CLIENT_NUMBER
+                fi
+        done
+user=$(grep -E "#ssh# " "/etc/ssh/.ssh.db" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
+domain=$(cat /etc/xray/domain)
+Pass=$(grep "$Pass" /etc/ssh/.ssh.db | cut -b 21-56 | sed -n "${CLIENT_NUMBER}"p)
+exp=$(grep -E "#ssh# " "/etc/ssh/.ssh.db" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
+hariini=`date -d "0 days" +"%Y-%m-%d"`
+
+clear
+echo ""
+echo -e "\033[1;93m====================\033[0m"
+echo -e " SSH OVPN Account    "
+echo -e "\033[1;93m====================\033[0m"
+echo -e "Username         : $user"
+echo -e "Password         : $Pass"
+echo -e "Host             : $domain"
+echo -e "Host Slowdns     : ${NS}"
+echo -e "Pub Key          : ${PUB}"
+echo -e "Limit IP          : ${iplim} IP"
+echo -e "Location         : $CITY"
+echo -e "Port OpenSSH     : 443, 80, 22"
+echo -e "Port DNS         : 443, 53 ,22 "
+echo -e "Port SSH UDP     : 1-65535"
+echo -e "Port Dropbear    : 443, 109"
+echo -e "Port SSH WS      : 80,8080,8880,2086"
+echo -e "Port SSH SSL WS  : 443"
+echo -e "Port SSL/TLS     : 442,443,444,777"
+echo -e "Port OVPN WS SSL : 443"
+echo -e "Port OVPN SSL    : 443"
+echo -e "Port OVPN TCP    : 443, 1194"
+echo -e "Port OVPN UDP    : 2200"
+echo -e "BadVPN UDP       : 7100, 7300, 7300"
+echo -e "\033[1;93m====================\033[0m"
+echo -e "Tinggal Copy Port 80  : ${domain}:80@$user:${Pass}"
+echo -e "Tinggal Copy Port 443 : ${domain}:443@$user:${Pass}"
+echo -e "\033[1;93m====================\033[0m"
+echo -e " UDP Account : ${domain}:1-65535@$user:${Pass}"
+echo -e "\033[1;93m====================\033[0m"
+echo -e "Ovpn Download : https://$domain:81/"
+echo -e "\033[1;93m====================\033[0m"
+echo -e "Payload WSS      : GET wss://BUG.COM/ HTTP/1.1[crlf]Host: $domain[crlf]Upgrade: websocket[crlf][crlf]"
+echo -e "\033[1;93m====================\033[0m"
+echo -e "Link Txt : https://${domain}:81/ssh-$user.txt"
+echo -e "\033[1;93m====================\033[0m"
+echo -e "Aktif Selama     : $masaaktif Hari"
+echo -e "Dibuat Pada      : $tnggl"
+echo -e "Berakhir Pada    : $exp"
+echo -e "\033[1;93m====================\033[0m"
+echo -e ""
+read -n 1 -s -r -p "Press any key to back on menu"
+menu

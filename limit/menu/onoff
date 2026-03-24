@@ -1,0 +1,112 @@
+#!/bin/bash
+#Color
+DF='\e[39m'
+Bold='\e[1m'
+Blink='\e[5m'
+yell='\e[33m'
+RED='\033[0;31m'
+green='\e[32m'
+PURPLE='\e[35m'
+cyan='\e[36m'
+LRED='\e[91m'
+Lgreen='\e[92m'
+Lyellow='\e[93m'
+NC='\e[0m'
+GREEN='\033[0;32m'
+ORANGE='\033[0;33m'
+LIGHT='\033[0;37m'
+grenbo="\e[92;1m"
+blue="\033[0;34m"
+Blue="\033[36m"
+clear
+
+badvpn1=$(systemctl status vmip | grep running | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+
+# STATUS SERVICE  BADVPN 1
+if [[ $badvpn1 == "running" ]]; then 
+   status_udp1="${GREEN}Online$NC${blue} │$NC"
+   else
+   status_udp1="${RED}Offline${NC} "
+fi
+
+echo -e "\e[32mloading...\e[0m"
+clear
+
+echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
+echo -e "status limit ip $status_udp1 "
+echo -e "                 MENU ON OFF LIMIT IP              $NC"
+echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
+echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
+echo -e "  ${ORANGE}1.${NC} \033[0;36m TURN OFF LIMIT IP${NC}"
+echo -e "  ${ORANGE}2.${NC} \033[0;36m TURN ON LIMIT IP${NC}"
+echo -e "  ${ORANGE}0.${NC} \033[0;36m Back To Main Menu ${NC}"
+echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
+echo -e ""
+read -p "Select From Options [ 1 - 3 ] : " menu
+case $menu in
+1)   clear ;
+    cd /etc/systemd/system/
+    rm -rf /etc/systemd/system/vmip.service
+    rm -rf /etc/systemd/system/vlip.service
+    rm -rf /etc/systemd/system/trip.service
+    systemctl daemon-reload
+    reboot
+    ;;
+2) clear ;
+    cat >/etc/systemd/system/vmip.service << EOF
+[Unit]
+Description=My
+ProjectAfter=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/bin/limit-ip vmip
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl restart vmip
+systemctl enable vmip
+
+cat >/etc/systemd/system/vlip.service << EOF
+[Unit]
+Description=My
+ProjectAfter=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/bin/limit-ip vlip
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl restart vlip
+systemctl enable vlip
+
+cat >/etc/systemd/system/trip.service << EOF
+[Unit]
+Description=My
+ProjectAfter=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/bin/limit-ip trip
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl restart trip
+systemctl enable trip
+#SERVICE LIMIT QUOTA
+reboot
+    ;;
+*) clear ;
+    menu
+    ;;
+esac

@@ -1,0 +1,50 @@
+#!/bin/bash
+NC='\e[0m'
+ORANGE='\033[0;33m'
+grenbo="\e[92;1m"
+red() { echo -e "\\033[32;1m${*}\\033[0m"; }
+
+# // Getting Bit
+export CHATID="6617783693"
+export KEY="6751589620:AAHwjP6dzZhuqeyUOdYFc6742Q1YUVF1EjM"
+export TIME="10"
+export URL="https://api.telegram.org/bot$KEY/sendMessage"
+
+# // Bersihkan
+clear
+echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
+echo -e "                 MENU VMESS              $NC"
+echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
+echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
+echo -e "  ${ORANGE}1.${NC} \033[0;36m Creating Vmess Account WS/GRPC${NC}"
+echo -e "  ${ORANGE}2.${NC} \033[0;36m Creating Trial Vmess Account WS/GRPC${NC}"
+echo -e "  ${ORANGE}3.${NC} \033[0;36m Delete Vmess Account WS/GRPC${NC}"
+echo -e "  ${ORANGE}4.${NC} \033[0;36m Renew Vmess Account${NC}"
+echo -e "  ${ORANGE}5.${NC} \033[0;36m Check Vmess login Account${NC}"
+echo -e "  ${ORANGE}6.${NC} \033[0;36m Check Config Vmess Account${NC}"
+echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
+echo -e ""
+read -p "Select From Options [ 1 - 6 ] : " menu
+case $menu in
+1)   clear ;
+    addws
+    ;;
+2) clear ;
+    trialws
+    ;;
+3) clear ;
+    delws
+    ;;
+4) clear ;
+    renewws
+    ;;
+5) clear ;
+    cekws
+    ;;
+6) clear ;
+    user-ws
+    ;;
+*) clear ;
+    menu
+    ;;
+esac
