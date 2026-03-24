@@ -46,7 +46,17 @@ restore_copy_if_exists() {
     src="$1"
     dst="$2"
     if [[ -e "$src" ]]; then
+        mkdir -p "$dst"
         cp -r "$src" "$dst"
+    fi
+}
+
+restore_dir_contents_if_exists() {
+    src_dir="$1"
+    dst_dir="$2"
+    if [[ -d "$src_dir" ]]; then
+        mkdir -p "$dst_dir"
+        cp -r "$src_dir"/. "$dst_dir"/
     fi
 }
 # ==========================================
@@ -92,6 +102,16 @@ restore_copy_if_exists .vmess.db /etc/vmess/
 restore_copy_if_exists .vless.db /etc/vless/
 restore_copy_if_exists .trojan.db /etc/trojan/
 restore_copy_if_exists .shadowsocks.db /etc/shadowsocks/
+
+# Restore data limit quota/ip when available in backup package.
+restore_dir_contents_if_exists vmessquota /etc/limit/vmess/
+restore_dir_contents_if_exists vlessquota /etc/limit/vless/
+restore_dir_contents_if_exists trojanquota /etc/limit/trojan/
+restore_dir_contents_if_exists shadowsocksquota /etc/limit/shadowsocks/
+restore_dir_contents_if_exists vmessip /etc/kyt/limit/vmess/ip/
+restore_dir_contents_if_exists vlessip /etc/kyt/limit/vless/ip/
+restore_dir_contents_if_exists trojanip /etc/kyt/limit/trojan/ip/
+restore_dir_contents_if_exists shadowsocksip /etc/kyt/limit/shadowsocks/ip/
 notif_restore
 rm -rf /root/backup
 echo ""
