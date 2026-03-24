@@ -41,8 +41,8 @@ if [[ -f "$STATE_DIR/$user" ]]; then
   exit 1
 fi
 
-exp=$(grep -wE "^#! $user " "$CONFIG" | awk '{print $3}' | head -n1)
-uuid=$(grep -wE "^### $user " "$DB_FILE" | awk '{print $4}' | head -n1)
+exp=$(awk -v u="$user" '$1=="#!" && $2==u {print $3; exit}' "$CONFIG")
+uuid=$(awk -v u="$user" '$1=="###" && $2==u {print $4; exit}' "$DB_FILE")
 
 if [[ -z "$uuid" ]]; then
   uuid=$(awk -v u="$user" '
