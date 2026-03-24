@@ -1,7 +1,61 @@
 #!/bin/bash
 ### Color
+sanitize_apt_sources() {
+    local codename
+    codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+
+    rm -f /etc/apt/sources.list.d/vbernat-ubuntu-haproxy-2_0-*.list
+    rm -f /etc/apt/sources.list.d/haproxy.list
+
+    if grep -Rqs "launchpadcontent.net/vbernat/haproxy-2.0" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
+        find /etc/apt/sources.list.d -maxdepth 1 -type f -name "*.list" -exec sed -i '/launchpadcontent\.net\/vbernat\/haproxy-2\.0/d' {} +
+        sed -i '/launchpadcontent\.net\/vbernat\/haproxy-2\.0/d' /etc/apt/sources.list 2>/dev/null || true
+    fi
+
+    if [[ -n "$codename" ]] && [[ -f /etc/apt/sources.list.d/nginx.list ]]; then
+        if ! curl -fsSL "https://nginx.org/packages/ubuntu/dists/${codename}/Release" >/dev/null 2>&1 &&
+           ! curl -fsSL "https://nginx.org/packages/debian/dists/${codename}/Release" >/dev/null 2>&1; then
+            rm -f /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx
+        fi
+    fi
+}
+
+safe_apt_update() {
+    local tmplog bad_url log_file
+    log_file="/var/log/kyt-apt-sanitize.log"
+    tmplog="/tmp/apt-update-premi.$$"
+
+    touch "$log_file" 2>/dev/null || true
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: apt update start" >> "$log_file"
+
+    if apt-get update -y; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: apt update success without sanitize" >> "$log_file"
+        return 0
+    fi
+
+    apt-get update -y 2>&1 | tee "$tmplog" >/dev/null || true
+    while IFS= read -r bad_url; do
+        [[ -z "$bad_url" ]] && continue
+        grep -Rsl "$bad_url" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r src_file; do
+            sed -i "\|$bad_url| s|^deb |# disabled-invalid-repo deb |" "$src_file"
+            sed -i "\|$bad_url| s|^deb-src |# disabled-invalid-repo deb-src |" "$src_file"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: disabled repo $bad_url in $src_file" >> "$log_file"
+        done
+    done < <(grep -Eo 'https?://[^ ]+' "$tmplog" | sed 's#/dists/.*##; s#/InRelease##; s#/Release##' | sort -u)
+
+    rm -f "$tmplog"
+    if apt-get update -y; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: apt update success after sanitize" >> "$log_file"
+        return 0
+    fi
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] premi.sh: apt update failed after sanitize" >> "$log_file"
+    return 1
+}
+
+sanitize_apt_sources
+safe_apt_update
 apt upgrade -y
-apt update -y
 apt install -y curl
 apt install wondershaper -y
 Green="\e[92;1m"
@@ -211,12 +265,12 @@ function first_setup(){
     print_success "Directory Xray"
     if [[ $(cat /etc/os-release | grep -w ID | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/ID//g') == "ubuntu" ]]; then
     echo "Setup Dependencies $(cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/PRETTY_NAME//g')"
-    sudo apt update -y
+    safe_apt_update
     apt-get install -y --no-install-recommends software-properties-common
     apt-get install -y haproxy
 elif [[ $(cat /etc/os-release | grep -w ID | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/ID//g') == "debian" ]]; then
     echo "Setup Dependencies For OS Is $(cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/PRETTY_NAME//g')"
-    sudo apt-get update -y
+    safe_apt_update
     apt-get install -y haproxy
 else
     echo -e " Your OS Is Not Supported ($(cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/PRETTY_NAME//g') )"
@@ -248,7 +302,7 @@ function base_package() {
     print_install "Menginstall Packet Yang Dibutuhkan"
     apt install zip pwgen openssl netcat-openbsd socat cron bash-completion -y
     apt install figlet -y
-    apt update -y
+    safe_apt_update
     apt upgrade -y
     apt dist-upgrade -y
     systemctl enable chronyd
@@ -305,7 +359,7 @@ function preflight_check(){
         fi
     done
 
-    apt-get update -y >/dev/null 2>&1
+    safe_apt_update >/dev/null 2>&1
 
     local pkg required_pkgs missing_pkgs
     required_pkgs=(

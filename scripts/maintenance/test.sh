@@ -26,6 +26,60 @@ cd "$(
     pwd
 )" || exit
 
+sanitize_apt_sources() {
+    local codename
+    codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+
+    # Drop legacy third-party repos that frequently break on newer Ubuntu releases.
+    rm -f /etc/apt/sources.list.d/vbernat-ubuntu-haproxy-2_0-*.list
+
+    if grep -Rqs "launchpadcontent.net/vbernat/haproxy-2.0" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
+        find /etc/apt/sources.list.d -maxdepth 1 -type f -name "*.list" -exec sed -i '/launchpadcontent\.net\/vbernat\/haproxy-2\.0/d' {} +
+        sed -i '/launchpadcontent\.net\/vbernat\/haproxy-2\.0/d' /etc/apt/sources.list 2>/dev/null || true
+    fi
+
+    # If upstream nginx.org does not publish this codename yet, rely on distro nginx.
+    if [[ -n "$codename" ]] && [[ -f /etc/apt/sources.list.d/nginx.list ]]; then
+        if ! curl -fsSL "https://nginx.org/packages/ubuntu/dists/${codename}/Release" >/dev/null 2>&1 &&
+           ! curl -fsSL "https://nginx.org/packages/debian/dists/${codename}/Release" >/dev/null 2>&1; then
+            rm -f /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx
+        fi
+    fi
+}
+
+safe_apt_update() {
+    local tmplog bad_url log_file
+    log_file="/var/log/kyt-apt-sanitize.log"
+    tmplog="/tmp/apt-update-test.$$"
+
+    touch "$log_file" 2>/dev/null || true
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] test.sh: apt update start" >> "$log_file"
+
+    if apt-get update -y; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] test.sh: apt update success without sanitize" >> "$log_file"
+        return 0
+    fi
+
+    apt-get update -y 2>&1 | tee "$tmplog" >/dev/null || true
+    while IFS= read -r bad_url; do
+        [[ -z "$bad_url" ]] && continue
+        grep -Rsl "$bad_url" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | while IFS= read -r src_file; do
+            sed -i "\|$bad_url| s|^deb |# disabled-invalid-repo deb |" "$src_file"
+            sed -i "\|$bad_url| s|^deb-src |# disabled-invalid-repo deb-src |" "$src_file"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] test.sh: disabled repo $bad_url in $src_file" >> "$log_file"
+        done
+    done < <(grep -Eo 'https?://[^ ]+' "$tmplog" | sed 's#/dists/.*##; s#/InRelease##; s#/Release##' | sort -u)
+
+    rm -f "$tmplog"
+    if apt-get update -y; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] test.sh: apt update success after sanitize" >> "$log_file"
+        return 0
+    fi
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] test.sh: apt update failed after sanitize" >> "$log_file"
+    return 1
+}
+
 # Check if user is root
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root"
@@ -33,6 +87,8 @@ if [[ $EUID -ne 0 ]]; then
     sudo "$0" "$@"
     exit 1
 fi
+
+sanitize_apt_sources
 
 secs_to_human() {
     echo "Installation time : $((${1} / 3600)) hours $(((${1} / 60) % 60)) minute's $((${1} % 60)) seconds"
@@ -142,7 +198,7 @@ clear
 }
 
 apete_apdet() {
-    apt update -y
+    safe_apt_update
     apt install sudo -y
     apt clean all
     apt autoremove -y
@@ -246,20 +302,10 @@ systemctl enable ssip
     ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
     if [[ $(cat /etc/os-release | grep -w ID | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/ID//g') == "ubuntu" ]]; then
         # "Setup Dependencies $(cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/PRETTY_NAME//g')"
-        sudo apt update -y
-        apt-get install --no-install-recommends software-properties-common
-        add-apt-repository ppa:vbernat/haproxy-2.0 -y
-        apt-get -y install haproxy=2.0.\*
-        rm -f /etc/apt/sources.list.d/nginx.list
-        apt install -y curl gnupg2 ca-certificates lsb-release ubuntu-keyring
-        curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor |
-            tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
-        echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-    http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" |
-            tee /etc/apt/sources.list.d/nginx.list
-        echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" |
-            tee /etc/apt/preferences.d/99nginx
-        apt install -y nginx
+        sanitize_apt_sources
+        safe_apt_update
+        apt-get install -y --no-install-recommends software-properties-common
+        apt-get install -y haproxy nginx
         rm /etc/nginx/conf.d/default.conf
         apt install python3 python3-pip -y
         sudo apt-get install build-essential checkinstall -y
@@ -268,23 +314,9 @@ systemctl enable ssip
         
     elif [[ $(cat /etc/os-release | grep -w ID | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/ID//g') == "debian" ]]; then
         # "Setup Dependencies For OS Is $(cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/"//g' | sed 's/PRETTY_NAME//g')"
-        curl https://haproxy.debian.net/bernat.debian.org.gpg |
-            gpg --dearmor >/usr/share/keyrings/haproxy.debian.net.gpg
-        echo deb "[signed-by=/usr/share/keyrings/haproxy.debian.net.gpg]" \
-            http://haproxy.debian.net buster-backports-1.8 main \
-            >/etc/apt/sources.list.d/haproxy.list
-        sudo apt update -y
-        apt-get -y install haproxy=1.8.\*
-        rm -f /etc/apt/sources.list.d/nginx.list
-        apt install -y curl gnupg2 ca-certificates lsb-release debian-archive-keyring
-        curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor |
-            tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
-        echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-    http://nginx.org/packages/debian $(lsb_release -cs) nginx" |
-            tee /etc/apt/sources.list.d/nginx.list
-        echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" |
-            tee /etc/apt/preferences.d/99nginx
-        apt install -y nginx
+        rm -f /etc/apt/sources.list.d/haproxy.list
+        safe_apt_update
+        apt-get -y install haproxy nginx
         rm /etc/nginx/conf.d/default.conf
         apt install python3 python3-pip -y
         sudo apt-get install build-essential checkinstall -y
