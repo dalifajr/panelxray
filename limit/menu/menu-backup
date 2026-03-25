@@ -6,6 +6,7 @@ fi
 if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
+
 DF='\e[39m'
 Bold='\e[1m'
 Blink='\e[5m'

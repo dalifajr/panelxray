@@ -1,12 +1,13 @@
 #!/bin/bash
-clear
-
 THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
 if [[ -r "$THEME_FILE" ]]; then
-    . "$THEME_FILE"
+  . "$THEME_FILE"
 fi
 
-panel_user="$(cat /usr/bin/user 2>/dev/null || echo User)"
+clear
 
 if declare -F thm_title >/dev/null; then
     thm_title "MENU VMESS"

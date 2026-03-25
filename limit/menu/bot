@@ -1,13 +1,14 @@
 #!/bin/bash
-# COLOR VALIDATION
-clear
 THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
 if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
-RED='\033[0;31m'
-NC='\e[0m'
-gray="\e[1;30m"
+
+# COLOR VALIDATION
+clear
 Blue="\033[1;36m"
 GREEN='\033[0;32m'
 grenbo="\033[1;95m"

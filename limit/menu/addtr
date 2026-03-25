@@ -1,4 +1,11 @@
 #!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
 
 # Getting bot
 CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
@@ -181,4 +188,3 @@ echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "           Premium Script                     "
 echo -e "               Welcome, $(cat /usr/bin/user 2>/dev/null || echo User)           "
 echo -e "----------------------------------------------------------------------"
-

@@ -1,13 +1,14 @@
 #!/bin/bash
-clear
-
 THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
 if [[ -r "$THEME_FILE" ]]; then
-    . "$THEME_FILE"
+  . "$THEME_FILE"
 fi
 
-NC='\e[0m'
-GREEN='\033[0;32m'
+clear
+
 RED='\033[0;31m'
 
 badvpn1=$(systemctl status vmip | grep running | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)

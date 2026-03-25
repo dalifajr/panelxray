@@ -1,13 +1,14 @@
 #!/bin/bash
-set -e
-
 THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
 if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
+set -e
+
 YELLOW='\033[1;33m'
 NC='\033[0m'
 

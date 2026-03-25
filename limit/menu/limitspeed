@@ -1,4 +1,12 @@
 #!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
 # SL
 # ==========================================
 # Color
@@ -73,4 +81,3 @@ clear
 echo " You Entered The Wrong Number"
 menu
 fi
-
