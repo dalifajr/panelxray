@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, send_tls_qr, short_progress
 
 #CRATE VMESS
 @bot.on(events.CallbackQuery(data=b'create-vmess'))
@@ -44,6 +44,7 @@ async def create_vmess(event):
 				],
 			)
 			await event.respond(msg)
+			await send_tls_qr(event, b[0].strip("'").replace(" ", ""), "QR TLS VMESS")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -56,84 +57,34 @@ async def create_vmess(event):
 @bot.on(events.CallbackQuery(data=b'trial-vmess'))
 async def trial_vmess(event):
 	async def trial_vmess_(event):
-		async with bot.conversation(chat) as exp:
-			await event.respond("**Choose Expiry Minutes**",buttons=[
-[Button.inline(" 10 Menit ","10"),
-Button.inline(" 15 Menit ","15")],
-[Button.inline(" 30 Menit ","30"),
-Button.inline(" 60 Menit ","60")]])
-			exp = exp.wait_event(events.CallbackQuery)
-			exp = (await exp).data.decode("ascii")
-		await event.edit("Processing.")
-		await event.edit("Processing..")
-		await event.edit("Processing...")
-		await event.edit("Processing....")
-		time.sleep(3)
-		await event.edit("`Processing Crate Premium Account`")
-		time.sleep(1)
-		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(3)
-		await event.edit("`Processing... 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
-		time.sleep(0)
-		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		time.sleep(1)
-		await event.edit("`Wait.. Setting up an Account`")
+		exp = await ask_choice(event, chat, sender.id, "⏱️ **Trial VMESS (menit):**", ["10", "15", "30", "60"])
+		await short_progress(event, "Membuat trial VMESS...")
 		cmd = f'printf "%s\n" "{exp}" | trialws'
 		try:
 			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
 		except:
-			await event.respond("**User Already Exist**")
+			await event.respond("❌ **Gagal membuat trial VMESS.**")
 		else:
 			b = [x.group() for x in re.finditer("vmess://(.*)",a)]
-			print(b)
 			z = base64.b64decode(b[0].replace("vmess://","")).decode("ascii")
 			z = json.loads(z)
-			msg = f"""
-**◇━━━━━━━━━━━━━━━━━◇**
-**⟨ Xray/Vmess Account ⟩**
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Domain       :** `{DOMAIN}`
-**» port TLS     :** `443`
-**» Port NTLS    :** `80`
-**» Port GRPC    :** `443`
-**» port TLS CDN :** `443`
-**» Port NTLS CDN:** `80`
-**» Port GRPC CDN:** `443`
-**» OpenClash WS :** `443`
-**» OpenClash NWS:** `80`
-**» AlterId      :** `0`
-**» Security     :** `auto`
-**» NetWork      :** `(WS) or (gRPC)`
-**» Path TLS     :** `/vmess`
-**» Path NLS     :** `/vmess`
-**» Path Dynamic :** `http://BUG.COM`
-**» ServiceName  :** `vmess-grpc`
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Link TLS     :** 
-`{b[0].strip("'").replace(" ","")}`
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Link NTLS    :** 
-`{b[1].strip("'").replace(" ","")}`
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Link GRPC    :** 
-`{b[2].strip("'")}`
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Format OpenClash :** https://{DOMAIN}:81/vmess-{z["ps"]}.txt
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Expired Until:** ` {exp} Minutes`
-**◇━━━━━━━━━━━━━━━━━◇**
-"""
+			msg = build_result(
+				"VMESS Trial Created",
+				[
+					("Username", z["ps"]),
+					("Domain", DOMAIN),
+					("Mode", "Trial"),
+					("Expired", f"{exp} menit"),
+				],
+				[
+					("TLS", b[0].strip("'").replace(" ", "")),
+					("NTLS", b[1].strip("'").replace(" ", "")),
+					("gRPC", b[2].strip("'")),
+					("OpenClash", f"https://{DOMAIN}:81/vmess-{z['ps']}.txt"),
+				],
+			)
 			await event.respond(msg)
+			await send_tls_qr(event, b[0].strip("'").replace(" ", ""), "QR TLS VMESS Trial")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

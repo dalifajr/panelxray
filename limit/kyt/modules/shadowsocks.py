@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, send_tls_qr, short_progress
 
 @bot.on(events.CallbackQuery(data=b'create-shadowsocks'))
 async def create_shadowsocks(event):
@@ -42,6 +42,7 @@ async def create_shadowsocks(event):
 				],
 			)
 			await event.respond(msg)
+			await send_tls_qr(event, x[0], "QR TLS SHADOWSOCKS")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -97,82 +98,34 @@ async def delete_shadowsocks(event):
 @bot.on(events.CallbackQuery(data=b'trial-shadowsocks'))
 async def trial_shadowsocks(event):
 	async def trial_shadowsocks_(event):
-		async with bot.conversation(chat) as exp:
-			await event.respond("**Choose Expiry Minutes**",buttons=[
-[Button.inline(" 10 Menit ","10"),
-Button.inline(" 15 Menit ","15")],
-[Button.inline(" 30 Menit ","30"),
-Button.inline(" 60 Menit ","60")]])
-			exp = exp.wait_event(events.CallbackQuery)
-			exp = (await exp).data.decode("ascii")
-		await event.edit("Processing.")
-		await event.edit("Processing..")
-		await event.edit("Processing...")
-		await event.edit("Processing....")
-		time.sleep(3)
-		await event.edit("`Processing Crate Premium Account`")
-		time.sleep(1)
-		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(3)
-		await event.edit("`Processing... 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
-		time.sleep(0)
-		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		time.sleep(1)
-		await event.edit("`Wait.. Setting up an Account`")
+		exp = await ask_choice(event, chat, sender.id, "⏱️ **Trial SHADOWSOCKS (menit):**", ["10", "15", "30", "60"])
+		await short_progress(event, "Membuat trial Shadowsocks...")
 		cmd = f'printf "%s\n" "{exp}" | trialss'
 		try:
 			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
 		except:
-			await event.respond("**User Already Exist**")
+			await event.respond("❌ **Gagal membuat trial SHADOWSOCKS.**")
 		else:
-			#today = DT.date.today()
-			#later = today + DT.timedelta(days=int(exp))
 			x = [x.group() for x in re.finditer("ss://(.*)",a)]
-			print(x)
 			remarks = re.search("#(.*)",x[0]).group(1)
-			# domain = re.search("@(.*?):",x[0]).group(1)
 			uuid = re.search("ss://(.*?)@",x[0]).group(1)
-			# path = re.search("path=(.*)&",x[0]).group(1)
-			msg = f"""
-**━━━━━━━━━━━━━━━━━**
-**🐾🕊️ SHDWSCSK Account 🕊️🐾**
-**━━━━━━━━━━━━━━━━━**
-**» Remarks     :** `{remarks}`
-**» Host Server :** `{DOMAIN}`
-**» Host XrayDNS:** `{HOST}`
-**» User Quota  :** `Unlimited`
-**» Pub Key     :** `{PUB}`
-**» Port TLS    :** `222-1000`
-**» Port GRPC   :** `443`
-**» Port DNS    :** `443, 53`
-**» Password    :** `{uuid}`
-**» Cipers      :** `aes-128-gcm`
-**» NetWork     :** `(WS) or (gRPC)`
-**» Path        :** `(/multi path)/ss-ws`
-**» ServiceName :** `ss-grpc`
-**━━━━━━━━━━━━━━━━━**
-**» Link TLS    :**
-`{x[0]}`
-**━━━━━━━━━━━━━━━━━**
-**» Link gRPC   :** 
-`{x[1].replace(" ","")}`
-**━━━━━━━━━━━━━━━━━**
-**» Link JSON  :** `https://${DOMAIN}:81/ss-{remarks}.txt`
-**━━━━━━━━━━━━━━━━━**
-**» Expired Until :** `{exp} Minutes`
-**» 🤖@AutoFTbot**
-"""
+			msg = build_result(
+				"Shadowsocks Trial Created",
+				[
+					("Username", remarks),
+					("Host", DOMAIN),
+					("Password", uuid),
+					("Mode", "Trial"),
+					("Expired", f"{exp} menit"),
+				],
+				[
+					("TLS", x[0]),
+					("gRPC", x[1].replace(" ", "")),
+					("JSON", f"https://{DOMAIN}:81/ss-{remarks}.txt"),
+				],
+			)
 			await event.respond(msg)
+			await send_tls_qr(event, x[0], "QR TLS SHADOWSOCKS Trial")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

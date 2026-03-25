@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, send_tls_qr, short_progress
 
 @bot.on(events.CallbackQuery(data=b'create-vless'))
 async def create_vless(event):
@@ -42,6 +42,7 @@ async def create_vless(event):
 				],
 			)
 			await event.respond(msg)
+			await send_tls_qr(event, x[0], "QR TLS VLESS")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -141,82 +142,34 @@ async def unsuspend_vless(event):
 @bot.on(events.CallbackQuery(data=b'trial-vless'))
 async def trial_vless(event):
 	async def trial_vless_(event):
-		async with bot.conversation(chat) as exp:
-			await event.respond("**Choose Expiry Minutes**",buttons=[
-[Button.inline(" 10 Menit ","10"),
-Button.inline(" 15 Menit ","15")],
-[Button.inline(" 30 Menit ","30"),
-Button.inline(" 60 Menit ","60")]])
-			exp = exp.wait_event(events.CallbackQuery)
-			exp = (await exp).data.decode("ascii")
-		await event.edit("Processing.")
-		await event.edit("Processing..")
-		await event.edit("Processing...")
-		await event.edit("Processing....")
-		time.sleep(3)
-		await event.edit("`Processing Crate Premium Account`")
-		time.sleep(1)
-		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(3)
-		await event.edit("`Processing... 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
-		time.sleep(0)
-		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		time.sleep(1)
-		await event.edit("`Wait.. Setting up an Account`")
+		exp = await ask_choice(event, chat, sender.id, "⏱️ **Trial VLESS (menit):**", ["10", "15", "30", "60"])
+		await short_progress(event, "Membuat trial VLESS...")
 		cmd = f'printf "%s\n" "{exp}" | trialvless'
 		try:
 			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
 		except:
-			await event.respond("**User Already Exist**")
+			await event.respond("❌ **Gagal membuat trial VLESS.**")
 		else:
-			#today = DT.date.today()
-			#later = today + DT.timedelta(days=int(exp))
 			x = [x.group() for x in re.finditer("vless://(.*)",a)]
-			print(x)
 			remarks = re.search("#(.*)",x[0]).group(1)
-			# domain = re.search("@(.*?):",x[0]).group(1)
 			uuid = re.search("vless://(.*?)@",x[0]).group(1)
-			# path = re.search("path=(.*)&",x[0]).group(1)
-			msg = f"""
-**━━━━━━━━━━━━━━━━━**
-**🐾🕊️ Xray/Vless Account 🕊️🐾**
-**━━━━━━━━━━━━━━━━━**
-**» Remarks     :** `{remarks}`
-**» Host Server :** `{DOMAIN}`
-**» Host XrayDNS:** `{HOST}`
-**» User Quota  :** `Unlimited`
-**» Port DNS    :** `443, 53`
-**» port TLS    :** `222-1000`
-**» Port NTLS   :** `80, 8080, 8081-9999`
-**» NetWork     :** `(WS) or (gRPC)`
-**» User ID     :** `{uuid}`
-**» Path Vless  :** `(/multi path)/vless `
-**» Path Dynamic:** `http://BUG.COM/vless `
-**» Pub Key     :** `{PUB}`
-**━━━━━━━━━━━━━━━━━**
-**» Link TLS   : **
-`{x[0]}`
-**━━━━━━━━━━━━━━━━━**
-**» Link NTLS  :**
-`{x[1].replace(" ","")}`
-**━━━━━━━━━━━━━━━━━**
-**» Link GRPC  :**
-`{x[2].replace(" ","")}`
-**━━━━━━━━━━━━━━━━━**
-**» Expired Until :** `{exp} Minutes`
-**» 🤖@AutoFTbot**
-"""
+			msg = build_result(
+				"VLESS Trial Created",
+				[
+					("Username", remarks),
+					("Host", DOMAIN),
+					("UUID", uuid),
+					("Mode", "Trial"),
+					("Expired", f"{exp} menit"),
+				],
+				[
+					("TLS", x[0]),
+					("NTLS", x[1].replace(" ", "")),
+					("gRPC", x[2].replace(" ", "")),
+				],
+			)
 			await event.respond(msg)
+			await send_tls_qr(event, x[0], "QR TLS VLESS Trial")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

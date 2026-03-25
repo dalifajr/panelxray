@@ -1,5 +1,6 @@
 from kyt import *
 import asyncio
+from urllib.parse import quote
 
 
 def is_admin(sender_id: int) -> bool:
@@ -85,3 +86,19 @@ def build_result(title: str, fields, links):
             if value:
                 lines.append(f"▪ **{label}:** `{value}`")
     return "\n".join(lines)
+
+
+async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
+    if not tls_link:
+        return
+
+    qr_url = (
+        "https://api.qrserver.com/v1/create-qr-code/"
+        f"?size=600x600&format=png&data={quote(tls_link, safe='')}"
+    )
+
+    caption = f"🧾 **{title}**\n🔐 Scan QR ini untuk koneksi TLS."
+    try:
+        await event.respond(caption, file=qr_url)
+    except Exception:
+        await event.respond(f"{caption}\n{qr_url}")
