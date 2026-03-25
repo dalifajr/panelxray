@@ -720,6 +720,7 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     # > Create Service
     rm -rf /etc/systemd/system/xray.service.d
     cat >/etc/systemd/system/xray.service <<EOF
+[Unit]
 Description=Xray Service
 Documentation=https://github.com
 After=network.target nss-lookup.target
@@ -1361,6 +1362,30 @@ print_install "Enable Service"
 function verify_xray_health(){
 clear
 print_install "Verifikasi Layanan Xray"
+
+if [[ ! -f /etc/systemd/system/xray.service ]] || ! grep -q '^\[Unit\]' /etc/systemd/system/xray.service 2>/dev/null; then
+cat >/etc/systemd/system/xray.service <<EOF
+[Unit]
+Description=Xray Service
+Documentation=https://github.com
+After=network.target nss-lookup.target
+
+[Service]
+User=www-data
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
+Restart=on-failure
+RestartPreventExitStatus=23
+LimitNPROC=10000
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload >/dev/null 2>&1 || true
+fi
 
 if command -v /usr/local/bin/xray >/dev/null 2>&1; then
     /usr/local/bin/xray run -test -config /etc/xray/config.json >/tmp/xray-test.log 2>&1 || {
