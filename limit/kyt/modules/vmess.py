@@ -1,105 +1,48 @@
 from kyt import *
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress
 
 #CRATE VMESS
 @bot.on(events.CallbackQuery(data=b'create-vmess'))
 async def create_vmess(event):
 	async def create_vmess_(event):
-		async with bot.conversation(chat) as user:
-			await event.respond('**Username:**')
-			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
-			user = (await user).raw_text
-		async with bot.conversation(chat) as pw:
-			await event.respond("**Quota:**")
-			pw = pw.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
-			pw = (await pw).raw_text
-		async with bot.conversation(chat) as exp:
-			await event.respond("**Choose Expiry Day**",buttons=[
-[Button.inline(" 3 Day ","3"),
-Button.inline(" 7 Day ","7")],
-[Button.inline(" 30 Day ","30"),
-Button.inline(" 60 Day ","60")]])
-			exp = exp.wait_event(events.CallbackQuery)
-			exp = (await exp).data.decode("ascii")
-		await event.edit("Processing.")
-		await event.edit("Processing..")
-		await event.edit("Processing...")
-		await event.edit("Processing....")
-		time.sleep(3)
-		await event.edit("`Processing Crate Premium Account`")
-		time.sleep(1)
-		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(3)
-		await event.edit("`Processing... 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
-		time.sleep(0)
-		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		time.sleep(1)
-		await event.edit("`Wait.. Setting up an Account`")
+		user = await ask_text(event, chat, sender.id, "👤 **Masukkan Username VMESS:**")
+		pw = await ask_text(event, chat, sender.id, "📦 **Masukkan Quota (GB):**")
+		exp = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"📅 **Pilih masa aktif:**",
+			["3", "7", "30", "60"],
+		)
+		await short_progress(event, "Membuat akun VMESS...")
 		cmd = f'printf "%s\n" "{user}" "{exp}" "{pw}" | addws'
 		try:
 			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
 		except:
-			await event.respond("**User Already Exist**")
+			await event.respond("❌ **Username sudah terdaftar.**")
 		else:
 			today = DT.date.today()
 			later = today + DT.timedelta(days=int(exp))
 			b = [x.group() for x in re.finditer("vmess://(.*)",a)]
-#			c = [x.group() for x in re.finditer("Host XrayDNS(.*)",a)]
-#			d = [x.group() for x in re.finditer("Pub Key(.*)",a)]
-			print(b)
-#			print(d)
-#			print(c)
-#			xx = re.search("Pub Key      :(.*)",d[0]).group(1)
-#			xxx = re.search("Host XrayDNS :(.*)",d[0]).group(1)
 			z = base64.b64decode(b[0].replace("vmess://","")).decode("ascii")
 			z = json.loads(z)
-			z1 = base64.b64decode(b[1].replace("vmess://","")).decode("ascii")
-			z1 = json.loads(z1)
-			msg = f"""
-**━━━━━━━━━━━━━━━━━**
-**🐾🕊️ Xray/Vmess Account 🕊️🐾**
-**━━━━━━━━━━━━━━━━━**
-**» Remarks      :** `{z["ps"]}`
-**» Domain       :** `{z["add"]}`
-**» XRAY DNS     :** `{HOST}`
-**» User Quota   :** `{pw} GB`
-**» Port DNS     :** `443, 53`
-**» port TLS     :** `222-1000`
-**» Port NTLS    :** `80, 8080, 8081-9999`
-**» Port GRPC    :** `443`
-**» User ID      :** `{z["id"]}`
-**» AlterId      :** `0`
-**» Security     :** `auto`
-**» NetWork      :** `(WS) or (gRPC)`
-**» Path TLS     :** `(/multi path)/vmess`
-**» Path NLS     :** `(/multi path)/vmess`
-**» Path Dynamic :** `http://BUG.COM`
-**» ServiceName  :** `vmess-grpc`
-**» Pub Key      :** `{PUB}`
-**━━━━━━━━━━━━━━━━━**
-**» Link TLS     :** 
-`{b[0].strip("'").replace(" ","")}`
-**━━━━━━━━━━━━━━━━━**
-**» Link NTLS    :** 
-`{b[1].strip("'").replace(" ","")}`
-**━━━━━━━━━━━━━━━━━**
-**» Link GRPC    :** 
-`{b[2].strip("'")}`
-**━━━━━━━━━━━━━━━━━**
-**» Format OpenClash :** https://{DOMAIN}:81/vmess-{user}.txt
-**━━━━━━━━━━━━━━━━━**
-**» Expired Until:** `{later}`
-**» 🤖@AutoFTbot**
-"""
+			msg = build_result(
+				"VMESS Account Created",
+				[
+					("Username", z["ps"]),
+					("Domain", z["add"]),
+					("XRAY DNS", HOST),
+					("Quota", f"{pw} GB"),
+					("User ID", z["id"]),
+					("Expired", str(later)),
+				],
+				[
+					("TLS", b[0].strip("'").replace(" ", "")),
+					("NTLS", b[1].strip("'").replace(" ", "")),
+					("gRPC", b[2].strip("'")),
+					("OpenClash", f"https://{DOMAIN}:81/vmess-{user}.txt"),
+				],
+			)
 			await event.respond(msg)
 	chat = event.chat_id
 	sender = await event.get_sender()
@@ -292,25 +235,12 @@ async def unsuspend_vmess(event):
 async def vmess(event):
 	async def vmess_(event):
 		inline = [
-[Button.inline(" TRIAL VMESS ","trial-vmess"),
-Button.inline(" CREATE VMESS ","create-vmess")],
-[Button.inline(" CHECK VMESS ","cek-vmess"),
-Button.inline(" DELETE VMESS ","delete-vmess")],
-[Button.inline(" SUSPEND VMESS ","suspend-vmess"),
-Button.inline(" UNSUSPEND VMESS ","unsuspend-vmess")],
-[Button.inline("‹ Main Menu ›","menu")]]
-		z = requests.get(f"http://ip-api.com/json/?fields=country,region,city,timezone,isp").json()
-		msg = f"""
-━━━━━━━━━━━━━━━━━━━━━━━ 
-**🐾🕊️ VMESS MANAGER 🕊️🐾**
-━━━━━━━━━━━━━━━━━━━━━━━ 
-🔰 **» Service:** `VMESS`
-🔰 **» Hostname/IP:** `{DOMAIN}`
-🔰 **» ISP:** `{z["isp"]}`
-🔰 **» Country:** `{z["country"]}`
-🤖 **» @AutoFTbot**
-━━━━━━━━━━━━━━━━━━━━━━━ 
-"""
+			[Button.inline("🧪 Trial", "trial-vmess"), Button.inline("➕ Create", "create-vmess")],
+			[Button.inline("👀 Check Login", "cek-vmess"), Button.inline("🗑️ Delete", "delete-vmess")],
+			[Button.inline("⛔ Suspend", "suspend-vmess"), Button.inline("✅ Unsuspend", "unsuspend-vmess")],
+			[Button.inline("⬅️ Main Menu", "menu")],
+		]
+		msg = manager_banner("VMESS Manager", "VMESS")
 		await event.edit(msg,buttons=inline)
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

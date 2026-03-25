@@ -1,84 +1,46 @@
 from kyt import *
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress
 
 @bot.on(events.CallbackQuery(data=b'create-trojan'))
 async def create_trojan(event):
 	async def create_trojan_(event):
-		async with bot.conversation(chat) as user:
-			await event.respond('**Username:**')
-			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
-			user = (await user).raw_text
-		async with bot.conversation(chat) as pw:
-			await event.respond("**Quota:**")
-			pw = pw.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
-			pw = (await pw).raw_text
-		async with bot.conversation(chat) as exp:
-			await event.respond("**Choose Expiry Day**",buttons=[
-[Button.inline(" 3 Day ","3"),
-Button.inline(" 7 Day ","7")],
-[Button.inline(" 30 Day ","30"),
-Button.inline(" 60 Day ","60")]])
-			exp = exp.wait_event(events.CallbackQuery)
-			exp = (await exp).data.decode("ascii")
-		await event.edit("Processing.")
-		await event.edit("Processing..")
-		await event.edit("Processing...")
-		await event.edit("Processing....")
-		time.sleep(3)
-		await event.edit("`Processing Crate Premium Account`")
-		time.sleep(1)
-		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(3)
-		await event.edit("`Processing... 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(2)
-		await event.edit("`Processing... 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
-		time.sleep(0)
-		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		time.sleep(1)
-		await event.edit("`Wait.. Setting up an Account`")
+		user = await ask_text(event, chat, sender.id, "👤 **Masukkan Username TROJAN:**")
+		pw = await ask_text(event, chat, sender.id, "📦 **Masukkan Quota (GB):**")
+		exp = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"📅 **Pilih masa aktif:**",
+			["3", "7", "30", "60"],
+		)
+		await short_progress(event, "Membuat akun TROJAN...")
 		cmd = f'printf "%s\n" "{user}" "{exp}" "{pw}" | addtr'
 		try:
 			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
 		except:
-			await event.respond("**User Already Exist**")
+			await event.respond("❌ **Username sudah terdaftar.**")
 		else:
 			today = DT.date.today()
 			later = today + DT.timedelta(days=int(exp))
 			b = [x.group() for x in re.finditer("trojan://(.*)",a)]
-			print(b)
 			domain = re.search("@(.*?):",b[0]).group(1)
 			uuid = re.search("trojan://(.*?)@",b[0]).group(1)
-			msg = f"""
-**━━━━━━━━━━━━━━━━━**
-**🐾🕊️ Xray/Trojan Account 🕊️🐾**
-**◇━━━━━━━━━━━━━━━━━◇**
-**» Remarks     :** `{user}`
-**» Host Server :** `{domain}`
-**» Host XrayDNS:** `{HOST}`
-**» User Quota  :** `{pw} GB`
-**» Port DNS    :** `443, 53`
-**» port TLS    :** `222-1000`
-**» User ID     :** `{uuid}`
-**» Pub Key     :** {PUB}
-**━━━━━━━━━━━━━━━━**
-**» Link WS    :** 
-`{b[0].replace(" ","")}`
-**━━━━━━━━━━━━━━━━**
-**» Link GRPC  :** 
-`{b[1].replace(" ","")}`
-**━━━━━━━━━━━━━━━━**
-**» Format OpenClash : https://{domain}:81/trojan-{user}.txt
-**━━━━━━━━━━━━━━━━**
-**Expired Until:** `{later}`
-**» 🤖@AutoFTbot**
-"""
+			msg = build_result(
+				"TROJAN Account Created",
+				[
+					("Username", user),
+					("Host", domain),
+					("XRAY DNS", HOST),
+					("Quota", f"{pw} GB"),
+					("Password/UUID", uuid),
+					("Expired", str(later)),
+				],
+				[
+					("WS", b[0].replace(" ", "")),
+					("gRPC", b[1].replace(" ", "")),
+					("OpenClash", f"https://{domain}:81/trojan-{user}.txt"),
+				],
+			)
 			await event.respond(msg)
 	chat = event.chat_id
 	sender = await event.get_sender()
@@ -260,25 +222,12 @@ async def unsuspend_trojan(event):
 async def trojan(event):
 	async def trojan_(event):
 		inline = [
-[Button.inline(" TRIAL TROJAN ","trial-trojan"),
-Button.inline(" CREATE TROJAN ","create-trojan")],
-[Button.inline(" CHECK TROJAN ","cek-trojan"),
-Button.inline(" DELETE TROJAN ","delete-trojan")],
-[Button.inline(" SUSPEND TROJAN ","suspend-trojan"),
-Button.inline(" UNSUSPEND TROJAN ","unsuspend-trojan")],
-[Button.inline("‹ Main Menu ›","menu")]]
-		z = requests.get(f"http://ip-api.com/json/?fields=country,region,city,timezone,isp").json()
-		msg = f"""
-━━━━━━━━━━━━━━━━━━━━━━━ 
-**🐾🕊️ TROJAN MANAGER 🕊️🐾**
-━━━━━━━━━━━━━━━━━━━━━━━ 
-🔰 **» Service:** `TROJAN`
-🔰 **» Hostname/IP:** `{DOMAIN}`
-🔰 **» ISP:** `{z["isp"]}`
-🔰 **» Country:** `{z["country"]}`
-🤖 **» @AutoFTbot**
-━━━━━━━━━━━━━━━━━━━━━━━ 
-"""
+			[Button.inline("🧪 Trial", "trial-trojan"), Button.inline("➕ Create", "create-trojan")],
+			[Button.inline("👀 Check Login", "cek-trojan"), Button.inline("🗑️ Delete", "delete-trojan")],
+			[Button.inline("⛔ Suspend", "suspend-trojan"), Button.inline("✅ Unsuspend", "unsuspend-trojan")],
+			[Button.inline("⬅️ Main Menu", "menu")],
+		]
+		msg = manager_banner("TROJAN Manager", "TROJAN")
 		await event.edit(msg,buttons=inline)
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
