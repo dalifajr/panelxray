@@ -378,7 +378,7 @@ function base_package() {
     clear
     ########
     print_install "Menginstall Packet Yang Dibutuhkan"
-    apt install zip pwgen openssl netcat-openbsd socat cron bash-completion -y
+    apt install zip pwgen openssl netcat-openbsd socat cron bash-completion qrencode -y
     apt install figlet -y
     safe_apt_update
     apt upgrade -y
