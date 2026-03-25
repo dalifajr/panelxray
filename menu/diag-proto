@@ -15,6 +15,8 @@ BLUE='\033[1;34m'
 
 PASS_COUNT=0
 FAIL_COUNT=0
+LAST_HTTP_CODE=000
+LOCAL_EDGE_IP="127.0.0.1"
 
 report() {
   local proto="$1"
@@ -39,34 +41,44 @@ is_listening() {
   ss -lnt 2>/dev/null | awk '{print $4}' | grep -E "[:.]${port}$" >/dev/null 2>&1
 }
 
+detect_local_edge_ip() {
+  local ip
+  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}')"
+  if [[ -n "$ip" ]]; then
+    LOCAL_EDGE_IP="$ip"
+  fi
+}
+
 probe_tls_public() {
   echo | openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
 }
 
 probe_tls_local() {
-  echo | openssl s_client -connect "127.0.0.1:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
+  echo | openssl s_client -connect "${LOCAL_EDGE_IP}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
 }
 
 probe_ws_path() {
   local path="$1"
   local code
-  code="$(curl -k -sS --max-time 8 --http1.1 \
+  code="$(curl -4 -k -sS --max-time 8 --http1.1 \
     -H "Host: ${DOMAIN}" \
     -H "Upgrade: websocket" \
     -H "Connection: Upgrade" \
     -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+  LAST_HTTP_CODE="$code"
 
   case "$code" in
     101|200|301|302|400|401|403|404|426)
       return 0
       ;;
     *)
-      code="$(curl -k -sS --max-time 8 --http1.1 \
-        --resolve "${DOMAIN}:443:127.0.0.1" \
+      code="$(curl -4 -k -sS --max-time 8 --http1.1 \
+        --resolve "${DOMAIN}:443:${LOCAL_EDGE_IP}" \
         -H "Host: ${DOMAIN}" \
         -H "Upgrade: websocket" \
         -H "Connection: Upgrade" \
         -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+      LAST_HTTP_CODE="$code"
       case "$code" in
         101|200|301|302|400|401|403|404|426)
           return 0
@@ -82,19 +94,21 @@ probe_ws_path() {
 probe_grpc_path() {
   local path="$1"
   local code
-  code="$(curl -k -sS --max-time 8 --http2 \
+  code="$(curl -4 -k -sS --max-time 8 --http2 \
     -H "Host: ${DOMAIN}" \
     -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+  LAST_HTTP_CODE="$code"
 
   case "$code" in
     200|204|400|401|403|404|405|415|421|426)
       return 0
       ;;
     *)
-      code="$(curl -k -sS --max-time 8 --http2 \
-        --resolve "${DOMAIN}:443:127.0.0.1" \
+      code="$(curl -4 -k -sS --max-time 8 --http2 \
+        --resolve "${DOMAIN}:443:${LOCAL_EDGE_IP}" \
         -H "Host: ${DOMAIN}" \
         -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+      LAST_HTTP_CODE="$code"
       case "$code" in
         200|204|400|401|403|404|405|415|421|426)
           return 0
@@ -138,6 +152,8 @@ if [[ -z "$DOMAIN" ]]; then
 fi
 
 echo -e "Domain target: ${YELLOW}${DOMAIN}${NC}"
+detect_local_edge_ip
+echo -e "Local edge IP: ${YELLOW}${LOCAL_EDGE_IP}${NC}"
 echo
 
 for cmd in curl openssl ss systemctl; do
@@ -192,7 +208,7 @@ TLS_LOCAL_OK=0
 if probe_tls_local; then
   TLS_LOCAL_OK=1
 fi
-report "SYSTEM" "TLS Handshake Local" "$TLS_LOCAL_OK" "127.0.0.1:443 (SNI ${DOMAIN})"
+report "SYSTEM" "TLS Handshake Local" "$TLS_LOCAL_OK" "${LOCAL_EDGE_IP}:443 (SNI ${DOMAIN})"
 
 echo
 
@@ -211,12 +227,12 @@ diag_protocol() {
   if probe_ws_path "$ws_path"; then
     ws_edge=1
   fi
-  report "$proto" "Edge->WS Path" "$ws_edge" "https://${DOMAIN}${ws_path}"
+  report "$proto" "Edge->WS Path" "$ws_edge" "https://${DOMAIN}${ws_path} [HTTP:${LAST_HTTP_CODE}]"
 
   if probe_grpc_path "$grpc_path"; then
     grpc_edge=1
   fi
-  report "$proto" "Edge->gRPC Path" "$grpc_edge" "https://${DOMAIN}${grpc_path}"
+  report "$proto" "Edge->gRPC Path" "$grpc_edge" "https://${DOMAIN}${grpc_path} [HTTP:${LAST_HTTP_CODE}]"
 
   if is_listening "$ws_port"; then
     ws_inbound=1
@@ -258,6 +274,7 @@ echo "- Jika TLS Public FAIL tapi TLS Local PASS, fokus di DNS/Cloudflare/NAT pu
 echo "- Jika Edge path FAIL tapi Inbound PASS, fokus di HAProxy/Nginx/path ACL."
 echo "- Jika Inbound FAIL, fokus di Xray inbound/proses xray."
 echo "- Jika TLS Public dan Local sama-sama FAIL, fokus di certificate/haproxy bind 443."
+echo "- Jika HTTP code 000, biasanya timeout/reset (network/firewall/edge)."
 
 echo
 read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
