@@ -56,7 +56,6 @@ rm -f /etc/systemd/system/runn.service
 rm -f /etc/systemd/system/kyt.service
 rm -f /etc/cron.d/xp_all /etc/cron.d/logclean /etc/cron.d/daily_reboot
 
-# Hapus command menu yang terpasang
 if [ -d /usr/local/sbin ]; then
   rm -f /usr/local/sbin/{menu,m-sshws,m-vmess,m-vless,m-trojan,m-ssws,utility,bw,speedtest,limitspeed,menu-backup,onoff,add-bot-panel,cek-update,uninstall-panel}
 fi

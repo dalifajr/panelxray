@@ -27,7 +27,7 @@ TEXT="
 <code>◇━━━━━━━━━━━━━━◇</code>
 <code>Clear Cache Done</code>
 <code>◇━━━━━━━━━━━━━━◇</code>
-<code>BY BOT : @Kytxz</code>
+<code>BY BOT : @supra_store31</code>
 "
 curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
 }

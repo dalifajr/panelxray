@@ -1,8 +1,8 @@
 REPO="https://raw.githubusercontent.com/dalifajr/panelxray/main/"
-wget -q -O /etc/systemd/system/limitvmess.service "${REPO}limit/limitvmess.service" && chmod +x limitvmess.service >/dev/null 2>&1
-wget -q -O /etc/systemd/system/limitvless.service "${REPO}limit/limitvless.service" && chmod +x limitvless.service >/dev/null 2>&1
-wget -q -O /etc/systemd/system/limittrojan.service "${REPO}limit/limittrojan.service" && chmod +x limittrojan.service >/dev/null 2>&1
-wget -q -O /etc/systemd/system/limitshadowsocks.service "${REPO}limit/limitshadowsocks.service" && chmod +x limitshadowsocks.service >/dev/null 2>&1
+wget -q -O /etc/systemd/system/limitvmess.service "${REPO}limit/limitvmess.service" && chmod +x /etc/systemd/system/limitvmess.service >/dev/null 2>&1
+wget -q -O /etc/systemd/system/limitvless.service "${REPO}limit/limitvless.service" && chmod +x /etc/systemd/system/limitvless.service >/dev/null 2>&1
+wget -q -O /etc/systemd/system/limittrojan.service "${REPO}limit/limittrojan.service" && chmod +x /etc/systemd/system/limittrojan.service >/dev/null 2>&1
+wget -q -O /etc/systemd/system/limitshadowsocks.service "${REPO}limit/limitshadowsocks.service" && chmod +x /etc/systemd/system/limitshadowsocks.service >/dev/null 2>&1
 wget -q -O /etc/xray/limit.vmess "${REPO}limit/vmess" >/dev/null 2>&1
 wget -q -O /etc/xray/limit.vless "${REPO}limit/vless" >/dev/null 2>&1
 wget -q -O /etc/xray/limit.trojan "${REPO}limit/trojan" >/dev/null 2>&1

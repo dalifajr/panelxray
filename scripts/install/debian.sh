@@ -893,7 +893,7 @@ wget raw.githubusercontent.com/arifkenza09/vip/main/limit/limit.sh && chmod +x l
 
 cd
 wget -q -O /usr/bin/limit-ip "${REPO}limit/limit-ip"
-chmod +x /usr/bin/*
+chmod +x /usr/bin/limit-ip
 cd /usr/bin
 sed -i 's/\r//' limit-ip
 cd
@@ -902,7 +902,7 @@ clear
 cat >/etc/systemd/system/vmip.service << EOF
 [Unit]
 Description=My
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root
@@ -919,7 +919,7 @@ systemctl enable vmip
 cat >/etc/systemd/system/vlip.service << EOF
 [Unit]
 Description=My
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root
@@ -936,7 +936,7 @@ systemctl enable vlip
 cat >/etc/systemd/system/trip.service << EOF
 [Unit]
 Description=My
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root
@@ -1145,10 +1145,12 @@ function ins_epro(){
 clear
 print_install "Menginstall ePro WebSocket Proxy"
     wget -O /usr/bin/ws "${REPO}limit/ws" >/dev/null 2>&1
+    wget -O /usr/bin/ws.py "${REPO}limit/ws.py" >/dev/null 2>&1
     wget -O /usr/bin/tun.conf "${REPO}limit/tun.conf" >/dev/null 2>&1
     wget -O /etc/systemd/system/ws.service "${REPO}limit/ws.service" >/dev/null 2>&1
     chmod +x /etc/systemd/system/ws.service
     chmod +x /usr/bin/ws
+    chmod +x /usr/bin/ws.py
     chmod 644 /usr/bin/tun.conf
 systemctl disable ws
 systemctl stop ws

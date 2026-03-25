@@ -7,7 +7,7 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-# SL
+# LT
 # ==========================================
 # Color
 RED='\033[0;31m'

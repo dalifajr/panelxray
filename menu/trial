@@ -24,23 +24,29 @@ GREEN='\033[0;32m'
 ORANGE='\033[0;33m'
 LIGHT='\033[0;37m'
 grenbo="\e[92;1m"
-# Getting
+
+# // Getting Bot
 CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
 KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
+
+# //
 ISP=$(curl -s ipinfo.io/org | cut -d " " -f 2-10 )
 CITY=$(curl -s ipinfo.io/city )
 domain=$(cat /etc/xray/domain)
 clear
+
+# // Create Triall
 IP=$(curl -sS ipv4.icanhazip.com)
-Login=Trial-`</dev/urandom tr -dc X-Z0-9 | head -c4`
+Login=wzTxQ`</dev/urandom tr -dc X-Z0-9 | head -c4`
 hari="1"
-Pass=1
+Pass=cr7
 iplimit=99
 ISP=$(cat /etc/xray/isp)
 CITY=$(cat /etc/xray/city)
 clear
+# // MASA AKTIF
 tgl=$(date -d "$masaaktif days" +"%d")
 bln=$(date -d "$masaaktif days" +"%b")
 thn=$(date -d "$masaaktif days" +"%Y")
@@ -145,8 +151,8 @@ echo -e "Port OpenSSH     : 443, 80, 22"
 #echo -e "Port DNS         : 443, 53 ,22 "
 echo -e "Port SSH UDP     : 1-65535"
 echo -e "Port Dropbear    : 443, 109"
-echo -e "Port SSH WS      : 80,8080,8880,2086"
-echo -e "Port SSH SSL WS  : 443"
+echo -e "Port SSH WS      : 80,8080,8880,2086,2082"
+echo -e "Port SSH SSL WS  : 443,8443"
 echo -e "Port SSL/TLS     : 443-900"
 echo -e "Port OVPN WS SSL : 443"
 echo -e "Port OVPN SSL    : 443"
@@ -170,6 +176,6 @@ echo -e "Berakhir Pada  : $pup Menit"
 echo -e "----------------------------------------------------------------------"
 echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "               Premium Script                      "
-echo -e "        Dragon Emperor Tunneling             "
+echo -e "                Welcome, $(cat /usr/bin/user 2>/dev/null || echo User)       "
 echo -e "----------------------------------------------------------------------"
 echo userdel -f "$Login" | at now + $pup minutes &> /dev/null
