@@ -17,8 +17,55 @@ export KEY="6918566731:AAHu5DpfzL6kJY9t726w_guTKX9ehams2SQ"
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
+
+url_encode() {
+  local s="$1"
+  local out=""
+  local i c
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:$i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'${c}")" ;;
+    esac
+  done
+  echo "$out"
+}
+
 # // Create
 domain=$(cat /etc/xray/domain)
+WS_ADDR="$domain"
+WS_HOST="$domain"
+TLS_SNI="$domain"
+PROFILE_LABEL="Tanpa Konfigurasi"
+
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e " PILIH KONFIGURASI CUSTOM SNI"
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e "1) support.zoom.us"
+echo -e "2) live.iflix.com"
+echo -e "3) Tanpa konfigurasi"
+read -rp "Pilih [1-3]: " CFG_CHOICE
+case "$CFG_CHOICE" in
+  1)
+    WS_ADDR="support.zoom.us"
+    WS_HOST="support.zoom.us.${domain}"
+    TLS_SNI="$WS_HOST"
+    PROFILE_LABEL="support.zoom.us"
+    ;;
+  2)
+    WS_ADDR="$domain"
+    WS_HOST="$domain"
+    TLS_SNI="live.iflix.com"
+    PROFILE_LABEL="live.iflix.com"
+    ;;
+  *)
+    WS_ADDR="$domain"
+    WS_HOST="$domain"
+    TLS_SNI="$domain"
+    PROFILE_LABEL="Tanpa Konfigurasi"
+    ;;
+esac
 clear
 until [[ $user =~ ^[a-zA-Z0-9_]+$ && ${CLIENT_EXISTS} == '0' ]]; do
   echo -e "\033[1;93m---------------------------------------------------\033[0m"
@@ -59,9 +106,9 @@ sed -i '/#vless$/a\#& '"$user $exp"'\
 sed -i '/#vlessgrpc$/a\#& '"$user $exp"'\
 },{"id": "'""$uuid""'","email": "'""$user""'"' /etc/xray/config.json
 
-vlesslink1="vless://${uuid}@${domain}:443?path=/vless&security=tls&encryption=none&type=ws&sni=${domain}&allowInsecure=1#${user}"
+vlesslink1="vless://${uuid}@${WS_ADDR}:443?path=/vless&security=tls&encryption=none&type=ws&host=${WS_HOST}&sni=${TLS_SNI}&allowInsecure=1#${user}"
 vlesslink2="vless://${uuid}@${domain}:80?path=/vless&encryption=none&type=ws#${user}"
-vlesslink3="vless://${uuid}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc&sni=${domain}&allowInsecure=1#${user}"
+vlesslink3="vless://${uuid}@${WS_ADDR}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=vless-grpc&sni=${TLS_SNI}&allowInsecure=1#${user}"
 if [ ! -e /etc/vless ]; then
   mkdir -p /etc/vless
 fi
@@ -97,19 +144,19 @@ LUNATIC TUNNELING
 # Format Vless WS TLS
 
 - name: Vless-$user-WS TLS
-  server: ${domain}
+  server: ${WS_ADDR}
   port: 443
   type: vless
   uuid: ${uuid}
   cipher: auto
   tls: true
   skip-cert-verify: true
-  servername: ${domain}
+  servername: ${TLS_SNI}
   network: ws
   ws-opts:
     path: /vless
     headers:
-      Host: ${domain}
+      Host: ${WS_HOST}
 
 # Format Vless WS Non TLS
 
@@ -132,14 +179,14 @@ LUNATIC TUNNELING
 # Format Vless gRPC (SNI)
 
 - name: Vless-$user-gRPC (SNI)
-  server: ${domain}
+  server: ${WS_ADDR}
   port: 443
   type: vless
   uuid: ${uuid}
   cipher: auto
   tls: true
   skip-cert-verify: true
-  servername: ${domain}
+  servername: ${TLS_SNI}
   network: grpc
   grpc-opts:
     grpc-mode: gun
@@ -161,6 +208,13 @@ ${vlesslink3}
 
 END
 
+QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vlesslink1")"
+QR_NTLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vlesslink2")"
+QR_GRPC_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vlesslink3")"
+wget -q -O /var/www/html/vless-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
+wget -q -O /var/www/html/vless-${user}-ntls.png "$QR_NTLS_LINK" >/dev/null 2>&1 || true
+wget -q -O /var/www/html/vless-${user}-grpc.png "$QR_GRPC_LINK" >/dev/null 2>&1 || true
+
 systemctl restart xray
 systemctl restart nginx
 clear
@@ -170,6 +224,7 @@ echo -e " CREATE VLESS ACCOUNT           "
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Remarks     : ${user}"
 echo -e "Domain      : ${domain}"
+echo -e "Config SNI  : ${PROFILE_LABEL}"
 echo -e "User Quota  : ${Quota} GB"
 echo -e "User Ip       : ${iplimit} IP"
 echo -e "port TLS    : 443-900"
@@ -187,6 +242,10 @@ echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Link NTLS   : ${vlesslink2}"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Link GRPC   : ${vlesslink3}"
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e "QR TLS      : https://${domain}:81/vless-${user}-tls.png"
+echo -e "QR NTLS     : https://${domain}:81/vless-${user}-ntls.png"
+echo -e "QR GRPC     : https://${domain}:81/vless-${user}-grpc.png"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Format OpenClash : https://${domain}:81/vless-$user.txt"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"

@@ -17,12 +17,59 @@ KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
+
+url_encode() {
+  local s="$1"
+  local out=""
+  local i c
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:$i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'${c}")" ;;
+    esac
+  done
+  echo "$out"
+}
+
 source /var/lib/kyt/ipvps.conf
 if [[ "$IP" = "" ]]; then
 domain=$(cat /etc/xray/domain)
 else
 domain=$IP
 fi
+WS_ADDR="$domain"
+WS_HOST="$domain"
+TLS_SNI="$domain"
+PROFILE_LABEL="Tanpa Konfigurasi"
+
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e " PILIH KONFIGURASI CUSTOM SNI"
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e "1) support.zoom.us"
+echo -e "2) live.iflix.com"
+echo -e "3) Tanpa konfigurasi"
+read -rp "Pilih [1-3]: " CFG_CHOICE
+case "$CFG_CHOICE" in
+  1)
+    WS_ADDR="support.zoom.us"
+    WS_HOST="support.zoom.us.${domain}"
+    TLS_SNI="$WS_HOST"
+    PROFILE_LABEL="support.zoom.us"
+    ;;
+  2)
+    WS_ADDR="$domain"
+    WS_HOST="$domain"
+    TLS_SNI="live.iflix.com"
+    PROFILE_LABEL="live.iflix.com"
+    ;;
+  *)
+    WS_ADDR="$domain"
+    WS_HOST="$domain"
+    TLS_SNI="$domain"
+    PROFILE_LABEL="Tanpa Konfigurasi"
+    ;;
+esac
 
 #tls="$(cat ~/log-install.txt | grep -w "Vmess TLS" | cut -d: -f2|sed 's/ //g')"
 #none="$(cat ~/log-install.txt | grep -w "Vmess None TLS" | cut -d: -f2|sed 's/ //g')"
@@ -73,16 +120,16 @@ asu=`cat<<EOF
       {
       "v": "2",
       "ps": "${user}",
-      "add": "${domain}",
+  "add": "${WS_ADDR}",
       "port": "443",
       "id": "${uuid}",
       "aid": "0",
       "net": "ws",
       "path": "/vmess",
       "type": "none",
-      "host": "${domain}",
+  "host": "${WS_HOST}",
       "tls": "tls",
-      "sni": "${domain}",
+  "sni": "${TLS_SNI}",
       "allowInsecure": true
 }
 EOF`
@@ -105,16 +152,16 @@ grpc=`cat<<EOF
       {
       "v": "2",
       "ps": "${user}",
-      "add": "${domain}",
+  "add": "${WS_ADDR}",
       "port": "443",
       "id": "${uuid}",
       "aid": "0",
       "net": "grpc",
       "path": "vmess-grpc",
       "type": "none",
-      "host": "${domain}",
+  "host": "${WS_HOST}",
       "tls": "tls",
-      "sni": "${domain}",
+  "sni": "${TLS_SNI}",
       "allowInsecure": true
 }
 EOF`
@@ -137,7 +184,7 @@ Lunatic Tunneling
 
 - name: Vmess-$user-WS TLS
   type: vmess
-  server: ${domain}
+  server: ${WS_ADDR}
   port: 443
   uuid: ${uuid}
   alterId: 0
@@ -145,12 +192,12 @@ Lunatic Tunneling
   udp: true
   tls: true
   skip-cert-verify: true
-  servername: ${domain}
+  servername: ${TLS_SNI}
   network: ws
   ws-opts:
     path: /vmess
     headers:
-      Host: ${domain}
+      Host: ${WS_HOST}
 
 # Format Vmess WS Non TLS
 
@@ -174,7 +221,7 @@ Lunatic Tunneling
 # Format Vmess gRPC
 
 - name: Vmess-$user-gRPC (SNI)
-  server: ${domain}
+  server: ${WS_ADDR}
   port: 443
   type: vmess
   uuid: ${uuid}
@@ -182,7 +229,7 @@ Lunatic Tunneling
   cipher: auto
   network: grpc
   tls: true
-  servername: ${domain}
+  servername: ${TLS_SNI}
   skip-cert-verify: true
   grpc-opts:
     grpc-service-name: vmess-grpc
@@ -201,6 +248,14 @@ ${vmesslink3}
 ---------------------------------------------------
 
 END
+
+QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vmesslink1")"
+QR_NTLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vmesslink2")"
+QR_GRPC_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vmesslink3")"
+wget -q -O /var/www/html/vmess-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
+wget -q -O /var/www/html/vmess-${user}-ntls.png "$QR_NTLS_LINK" >/dev/null 2>&1 || true
+wget -q -O /var/www/html/vmess-${user}-grpc.png "$QR_GRPC_LINK" >/dev/null 2>&1 || true
+
 if [ ! -e /etc/vmess ]; then
   mkdir -p /etc/vmess
 fi
@@ -276,6 +331,7 @@ echo -e " Xray/Vmess Account "
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Remarks          : ${user}"
 echo -e "Domain           : ${domain}"
+echo -e "Config SNI       : ${PROFILE_LABEL}"
 echo -e "User Quota       : ${Quota} GB"
 echo -e "User Ip            : ${iplimit} IP"
 echo -e "Port TLS         : 400-900"
@@ -298,6 +354,10 @@ echo -e "\033[0;34m---------------------------------------------------\033[0m"
 echo -e "Link none TLS    : ${vmesslink2}"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
 echo -e "Link GRPC        : ${vmesslink3}"
+echo -e "\033[0;34m---------------------------------------------------\033[0m"
+echo -e "QR TLS           : https://${domain}:81/vmess-${user}-tls.png"
+echo -e "QR NTLS          : https://${domain}:81/vmess-${user}-ntls.png"
+echo -e "QR GRPC          : https://${domain}:81/vmess-${user}-grpc.png"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
 echo -e "Format OpenClash : https://${domain}:81/vmess-$user.txt"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"

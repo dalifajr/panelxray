@@ -13,6 +13,21 @@ KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
+
+url_encode() {
+  local s="$1"
+  local out=""
+  local i c
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:$i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'${c}")" ;;
+    esac
+  done
+  echo "$out"
+}
+
 #IZIN SCRIPT
 MYIP=$(curl -sS ipv4.icanhazip.com)
 clear
@@ -26,6 +41,38 @@ domain=$(cat /etc/xray/domain)
 else
 domain=$IP
 fi
+WS_ADDR="$domain"
+WS_HOST="$domain"
+TLS_SNI="$domain"
+PROFILE_LABEL="Tanpa Konfigurasi"
+
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e " PILIH KONFIGURASI CUSTOM SNI"
+echo -e "\033[1;93m---------------------------------------------------\033[0m"
+echo -e "1) support.zoom.us"
+echo -e "2) live.iflix.com"
+echo -e "3) Tanpa konfigurasi"
+read -rp "Pilih [1-3]: " CFG_CHOICE
+case "$CFG_CHOICE" in
+  1)
+    WS_ADDR="support.zoom.us"
+    WS_HOST="support.zoom.us.${domain}"
+    TLS_SNI="$WS_HOST"
+    PROFILE_LABEL="support.zoom.us"
+    ;;
+  2)
+    WS_ADDR="$domain"
+    WS_HOST="$domain"
+    TLS_SNI="live.iflix.com"
+    PROFILE_LABEL="live.iflix.com"
+    ;;
+  *)
+    WS_ADDR="$domain"
+    WS_HOST="$domain"
+    TLS_SNI="$domain"
+    PROFILE_LABEL="Tanpa Konfigurasi"
+    ;;
+esac
 #tr="$(cat ~/log-install.txt | grep -w "Trojan WS " | cut -d: -f2|sed 's/ //g')"
 until [[ $user =~ ^[a-zA-Z0-9_]+$ && ${user_EXISTS} == '0' ]]; do
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
@@ -69,8 +116,8 @@ sed -i '/#trojangrpc$/a\#! '"$user $exp"'\
 
 # Link Trojan Akun
 systemctl restart xray
-trojanlink1="trojan://${uuid}@${domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=bug.com#${user}"
-trojanlink="trojan://${uuid}@bugkamu.com:443?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}#${user}"
+trojanlink1="trojan://${uuid}@${WS_ADDR}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${TLS_SNI}&allowInsecure=1#${user}"
+trojanlink="trojan://${uuid}@${WS_ADDR}:443?path=%2Ftrojan-ws&security=tls&host=${WS_HOST}&type=ws&sni=${TLS_SNI}&allowInsecure=1#${user}"
 trojanlink2="trojan://${uuid}@${domain}:80?path=%2Ftrojan-ws&security=none&host=${domain}&type=ws#${user}"
 
 cat >/var/www/html/trojan-$user.txt <<-END
@@ -81,28 +128,28 @@ cat >/var/www/html/trojan-$user.txt <<-END
 # Format Trojan GO/WS
 
 - name: Trojan-$user-GO/WS
-  server: ${domain}
+  server: ${WS_ADDR}
   port: 443
   type: trojan
   password: ${uuid}
   network: ws
-  sni: ${domain}
+  sni: ${TLS_SNI}
   skip-cert-verify: true
   udp: true
   ws-opts:
     path: /trojan-ws
     headers:
-        Host: ${domain}
+      Host: ${WS_HOST}
 
 # Format Trojan gRPC
 
 - name: Trojan-$user-gRPC
   type: trojan
-  server: ${domain}
+  server: ${WS_ADDR}
   port: 443
   password: ${uuid}
   udp: true
-  sni: ${domain}
+  sni: ${TLS_SNI}
   skip-cert-verify: true
   network: grpc
   grpc-opts:
@@ -126,8 +173,14 @@ TEXT="
 systemctl reload xray
 systemctl reload nginx
 service cron restart
-trojanlink="trojan://${uuid}@${domain}:443?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"
-trojanlink1="trojan://${uuid}@${domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${domain}&allowInsecure=1#${user}"
+trojanlink="trojan://${uuid}@${WS_ADDR}:443?path=%2Ftrojan-ws&security=tls&host=${WS_HOST}&type=ws&sni=${TLS_SNI}&allowInsecure=1#${user}"
+trojanlink1="trojan://${uuid}@${WS_ADDR}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${TLS_SNI}&allowInsecure=1#${user}"
+QR_WS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$trojanlink")"
+QR_NTLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$trojanlink2")"
+QR_GRPC_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$trojanlink1")"
+wget -q -O /var/www/html/trojan-${user}-ws.png "$QR_WS_LINK" >/dev/null 2>&1 || true
+wget -q -O /var/www/html/trojan-${user}-ntls.png "$QR_NTLS_LINK" >/dev/null 2>&1 || true
+wget -q -O /var/www/html/trojan-${user}-grpc.png "$QR_GRPC_LINK" >/dev/null 2>&1 || true
 if [ ! -e /etc/trojan ]; then
   mkdir -p /etc/trojan
 fi
@@ -162,6 +215,7 @@ echo -e " XRAY TROJAN ACCOUNT          "
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Remarks          : ${user}" 
 echo -e "Host/IP          : ${domain}"
+echo -e "Config SNI       : ${PROFILE_LABEL}"
 echo -e "User Quota       : ${Quota} GB"
 echo -e "User Ip           : ${iplimit} IP"
 echo -e "Port NTLS        : 443-900" 
@@ -177,6 +231,10 @@ echo -e "\033[0;34m---------------------------------------------------\033[0m"
 echo -e "Link None TLS     : ${trojanlink2}" 
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
 echo -e "Link GRPC        : ${trojanlink1}" 
+echo -e "\033[0;34m---------------------------------------------------\033[0m" 
+echo -e "QR WS            : https://${domain}:81/trojan-${user}-ws.png"
+echo -e "QR NTLS          : https://${domain}:81/trojan-${user}-ntls.png"
+echo -e "QR GRPC          : https://${domain}:81/trojan-${user}-grpc.png"
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
 echo -e "Format OpenClash : https://${domain}:81/trojan-$user.txt" 
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
