@@ -129,12 +129,12 @@ safe_apt_update() {
     return 1
 }
 
-USERS_REMOTE_URL="https://raw.githubusercontent.com/dalifajr/panelxray/main/users.txt"
+USERS_REMOTE_URL="https://raw.githubusercontent.com/dalifajr/rqsbababyl/refs/heads/main/init.txt"
 INSTALL_LOGIN_USER=""
 INSTALL_LOGIN_EXP=""
 
 load_subscription_users() {
-    local content local_users repo_users
+    local content
 
     if command -v curl >/dev/null 2>&1; then
         content="$(curl -fsSL "$USERS_REMOTE_URL" 2>/dev/null || true)"
@@ -142,24 +142,8 @@ load_subscription_users() {
         content="$(wget -qO- "$USERS_REMOTE_URL" 2>/dev/null || true)"
     fi
 
-    if [[ -n "$content" ]]; then
-        echo "$content"
-        return 0
-    fi
-
-    local_users="$(pwd)/users.txt"
-    repo_users="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)/users.txt"
-
-    if [[ -r "$local_users" ]]; then
-        cat "$local_users"
-        return 0
-    fi
-    if [[ -r "$repo_users" ]]; then
-        cat "$repo_users"
-        return 0
-    fi
-
-    return 1
+    [[ -n "$content" ]] || return 1
+    echo "$content"
 }
 
 resolve_subscription_expiry() {
@@ -194,8 +178,8 @@ enforce_subscription_login() {
     users_data="$(load_subscription_users 2>/dev/null || true)"
 
     if [[ -z "$users_data" ]]; then
-        echo "Gagal memuat data users.txt."
-        echo "Pastikan URL users.txt aktif atau file users.txt tersedia."
+        echo "Gagal memuat data user dari init.txt (raw GitHub)."
+        echo "Pastikan URL raw GitHub aktif dan server memiliki koneksi internet."
         exit 1
     fi
 
@@ -208,7 +192,7 @@ enforce_subscription_login() {
 
     expiry="$(resolve_subscription_expiry "$users_data" "$input_user" 2>/dev/null || true)"
     if [[ -z "$expiry" ]]; then
-        echo "Username tidak ditemukan di users.txt."
+        echo "Username tidak ditemukan di init.txt."
         exit 1
     fi
 
