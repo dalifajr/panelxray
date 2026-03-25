@@ -17,6 +17,7 @@ PASS_COUNT=0
 FAIL_COUNT=0
 LAST_HTTP_CODE=000
 LOCAL_EDGE_IP="127.0.0.1"
+TLS_LOCAL_TARGET="127.0.0.1"
 
 report() {
   local proto="$1"
@@ -54,17 +55,28 @@ probe_tls_public() {
 }
 
 probe_tls_local() {
-  echo | openssl s_client -connect "${LOCAL_EDGE_IP}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
+  echo | openssl s_client -connect "${TLS_LOCAL_TARGET}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
+}
+
+http_code_from_curl() {
+  local out code
+  out="$($@ 2>/dev/null || true)"
+  code="${out: -3}"
+  if [[ "$code" =~ ^[0-9]{3}$ ]]; then
+    echo "$code"
+  else
+    echo "000"
+  fi
 }
 
 probe_ws_path() {
   local path="$1"
   local code
-  code="$(curl -4 -k -sS --max-time 8 --http1.1 \
+  code="$(http_code_from_curl curl -k -sS --max-time 8 --http1.1 \
     -H "Host: ${DOMAIN}" \
     -H "Upgrade: websocket" \
     -H "Connection: Upgrade" \
-    -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+    -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}")"
   LAST_HTTP_CODE="$code"
 
   case "$code" in
@@ -72,19 +84,33 @@ probe_ws_path() {
       return 0
       ;;
     *)
-      code="$(curl -4 -k -sS --max-time 8 --http1.1 \
-        --resolve "${DOMAIN}:443:${LOCAL_EDGE_IP}" \
+      code="$(http_code_from_curl curl -k -sS --max-time 8 --http1.1 \
+        --resolve "${DOMAIN}:443:127.0.0.1" \
         -H "Host: ${DOMAIN}" \
         -H "Upgrade: websocket" \
         -H "Connection: Upgrade" \
-        -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+        -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}")"
       LAST_HTTP_CODE="$code"
       case "$code" in
         101|200|301|302|400|401|403|404|426)
           return 0
           ;;
         *)
-          return 1
+          code="$(http_code_from_curl curl -k -sS --max-time 8 --http1.1 \
+            --resolve "${DOMAIN}:443:${LOCAL_EDGE_IP}" \
+            -H "Host: ${DOMAIN}" \
+            -H "Upgrade: websocket" \
+            -H "Connection: Upgrade" \
+            -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}")"
+          LAST_HTTP_CODE="$code"
+          case "$code" in
+            101|200|301|302|400|401|403|404|426)
+              return 0
+              ;;
+            *)
+              return 1
+              ;;
+          esac
           ;;
       esac
       ;;
@@ -94,9 +120,9 @@ probe_ws_path() {
 probe_grpc_path() {
   local path="$1"
   local code
-  code="$(curl -4 -k -sS --max-time 8 --http2 \
+  code="$(http_code_from_curl curl -k -sS --max-time 8 --http2 \
     -H "Host: ${DOMAIN}" \
-    -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+    -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}")"
   LAST_HTTP_CODE="$code"
 
   case "$code" in
@@ -104,17 +130,29 @@ probe_grpc_path() {
       return 0
       ;;
     *)
-      code="$(curl -4 -k -sS --max-time 8 --http2 \
-        --resolve "${DOMAIN}:443:${LOCAL_EDGE_IP}" \
+      code="$(http_code_from_curl curl -k -sS --max-time 8 --http2 \
+        --resolve "${DOMAIN}:443:127.0.0.1" \
         -H "Host: ${DOMAIN}" \
-        -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}" 2>/dev/null || echo 000)"
+        -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}")"
       LAST_HTTP_CODE="$code"
       case "$code" in
         200|204|400|401|403|404|405|415|421|426)
           return 0
           ;;
         *)
-          return 1
+          code="$(http_code_from_curl curl -k -sS --max-time 8 --http2 \
+            --resolve "${DOMAIN}:443:${LOCAL_EDGE_IP}" \
+            -H "Host: ${DOMAIN}" \
+            -o /dev/null -w "%{http_code}" "https://${DOMAIN}${path}")"
+          LAST_HTTP_CODE="$code"
+          case "$code" in
+            200|204|400|401|403|404|405|415|421|426)
+              return 0
+              ;;
+            *)
+              return 1
+              ;;
+          esac
           ;;
       esac
       ;;
@@ -205,10 +243,16 @@ fi
 report "SYSTEM" "TLS Handshake Public" "$TLS_PUBLIC_OK" "${DOMAIN}:443"
 
 TLS_LOCAL_OK=0
+TLS_LOCAL_TARGET="127.0.0.1"
 if probe_tls_local; then
   TLS_LOCAL_OK=1
+else
+  TLS_LOCAL_TARGET="$LOCAL_EDGE_IP"
+  if probe_tls_local; then
+    TLS_LOCAL_OK=1
+  fi
 fi
-report "SYSTEM" "TLS Handshake Local" "$TLS_LOCAL_OK" "${LOCAL_EDGE_IP}:443 (SNI ${DOMAIN})"
+report "SYSTEM" "TLS Handshake Local" "$TLS_LOCAL_OK" "${TLS_LOCAL_TARGET}:443 (SNI ${DOMAIN})"
 
 echo
 
