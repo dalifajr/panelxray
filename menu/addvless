@@ -142,7 +142,7 @@ LUNATIC TUNNELING
   servername: ${domain}
   network: grpc
   grpc-opts:
-  grpc-mode: gun
+    grpc-mode: gun
     grpc-service-name: vless-grpc
 
 ---------------------------------------------------

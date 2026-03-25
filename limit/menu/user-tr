@@ -80,7 +80,7 @@ cat >/var/www/html/trojan-$user.txt <<-END
   skip-cert-verify: true
   network: grpc
   grpc-opts:
-  grpc-service-name: trojan-grpc
+    grpc-service-name: trojan-grpc
   
 END
 trojanlink="trojan://${uuid}@${domain}:443?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"

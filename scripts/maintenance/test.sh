@@ -240,7 +240,7 @@ clear
 cat >/etc/systemd/system/vmip.service << EOF
 [Unit]
 Description=LIMIT IP VMESS
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root
@@ -257,7 +257,7 @@ systemctl enable vmip
 cat >/etc/systemd/system/vlip.service << EOF
 [Unit]
 Description=LIMIT IP VLESS
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root
@@ -274,7 +274,7 @@ systemctl enable vlip
 cat >/etc/systemd/system/trip.service << EOF
 [Unit]
 Description=LIMIT IP TROJAN
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root
@@ -291,7 +291,7 @@ systemctl enable trip
 cat >/etc/systemd/system/ssip.service << EOF
 [Unit]
 Description=LIMIT IP Shadowsocks
-ProjectAfter=network.target
+After=network.target
 
 [Service]
 WorkingDirectory=/root

@@ -97,6 +97,9 @@ grpc=`cat<<EOF
       "allowInsecure": true
 }
 EOF`
+    vmesslink1="vmess://$(echo $asu | base64 -w 0)"
+    vmesslink2="vmess://$(echo $ask | base64 -w 0)"
+    vmesslink3="vmess://$(echo $grpc | base64 -w 0)"
 cat >/var/www/html/vmess-$user.txt <<-END
 
 ◇━━━━━━━━━━━━━━━━━◇
@@ -170,9 +173,6 @@ ${vmesslink3}
 ◇━━━━━━━━━━━━━━━━━◇
 
 END
-vmesslink1="vmess://$(echo $asu | base64 -w 0)"
-vmesslink2="vmess://$(echo $ask | base64 -w 0)"
-vmesslink3="vmess://$(echo $grpc | base64 -w 0)"
 
 clear
 echo -e ""
@@ -183,7 +183,7 @@ echo -e "Remarks          : ${user}"
 echo -e "Status           : ${status_badge}"
 echo -e "Domain           : ${domain}"
 echo -e "User Quota       : ${Quota} GB"
-echo -e "User Ip            : ${iplimit} IP"
+echo -e "User Ip            : ${iplim} IP"
 echo -e "Port TLS         : 400-900"
 echo -e "Port none TLS    : 80, 8080, 8081-9999"
 echo -e "id               : ${uuid}"
