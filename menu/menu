@@ -13,22 +13,8 @@ green='\033[0;32m'
 red='\033[0;31m'
 NC='\033[0m'
 
-MYIP="$(curl -sS ipv4.icanhazip.com)"
-LICENSE_URL_PRIMARY="https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci"
-LICENSE_URL_FALLBACK="https://raw.githubusercontent.com/nishikazekazata/izin/main/ip"
-
-get_license_line() {
-  local line
-  line="$(curl -sS "$LICENSE_URL_PRIMARY" | awk -v ip="$MYIP" '$1==ip {print; exit}')"
-  if [[ -z "$line" ]]; then
-    line="$(curl -sS "$LICENSE_URL_FALLBACK" | awk -v ip="$MYIP" '$1==ip {print; exit}')"
-  fi
-  echo "$line"
-}
-
-license_line="$(get_license_line)"
-username="$(echo "$license_line" | awk '{print $2}')"
-expiry_date="$(echo "$license_line" | awk '{print $3}')"
+username="$(cat /usr/bin/user 2>/dev/null)"
+expiry_date="$(cat /usr/bin/e 2>/dev/null)"
 [[ -z "$username" ]] && username="User"
 [[ -z "$expiry_date" ]] && expiry_date="Unknown"
 
@@ -142,6 +128,7 @@ thm_menu_item 12 "MENU BOT"
 thm_menu_item 13 "UNINSTALL PANEL"
 thm_menu_item 14 "UPDATE PROGRAM"
 thm_menu_item 15 "STATUS SERVICE"
+thm_menu_item 16 "ZI-VPN PANEL (OPSIONAL)"
 
 thm_section "SCRIPT INFO"
 thm_info_row "CLIENT" "$username"
@@ -151,7 +138,7 @@ thm_info_row "DAYS LEFT" "$days_left"
 
 thm_footer
 echo
-read -rp "Options [ 1 - 15 ] >>> " opt
+read -rp "Options [ 1 - 16 ] >>> " opt
 echo
 
 case "$opt" in
@@ -170,5 +157,6 @@ case "$opt" in
 13) clear ; uninstall-panel ;;
 14) clear ; cek-update ;;
 15) clear ; cek-service ;;
+16) clear ; zi-vpn ;;
 *) clear ; menu ;;
 esac

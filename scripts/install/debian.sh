@@ -66,6 +66,76 @@ safe_apt_update() {
     return 1
 }
 
+INSTALL_PASS_CONF_LOCAL="$(cd "$(dirname "$0")/../.." && pwd)/installer-password.conf"
+INSTALL_PASS_CONF_SYSTEM="/etc/panelxray/installer-password.conf"
+
+load_installer_password() {
+    local conf
+    for conf in "$INSTALL_PASS_CONF_LOCAL" "$INSTALL_PASS_CONF_SYSTEM"; do
+        [[ -r "$conf" ]] || continue
+        # shellcheck disable=SC1090
+        . "$conf"
+        if [[ -n "$INSTALLER_PASSWORD" ]]; then
+            echo "$INSTALLER_PASSWORD"
+            return 0
+        fi
+    done
+    return 1
+}
+
+save_installer_password() {
+    local pass="$1"
+    local out_path="$INSTALL_PASS_CONF_SYSTEM"
+
+    if ! mkdir -p "$(dirname "$out_path")" 2>/dev/null; then
+        out_path="$INSTALL_PASS_CONF_LOCAL"
+    fi
+
+    cat > "$out_path" <<EOF
+# Installer password configuration for PanelXray
+# Change this value to control installer access.
+INSTALLER_PASSWORD=$(printf '%q' "$pass")
+EOF
+    chmod 600 "$out_path" 2>/dev/null || true
+}
+
+enforce_installer_password() {
+    local expected input first second
+    expected="$(load_installer_password 2>/dev/null || true)"
+
+    if [[ -z "$expected" ]]; then
+        echo "Installer password belum dikonfigurasi."
+        echo "Buat password baru untuk memulai instalasi."
+        while true; do
+            read -rsp "Password baru: " first
+            echo
+            read -rsp "Ulangi password: " second
+            echo
+            if [[ -z "$first" ]]; then
+                echo "Password tidak boleh kosong."
+                continue
+            fi
+            if [[ "$first" != "$second" ]]; then
+                echo "Password tidak sama, ulangi lagi."
+                continue
+            fi
+            save_installer_password "$first"
+            expected="$first"
+            echo "Password installer berhasil disimpan."
+            break
+        done
+    fi
+
+    read -rsp "Masukkan password installer: " input
+    echo
+    if [[ "$input" != "$expected" ]]; then
+        echo "Password installer salah. Proses dibatalkan."
+        exit 1
+    fi
+}
+
+enforce_installer_password
+
 sanitize_apt_sources
 safe_apt_update
 apt upgrade -y
@@ -165,9 +235,9 @@ clear
 #########################
 # USERNAME
 rm -f /usr/bin/user
-username=$(curl https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $MYIP | awk '{print $2}')
+username="$(hostname -s 2>/dev/null || echo User)"
 echo "$username" >/usr/bin/user
-expx=$(curl https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $MYIP | awk '{print $3}')
+expx="Lifetime"
 echo "$expx" >/usr/bin/e
 # DETAIL ORDER
 username=$(cat /usr/bin/user)
@@ -175,6 +245,8 @@ oid=$(cat /usr/bin/ver)
 exp=$(cat /usr/bin/e)
 clear
 # CERTIFICATE STATUS
+valid="$exp"
+today=$(date -d "0 days" +"%Y-%m-%d")
 d1=$(date -d "$valid" +%s)
 d2=$(date -d "$today" +%s)
 certifacate=$(((d1 - d2) / 86400))
@@ -190,8 +262,8 @@ mai="datediff "$Exp" "$DATE""
 # Status ExpiRED Active | Geo Project
 Info="(${green}Active${NC})"
 Error="(${RED}ExpiRED${NC})"
-today=`date -d "0 days" +"%Y-%m-%d"`
-Exp1=$(curl https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $MYIP | awk '{print $4}')
+today=$(date -d "0 days" +"%Y-%m-%d")
+Exp1="$exp"
 if [[ $today < $Exp1 ]]; then
 sts="${Info}"
 else
@@ -450,8 +522,8 @@ clear
 clear
 # // GANTI PASSWORD DEFAULT
 restart_system() {
-    USRSC=$(wget -qO- https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $ipsaya | awk '{print $2}')
-    EXPSC=$(wget -qO- https://raw.githubusercontent.com/dalifajr/panelxray/main/kunci | grep $ipsaya | awk '{print $3}')
+    USRSC=$(cat /usr/bin/user 2>/dev/null || echo User)
+    EXPSC=$(cat /usr/bin/e 2>/dev/null || echo Lifetime)
     TIMEZONE=$(printf '%(%H:%M:%S)T')
     TEXT="
 <code>────────────────────</code>

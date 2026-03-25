@@ -1,0 +1,160 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+NC='\033[0m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+
+ZIVPN_INSTALL_URL="https://raw.githubusercontent.com/dalifajr/panelxray/main/scripts/maintenance/zi-vpn.sh"
+
+pause_back() {
+  echo
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+}
+
+zivpn_status() {
+  if systemctl is-active --quiet zivpn 2>/dev/null || systemctl is-active --quiet zi-vpn 2>/dev/null; then
+    echo -e "${GREEN}AKTIF${NC}"
+  elif systemctl list-unit-files 2>/dev/null | grep -qE '^(zivpn|zi-vpn)\.service'; then
+    echo -e "${RED}TIDAK AKTIF${NC}"
+  else
+    echo -e "${YELLOW}BELUM TERPASANG${NC}"
+  fi
+}
+
+run_zivpn_installer() {
+  local tmp_script
+
+  if [[ -x /usr/local/sbin/zi-vpn.sh ]]; then
+    /usr/local/sbin/zi-vpn.sh
+    return
+  fi
+
+  if [[ -x /usr/local/sbin/zivpn.sh ]]; then
+    /usr/local/sbin/zivpn.sh
+    return
+  fi
+
+  if [[ -r /usr/local/sbin/scripts/maintenance/zi-vpn.sh ]]; then
+    bash /usr/local/sbin/scripts/maintenance/zi-vpn.sh
+    return
+  fi
+
+  if [[ -r /root/zi-vpn.sh ]]; then
+    bash /root/zi-vpn.sh
+    return
+  fi
+
+  tmp_script="/tmp/zi-vpn-setup.sh"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$ZIVPN_INSTALL_URL" -o "$tmp_script"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$tmp_script" "$ZIVPN_INSTALL_URL"
+  else
+    echo -e "${RED}curl/wget tidak tersedia.${NC}"
+    return
+  fi
+
+  if [[ -s "$tmp_script" ]]; then
+    chmod +x "$tmp_script"
+    bash "$tmp_script"
+    rm -f "$tmp_script"
+    return
+  fi
+
+  rm -f "$tmp_script"
+  echo -e "${RED}Installer ZI-VPN tidak ditemukan.${NC}"
+}
+
+run_zivpn_manage() {
+  if command -v zivpn-menu >/dev/null 2>&1; then
+    zivpn-menu
+    return
+  fi
+
+  if [[ -x /usr/local/sbin/zivpn-menu ]]; then
+    /usr/local/sbin/zivpn-menu
+    return
+  fi
+
+  if command -v zi-vpn >/dev/null 2>&1; then
+    zi-vpn
+    return
+  fi
+
+  if [[ -x /usr/local/sbin/zi-vpn ]]; then
+    /usr/local/sbin/zi-vpn
+    return
+  fi
+
+  echo -e "${YELLOW}ZI-VPN belum terpasang. Jalankan Install terlebih dahulu.${NC}"
+}
+
+show_status() {
+  clear
+  if declare -F thm_title >/dev/null; then
+    thm_title "ZI-VPN PANEL"
+    thm_info_row "Status" "$(zivpn_status)"
+    thm_info_row "Manage CMD" "zivpn-menu"
+    thm_info_row "Fallback CMD" "zi-vpn"
+    thm_footer
+  else
+    echo -e "ZI-VPN PANEL"
+    echo -e "Status      : $(zivpn_status)"
+    echo -e "Manage CMD  : zivpn-menu"
+    echo -e "Fallback CMD: zi-vpn"
+  fi
+  pause_back
+}
+
+while true; do
+  clear
+  if declare -F thm_title >/dev/null; then
+    thm_title "MENU ZI-VPN (OPSIONAL)"
+    thm_menu_item 1 "Install ZI-VPN"
+    thm_menu_item 2 "Manage ZI-VPN"
+    thm_menu_item 3 "Status ZI-VPN"
+    thm_menu_item 0 "Back To Main Menu"
+    thm_footer
+  else
+    echo -e "MENU ZI-VPN (OPSIONAL)"
+    echo -e "[1] Install ZI-VPN"
+    echo -e "[2] Manage ZI-VPN"
+    echo -e "[3] Status ZI-VPN"
+    echo -e "[0] Back To Main Menu"
+  fi
+
+  echo
+  read -rp "Select [ 0 - 3 ] : " opt
+  case "$opt" in
+    1)
+      clear
+      run_zivpn_installer
+      pause_back
+      ;;
+    2)
+      clear
+      run_zivpn_manage
+      pause_back
+      ;;
+    3)
+      show_status
+      ;;
+    0)
+      clear
+      menu
+      exit 0
+      ;;
+    *)
+      echo -e "${YELLOW}Pilihan tidak valid.${NC}"
+      sleep 1
+      ;;
+  esac
+done
