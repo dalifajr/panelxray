@@ -43,8 +43,8 @@
                {
                  "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
 #vless
-    #& adminroot 2033-02-11
-    },{"id": "aefdf9f7-97de-4372-bcc7-219654c4674b","email": "adminroot"
+#& adminroot 2033-02-11
+},{"id": "aefdf9f7-97de-4372-bcc7-219654c4674b","email": "adminroot"
              }
           ]
        },
@@ -65,36 +65,36 @@
                  "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
                  "alterId": 0
 #vmess
-    ### saftaZOOM 2300-01-04
-    },{"id": "ebe45926-d73d-48e8-b997-7287852b0d45","alterId": 0,"email": "saftaZOOM"
-    ### gun 2053-08-06
-    },{"id": "0ac65a5a-495b-43f2-a1c0-e48da97c5e0f","alterId": 0,"email": "gun"
-    ### naufalZOOM 2026-04-18
-    },{"id": "2afe4b76-191a-466b-a061-af6815fcd54f","alterId": 0,"email": "naufalZOOM"
-    ### atminZOOM 2299-12-26
-    },{"id": "36dbb9ea-fc8a-4ece-a791-294e6a1c05e6","alterId": 0,"email": "atminZOOM"
-    ### ociZOOM 2026-04-12
-    },{"id": "7f3758ba-2609-4083-830d-204a9f438dde","alterId": 0,"email": "ociZOOM"
-    ### ecaZOOM 2026-04-08
-    },{"id": "de3fc1c3-d7d4-4aa4-a0ca-2299a325b1b2","alterId": 0,"email": "ecaZOOM"
-    ### wisnuZOOM 2026-04-01
-    },{"id": "67f2c346-cc60-4b20-9a35-b833a040f176","alterId": 0,"email": "wisnuZOOM"
-    ### hafidzZOOM 2026-04-26
-    },{"id": "5764ecc1-7a00-4f61-ad67-e91c08809d2c","alterId": 0,"email": "hafidzZOOM"
-    ### dwikodriyahZOOM 2026-04-13
-    },{"id": "326271c6-559a-470e-8ebd-81b24e042522","alterId": 0,"email": "dwikodriyahZOOM"
-    ### bagusrikoZOOM 2026-05-18
-    },{"id": "1bca07e6-06d8-413f-9343-0a0029c1e06b","alterId": 0,"email": "bagusrikoZOOM"
-    ### lolotZOOM 2026-04-11
-    },{"id": "6375b652-f125-42ff-9c53-02067254d42b","alterId": 0,"email": "lolotZOOM"
-    ### settoZOOM 2026-04-10
-    },{"id": "8602c0b7-9924-45ef-a29a-39d7e7379cd8","alterId": 0,"email": "settoZOOM"
-    ### almajidstore2 2026-05-01
-    },{"id": "5ac5bb28-3876-48bd-be73-66830eea82ab","alterId": 0,"email": "almajidstore2"
-    ### adminbosku 2026-11-25
-    },{"id": "a5903ad7-84eb-4932-8c18-10ea6599705c","alterId": 0,"email": "adminbosku"
-    ### zikin 2028-05-09
-    },{"id": "5683e477-a8df-4eda-ae99-a2d2a53eedf4","alterId": 0,"email": "zikin"
+### saftaZOOM 2300-01-04
+},{"id": "ebe45926-d73d-48e8-b997-7287852b0d45","alterId": 0,"email": "saftaZOOM"
+### gun 2053-08-06
+},{"id": "0ac65a5a-495b-43f2-a1c0-e48da97c5e0f","alterId": 0,"email": "gun"
+### naufalZOOM 2026-04-18
+},{"id": "2afe4b76-191a-466b-a061-af6815fcd54f","alterId": 0,"email": "naufalZOOM"
+### atminZOOM 2299-12-26
+},{"id": "36dbb9ea-fc8a-4ece-a791-294e6a1c05e6","alterId": 0,"email": "atminZOOM"
+### ociZOOM 2026-04-12
+},{"id": "7f3758ba-2609-4083-830d-204a9f438dde","alterId": 0,"email": "ociZOOM"
+### ecaZOOM 2026-04-08
+},{"id": "de3fc1c3-d7d4-4aa4-a0ca-2299a325b1b2","alterId": 0,"email": "ecaZOOM"
+### wisnuZOOM 2026-04-01
+},{"id": "67f2c346-cc60-4b20-9a35-b833a040f176","alterId": 0,"email": "wisnuZOOM"
+### hafidzZOOM 2026-04-26
+},{"id": "5764ecc1-7a00-4f61-ad67-e91c08809d2c","alterId": 0,"email": "hafidzZOOM"
+### dwikodriyahZOOM 2026-04-13
+},{"id": "326271c6-559a-470e-8ebd-81b24e042522","alterId": 0,"email": "dwikodriyahZOOM"
+### bagusrikoZOOM 2026-05-18
+},{"id": "1bca07e6-06d8-413f-9343-0a0029c1e06b","alterId": 0,"email": "bagusrikoZOOM"
+### lolotZOOM 2026-04-11
+},{"id": "6375b652-f125-42ff-9c53-02067254d42b","alterId": 0,"email": "lolotZOOM"
+### settoZOOM 2026-04-10
+},{"id": "8602c0b7-9924-45ef-a29a-39d7e7379cd8","alterId": 0,"email": "settoZOOM"
+### almajidstore2 2026-05-01
+},{"id": "5ac5bb28-3876-48bd-be73-66830eea82ab","alterId": 0,"email": "almajidstore2"
+### adminbosku 2026-11-25
+},{"id": "a5903ad7-84eb-4932-8c18-10ea6599705c","alterId": 0,"email": "adminbosku"
+### zikin 2028-05-09
+},{"id": "5683e477-a8df-4eda-ae99-a2d2a53eedf4","alterId": 0,"email": "zikin"
              }
           ]
        },
@@ -179,36 +179,36 @@
                  "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
                  "alterId": 0
 #vmessgrpc
-    ### saftaZOOM 2300-01-04
-    },{"id": "ebe45926-d73d-48e8-b997-7287852b0d45","alterId": 0,"email": "saftaZOOM"
-    ### gun 2053-08-06
-    },{"id": "0ac65a5a-495b-43f2-a1c0-e48da97c5e0f","alterId": 0,"email": "gun"
-    ### naufalZOOM 2026-04-18
-    },{"id": "2afe4b76-191a-466b-a061-af6815fcd54f","alterId": 0,"email": "naufalZOOM"
-    ### atminZOOM 2299-12-26
-    },{"id": "36dbb9ea-fc8a-4ece-a791-294e6a1c05e6","alterId": 0,"email": "atminZOOM"
-    ### ociZOOM 2026-04-12
-    },{"id": "7f3758ba-2609-4083-830d-204a9f438dde","alterId": 0,"email": "ociZOOM"
-    ### ecaZOOM 2026-04-08
-    },{"id": "de3fc1c3-d7d4-4aa4-a0ca-2299a325b1b2","alterId": 0,"email": "ecaZOOM"
-    ### wisnuZOOM 2026-04-01
-    },{"id": "67f2c346-cc60-4b20-9a35-b833a040f176","alterId": 0,"email": "wisnuZOOM"
-    ### hafidzZOOM 2026-04-26
-    },{"id": "5764ecc1-7a00-4f61-ad67-e91c08809d2c","alterId": 0,"email": "hafidzZOOM"
-    ### dwikodriyahZOOM 2026-04-13
-    },{"id": "326271c6-559a-470e-8ebd-81b24e042522","alterId": 0,"email": "dwikodriyahZOOM"
-    ### bagusrikoZOOM 2026-05-18
-    },{"id": "1bca07e6-06d8-413f-9343-0a0029c1e06b","alterId": 0,"email": "bagusrikoZOOM"
-    ### lolotZOOM 2026-04-11
-    },{"id": "6375b652-f125-42ff-9c53-02067254d42b","alterId": 0,"email": "lolotZOOM"
-    ### settoZOOM 2026-04-10
-    },{"id": "8602c0b7-9924-45ef-a29a-39d7e7379cd8","alterId": 0,"email": "settoZOOM"
-    ### almajidstore2 2026-05-01
-    },{"id": "5ac5bb28-3876-48bd-be73-66830eea82ab","alterId": 0,"email": "almajidstore2"
-    ### adminbosku 2026-11-25
-    },{"id": "a5903ad7-84eb-4932-8c18-10ea6599705c","alterId": 0,"email": "adminbosku"
-    ### zikin 2028-05-09
-    },{"id": "5683e477-a8df-4eda-ae99-a2d2a53eedf4","alterId": 0,"email": "zikin"
+### saftaZOOM 2300-01-04
+},{"id": "ebe45926-d73d-48e8-b997-7287852b0d45","alterId": 0,"email": "saftaZOOM"
+### gun 2053-08-06
+},{"id": "0ac65a5a-495b-43f2-a1c0-e48da97c5e0f","alterId": 0,"email": "gun"
+### naufalZOOM 2026-04-18
+},{"id": "2afe4b76-191a-466b-a061-af6815fcd54f","alterId": 0,"email": "naufalZOOM"
+### atminZOOM 2299-12-26
+},{"id": "36dbb9ea-fc8a-4ece-a791-294e6a1c05e6","alterId": 0,"email": "atminZOOM"
+### ociZOOM 2026-04-12
+},{"id": "7f3758ba-2609-4083-830d-204a9f438dde","alterId": 0,"email": "ociZOOM"
+### ecaZOOM 2026-04-08
+},{"id": "de3fc1c3-d7d4-4aa4-a0ca-2299a325b1b2","alterId": 0,"email": "ecaZOOM"
+### wisnuZOOM 2026-04-01
+},{"id": "67f2c346-cc60-4b20-9a35-b833a040f176","alterId": 0,"email": "wisnuZOOM"
+### hafidzZOOM 2026-04-26
+},{"id": "5764ecc1-7a00-4f61-ad67-e91c08809d2c","alterId": 0,"email": "hafidzZOOM"
+### dwikodriyahZOOM 2026-04-13
+},{"id": "326271c6-559a-470e-8ebd-81b24e042522","alterId": 0,"email": "dwikodriyahZOOM"
+### bagusrikoZOOM 2026-05-18
+},{"id": "1bca07e6-06d8-413f-9343-0a0029c1e06b","alterId": 0,"email": "bagusrikoZOOM"
+### lolotZOOM 2026-04-11
+},{"id": "6375b652-f125-42ff-9c53-02067254d42b","alterId": 0,"email": "lolotZOOM"
+### settoZOOM 2026-04-10
+},{"id": "8602c0b7-9924-45ef-a29a-39d7e7379cd8","alterId": 0,"email": "settoZOOM"
+### almajidstore2 2026-05-01
+},{"id": "5ac5bb28-3876-48bd-be73-66830eea82ab","alterId": 0,"email": "almajidstore2"
+### adminbosku 2026-11-25
+},{"id": "a5903ad7-84eb-4932-8c18-10ea6599705c","alterId": 0,"email": "adminbosku"
+### zikin 2028-05-09
+},{"id": "5683e477-a8df-4eda-ae99-a2d2a53eedf4","alterId": 0,"email": "zikin"
              }
           ]
        },
@@ -264,33 +264,7 @@
   "outbounds": [
     {
       "protocol": "freedom",
-      "settings": {},
-      "tag": "direct"
-    },
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "proxy"
-    },
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "dnsOut"
-    },
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "api"
-    },
-    {
-      "protocol": "blackhole",
-      "settings": {},
-      "tag": "block"
-    },
-    {
-      "protocol": "blackhole",
-      "settings": {},
-      "tag": "reject"
+      "settings": {}
     },
     {
       "protocol": "blackhole",
