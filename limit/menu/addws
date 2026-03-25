@@ -81,7 +81,9 @@ asu=`cat<<EOF
       "path": "/vmess",
       "type": "none",
       "host": "${domain}",
-      "tls": "tls"
+      "tls": "tls",
+      "sni": "${domain}",
+      "allowInsecure": true
 }
 EOF`
 ask=`cat<<EOF
@@ -111,7 +113,9 @@ grpc=`cat<<EOF
       "path": "vmess-grpc",
       "type": "none",
       "host": "${domain}",
-      "tls": "tls"
+      "tls": "tls",
+      "sni": "${domain}",
+      "allowInsecure": true
 }
 EOF`
 vmess_base641=$( base64 -w 0 <<< $vmess_json1)
