@@ -59,7 +59,7 @@ if [[ -z "$domain" ]]; then
   exit 1
 fi
 
-mkdir -p /etc/xray /etc/haproxy
+mkdir -p /etc/xray /etc/haproxy /etc/haproxy/certs
 
 ACME_BIN="/root/.acme.sh/acme.sh"
 if [[ ! -x "$ACME_BIN" ]]; then
@@ -113,6 +113,7 @@ fi
 print_step "Menggabungkan xray.crt + xray.key menjadi hap.pem"
 cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/haproxy/hap.pem
 chmod 600 /etc/haproxy/hap.pem
+cp -f /etc/haproxy/hap.pem /etc/haproxy/certs/default.pem 2>/dev/null || true
 
 print_step "Validasi konfigurasi nginx"
 nginx_cfg_ok=1

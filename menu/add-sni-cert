@@ -1,0 +1,141 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+set -e
+
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+print_step() {
+  echo -e "${GREEN}[*]${NC} $1"
+}
+
+print_warn() {
+  echo -e "${YELLOW}[!]${NC} $1"
+}
+
+print_err() {
+  echo -e "${RED}[x]${NC} $1"
+}
+
+print_ok() {
+  echo -e "${GREEN}[OK]${NC} $1"
+}
+
+clear
+if declare -F thm_title >/dev/null; then
+  thm_title "TAMBAH CERT CUSTOM SNI"
+fi
+
+main_domain="$(cat /etc/xray/domain 2>/dev/null || true)"
+if [[ -z "$main_domain" ]]; then
+  main_domain="$(cat /root/domain 2>/dev/null || true)"
+fi
+
+read -rp "Masukkan domain SNI custom (contoh: cdn.example.com): " sni_domain
+sni_domain="${sni_domain,,}"
+
+if [[ -z "$sni_domain" ]]; then
+  print_err "Domain kosong."
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+  utility
+  exit 1
+fi
+
+if [[ "$sni_domain" =~ [^a-z0-9.-] || "$sni_domain" != *.* ]]; then
+  print_err "Format domain tidak valid: $sni_domain"
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+  utility
+  exit 1
+fi
+
+if [[ -n "$main_domain" && "$sni_domain" == "$main_domain" ]]; then
+  print_warn "Domain sama dengan domain utama. Gunakan fix-xray-hap untuk domain utama."
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+  utility
+  exit 0
+fi
+
+mkdir -p /etc/haproxy/certs /etc/ssl/private
+ACME_BIN="/root/.acme.sh/acme.sh"
+
+if [[ ! -x "$ACME_BIN" ]]; then
+  print_step "Menginstal acme.sh"
+  curl -fsSL https://get.acme.sh | sh -s email=admin@${sni_domain} >/dev/null 2>&1 || true
+fi
+
+if [[ ! -x "$ACME_BIN" ]]; then
+  print_err "acme.sh tidak tersedia."
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+  utility
+  exit 1
+fi
+
+crt_file="/etc/haproxy/certs/${sni_domain}.crt"
+key_file="/etc/haproxy/certs/${sni_domain}.key"
+pem_file="/etc/haproxy/certs/${sni_domain}.pem"
+
+print_step "Stop sementara nginx/haproxy untuk issuance standalone"
+systemctl stop nginx >/dev/null 2>&1 || true
+systemctl stop haproxy >/dev/null 2>&1 || true
+
+issue_ok=0
+print_step "Request cert Let's Encrypt untuk ${sni_domain}"
+$ACME_BIN --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+if $ACME_BIN --issue -d "$sni_domain" --standalone -k ec-256 --force >/dev/null 2>&1; then
+  if $ACME_BIN --install-cert -d "$sni_domain" --ecc --fullchain-file "$crt_file" --key-file "$key_file" >/dev/null 2>&1; then
+    issue_ok=1
+  fi
+fi
+
+if [[ "$issue_ok" -ne 1 ]]; then
+  print_err "Gagal membuat cert untuk ${sni_domain}. Pastikan domain sudah pointing ke VPS dan port 80 bebas."
+  systemctl restart nginx >/dev/null 2>&1 || true
+  systemctl restart haproxy >/dev/null 2>&1 || true
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+  utility
+  exit 1
+fi
+
+cat "$crt_file" "$key_file" > "$pem_file"
+chmod 600 "$pem_file"
+
+print_step "Validasi konfigurasi HAProxy"
+if ! haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+  print_err "Konfigurasi HAProxy invalid setelah penambahan cert."
+  rm -f "$crt_file" "$key_file" "$pem_file"
+  systemctl restart nginx >/dev/null 2>&1 || true
+  systemctl restart haproxy >/dev/null 2>&1 || true
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+  utility
+  exit 1
+fi
+
+print_step "Restart service"
+systemctl restart xray >/dev/null 2>&1 || true
+systemctl restart nginx >/dev/null 2>&1 || true
+systemctl restart haproxy >/dev/null 2>&1 || true
+
+hap_active="$(systemctl is-active haproxy 2>/dev/null || echo inactive)"
+ngx_active="$(systemctl is-active nginx 2>/dev/null || echo inactive)"
+
+if [[ "$hap_active" == "active" && "$ngx_active" == "active" ]]; then
+  print_ok "Custom SNI siap: ${sni_domain}"
+  echo -e "- Cert file : ${pem_file}"
+  echo -e "- Status    : haproxy=${hap_active}, nginx=${ngx_active}"
+  echo -e "- Catatan   : client tetap harus pakai path/protocol yang benar; SNI bisa ${sni_domain}"
+else
+  print_warn "Sertifikat tersimpan, tapi ada service yang belum active."
+  echo -e "- haproxy: ${hap_active}"
+  echo -e "- nginx  : ${ngx_active}"
+fi
+
+echo
+read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
+utility

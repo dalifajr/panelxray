@@ -702,8 +702,10 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     curl ${REPO}limit/nginx.conf > /etc/nginx/nginx.conf
     validate_nginx_config
 
+    mkdir -p /etc/haproxy/certs
     if [[ -f /etc/xray/xray.crt && -f /etc/xray/xray.key ]]; then
         cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem >/dev/null
+        cp -f /etc/haproxy/hap.pem /etc/haproxy/certs/default.pem 2>/dev/null || true
     fi
 
     if [[ ! -s /etc/haproxy/hap.pem ]]; then
@@ -747,7 +749,7 @@ validate_haproxy_config() {
     local log_file backup_file domain
     log_file="/var/log/panelxray-haproxy-check.log"
     domain="$(cat /etc/xray/domain 2>/dev/null || echo localhost)"
-    mkdir -p /etc/haproxy
+    mkdir -p /etc/haproxy /etc/haproxy/certs
     touch "$log_file" 2>/dev/null || true
 
     if [[ ! -s /etc/haproxy/haproxy.cfg ]]; then
