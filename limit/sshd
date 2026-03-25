@@ -123,3 +123,10 @@ Subsystem	sftp	/usr/lib/openssh/sftp-server
 #	PermitTTY no
 #	ForceCommand cvs server
 Banner /etc/kyt.txt
+
+# Compatibility profile for legacy HTTP Custom SSH clients.
+KexAlgorithms +diffie-hellman-group14-sha1,diffie-hellman-group1-sha1
+Ciphers +aes256-ctr,aes192-ctr,aes128-ctr
+MACs +hmac-sha2-256,hmac-sha1
+HostKeyAlgorithms +ssh-rsa
+PubkeyAcceptedAlgorithms +ssh-rsa
