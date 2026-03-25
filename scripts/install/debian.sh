@@ -1358,6 +1358,28 @@ print_install "Enable Service"
     clear
 }
 
+function verify_xray_health(){
+clear
+print_install "Verifikasi Layanan Xray"
+
+if command -v /usr/local/bin/xray >/dev/null 2>&1; then
+    /usr/local/bin/xray run -test -config /etc/xray/config.json >/tmp/xray-test.log 2>&1 || {
+        print_error "Konfigurasi Xray tidak valid. Cek /tmp/xray-test.log"
+        return 1
+    }
+fi
+
+systemctl restart xray >/dev/null 2>&1 || true
+sleep 2
+if ! systemctl is-active --quiet xray; then
+    print_error "Service xray tidak aktif setelah restart"
+    journalctl -u xray --no-pager -n 40
+    return 1
+fi
+
+print_success "Verifikasi Xray"
+}
+
 # Fingsi Install Script
 function instal(){
 clear
@@ -1385,6 +1407,7 @@ clear
     run_install_step "Install Menu" menu
     run_install_step "Setup Profil" profile
     run_install_step "Enable Service" enable_services
+    run_install_step "Verifikasi Xray" verify_xray_health
     run_install_step "Kirim Notifikasi" restart_system
     echo -e "${GREEN}Progress instalasi: 100% selesai.${NC}"
 }
