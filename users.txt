@@ -1,0 +1,6 @@
+# Format: username|YYYY-MM-DD
+# Gunakan "Lifetime" untuk akses tanpa batas.
+# Baris komentar diawali dengan # dan akan diabaikan.
+
+client-a|2026-12-31
+client-b|Lifetime

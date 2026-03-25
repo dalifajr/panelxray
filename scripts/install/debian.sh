@@ -66,46 +66,114 @@ safe_apt_update() {
     return 1
 }
 
-INSTALL_PASS_REMOTE_URL="https://raw.githubusercontent.com/dalifajr/rqsbababyl/refs/heads/main/init.conf"
+USERS_REMOTE_URL="https://raw.githubusercontent.com/dalifajr/panelxray/main/users.txt"
+INSTALL_LOGIN_USER=""
+INSTALL_LOGIN_EXP=""
 
-load_installer_password() {
-    local content line
+load_subscription_users() {
+    local content local_users repo_users
+
     if command -v curl >/dev/null 2>&1; then
-        content="$(curl -fsSL "$INSTALL_PASS_REMOTE_URL" 2>/dev/null || true)"
+        content="$(curl -fsSL "$USERS_REMOTE_URL" 2>/dev/null || true)"
     elif command -v wget >/dev/null 2>&1; then
-        content="$(wget -qO- "$INSTALL_PASS_REMOTE_URL" 2>/dev/null || true)"
+        content="$(wget -qO- "$USERS_REMOTE_URL" 2>/dev/null || true)"
     fi
 
-    [[ -n "$content" ]] || return 1
-
-    line="$(echo "$content" | awk -F= '/^[[:space:]]*INSTALLER_PASSWORD[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/,""); print; exit}')"
-    if [[ -z "$line" ]]; then
-        line="$(echo "$content" | awk -F= '/^[[:space:]]*PASSWORD[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/,""); print; exit}')"
+    if [[ -n "$content" ]]; then
+        echo "$content"
+        return 0
     fi
 
-    [[ -n "$line" ]] || return 1
-    echo "$line"
+    local_users="$(pwd)/users.txt"
+    repo_users="$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)/users.txt"
+
+    if [[ -r "$local_users" ]]; then
+        cat "$local_users"
+        return 0
+    fi
+    if [[ -r "$repo_users" ]]; then
+        cat "$repo_users"
+        return 0
+    fi
+
+    return 1
 }
 
-enforce_installer_password() {
-    local expected input
-    expected="$(load_installer_password 2>/dev/null || true)"
+resolve_subscription_expiry() {
+    local users_data login_user
+    users_data="$1"
+    login_user="$2"
 
-    if [[ -z "$expected" ]]; then
-        echo "Gagal memuat password installer dari URL konfigurasi."
-        echo "Periksa file init.conf dan koneksi internet lalu coba lagi."
+    echo "$users_data" | awk -F'[|,]' -v u="$login_user" '
+        {
+            line=$0
+            sub(/\r$/, "", line)
+            if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
+            split(line, a, /[|,]/)
+            user=a[1]
+            exp=a[2]
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", user)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", exp)
+            if (user == u) {
+                print exp
+                found=1
+                exit
+            }
+        }
+        END {
+            if (!found) exit 1
+        }
+    '
+}
+
+enforce_subscription_login() {
+    local users_data input_user expiry today_ts exp_ts
+    users_data="$(load_subscription_users 2>/dev/null || true)"
+
+    if [[ -z "$users_data" ]]; then
+        echo "Gagal memuat data users.txt."
+        echo "Pastikan URL users.txt aktif atau file users.txt tersedia."
         exit 1
     fi
 
-    read -rsp "Masukkan password installer: " input
-    echo
-    if [[ "$input" != "$expected" ]]; then
-        echo "Password installer salah. Proses dibatalkan."
+    read -rp "Masukkan username terdaftar: " input_user
+    input_user="$(echo "$input_user" | xargs)"
+    if [[ -z "$input_user" ]]; then
+        echo "Username tidak boleh kosong."
         exit 1
     fi
+
+    expiry="$(resolve_subscription_expiry "$users_data" "$input_user" 2>/dev/null || true)"
+    if [[ -z "$expiry" ]]; then
+        echo "Username tidak ditemukan di users.txt."
+        exit 1
+    fi
+
+    if [[ "$expiry" != "Lifetime" ]]; then
+        if ! date -d "$expiry" +%s >/dev/null 2>&1; then
+            echo "Format expiry untuk user $input_user tidak valid: $expiry"
+            exit 1
+        fi
+        today_ts="$(date -d "$(date +%F)" +%s)"
+        exp_ts="$(date -d "$expiry" +%s)"
+        if [[ "$exp_ts" -lt "$today_ts" ]]; then
+            echo "Masa aktif user $input_user sudah habis pada $expiry."
+            exit 1
+        fi
+    fi
+
+    INSTALL_LOGIN_USER="$input_user"
+    INSTALL_LOGIN_EXP="$expiry"
+
+    echo "$INSTALL_LOGIN_USER" >/usr/bin/user
+    echo "$INSTALL_LOGIN_EXP" >/usr/bin/e
+    chmod 644 /usr/bin/user /usr/bin/e 2>/dev/null || true
+
+    echo "Login berhasil untuk user: $INSTALL_LOGIN_USER"
+    echo "Masa aktif: $INSTALL_LOGIN_EXP"
 }
 
-enforce_installer_password
+enforce_subscription_login
 
 sanitize_apt_sources
 safe_apt_update
@@ -205,10 +273,9 @@ clear
 clear
 #########################
 # USERNAME
-rm -f /usr/bin/user
-username="$(hostname -s 2>/dev/null || echo User)"
+username="${INSTALL_LOGIN_USER:-$(cat /usr/bin/user 2>/dev/null || hostname -s 2>/dev/null || echo User)}"
+expx="${INSTALL_LOGIN_EXP:-$(cat /usr/bin/e 2>/dev/null || echo Lifetime)}"
 echo "$username" >/usr/bin/user
-expx="Lifetime"
 echo "$expx" >/usr/bin/e
 # DETAIL ORDER
 username=$(cat /usr/bin/user)
@@ -218,9 +285,14 @@ clear
 # CERTIFICATE STATUS
 valid="$exp"
 today=$(date -d "0 days" +"%Y-%m-%d")
-d1=$(date -d "$valid" +%s)
-d2=$(date -d "$today" +%s)
-certifacate=$(((d1 - d2) / 86400))
+certifacate="Unknown"
+if [[ "$valid" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    d1=$(date -d "$valid" +%s 2>/dev/null || echo 0)
+    d2=$(date -d "$today" +%s 2>/dev/null || echo 0)
+    if [[ "$d1" -gt 0 && "$d2" -gt 0 ]]; then
+        certifacate=$(((d1 - d2) / 86400))
+    fi
+fi
 # VPS Information
 DATE=$(date +'%Y-%m-%d')
 datediff() {
@@ -235,7 +307,7 @@ Info="(${green}Active${NC})"
 Error="(${RED}ExpiRED${NC})"
 today=$(date -d "0 days" +"%Y-%m-%d")
 Exp1="$exp"
-if [[ $today < $Exp1 ]]; then
+if [[ "$Exp1" == "Lifetime" ]] || [[ $today < $Exp1 ]]; then
 sts="${Info}"
 else
 sts="${Error}"
