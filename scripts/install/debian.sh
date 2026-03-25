@@ -1037,7 +1037,13 @@ clear
 print_install "Menginstall OpenVPN"
 #OpenVPN
 wget ${REPO}limit/openvpn &&  chmod +x openvpn && ./openvpn
-/etc/init.d/openvpn restart
+if [[ -x /etc/init.d/openvpn ]]; then
+    /etc/init.d/openvpn restart >/dev/null 2>&1 || true
+elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn\.service'; then
+    systemctl restart openvpn >/dev/null 2>&1 || true
+elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn-server@server\.service'; then
+    systemctl restart openvpn-server@server >/dev/null 2>&1 || true
+fi
 print_success "OpenVPN"
 }
 
@@ -1165,8 +1171,10 @@ iptables -A FORWARD -m string --algo bm --string "announce" -j DROP
 iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP
 iptables-save > /etc/iptables.up.rules
 iptables-restore -t < /etc/iptables.up.rules
-netfilter-persistent save
-netfilter-persistent reload
+if command -v netfilter-persistent >/dev/null 2>&1; then
+    netfilter-persistent save >/dev/null 2>&1 || true
+    netfilter-persistent reload >/dev/null 2>&1 || true
+fi
 
 # remove unnecessary files
 cd
@@ -1179,28 +1187,42 @@ function ins_restart(){
 clear
 print_install "Restarting  All Packet"
 validate_nginx_config
-/etc/init.d/nginx restart
-/etc/init.d/openvpn restart
-/etc/init.d/ssh restart
-/etc/init.d/dropbear restart
+if [[ -x /etc/init.d/nginx ]]; then /etc/init.d/nginx restart >/dev/null 2>&1 || true; else systemctl restart nginx >/dev/null 2>&1 || true; fi
+if [[ -x /etc/init.d/openvpn ]]; then
+    /etc/init.d/openvpn restart >/dev/null 2>&1 || true
+elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn\.service'; then
+    systemctl restart openvpn >/dev/null 2>&1 || true
+elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn-server@server\.service'; then
+    systemctl restart openvpn-server@server >/dev/null 2>&1 || true
+fi
+if [[ -x /etc/init.d/ssh ]]; then /etc/init.d/ssh restart >/dev/null 2>&1 || true; else systemctl restart ssh >/dev/null 2>&1 || true; fi
+if [[ -x /etc/init.d/dropbear ]]; then /etc/init.d/dropbear restart >/dev/null 2>&1 || true; else systemctl restart dropbear >/dev/null 2>&1 || true; fi
 if systemctl list-unit-files 2>/dev/null | grep -q '^fail2ban\.service'; then
     systemctl restart fail2ban >/dev/null 2>&1 || true
 fi
-/etc/init.d/vnstat restart
-systemctl restart haproxy
-/etc/init.d/cron restart
+if [[ -x /etc/init.d/vnstat ]]; then /etc/init.d/vnstat restart >/dev/null 2>&1 || true; else systemctl restart vnstat >/dev/null 2>&1 || true; fi
+systemctl restart haproxy >/dev/null 2>&1 || true
+if [[ -x /etc/init.d/cron ]]; then /etc/init.d/cron restart >/dev/null 2>&1 || true; else systemctl restart cron >/dev/null 2>&1 || true; fi
     systemctl daemon-reload
-    systemctl start netfilter-persistent
-    systemctl enable --now nginx
-    systemctl enable --now xray
-    systemctl enable --now rc-local
-    systemctl enable --now dropbear
-    systemctl enable --now openvpn
-    systemctl enable --now cron
-    systemctl enable --now haproxy
-    systemctl enable --now netfilter-persistent
-    systemctl enable --now ws
-    systemctl enable --now fail2ban
+    if systemctl list-unit-files 2>/dev/null | grep -q '^netfilter-persistent\.service'; then
+        systemctl start netfilter-persistent >/dev/null 2>&1 || true
+    fi
+    systemctl enable --now nginx >/dev/null 2>&1 || true
+    systemctl enable --now xray >/dev/null 2>&1 || true
+    systemctl enable --now rc-local >/dev/null 2>&1 || true
+    systemctl enable --now dropbear >/dev/null 2>&1 || true
+    if systemctl list-unit-files 2>/dev/null | grep -q '^openvpn\.service'; then
+        systemctl enable --now openvpn >/dev/null 2>&1 || true
+    elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn-server@server\.service'; then
+        systemctl enable --now openvpn-server@server >/dev/null 2>&1 || true
+    fi
+    systemctl enable --now cron >/dev/null 2>&1 || true
+    systemctl enable --now haproxy >/dev/null 2>&1 || true
+    if systemctl list-unit-files 2>/dev/null | grep -q '^netfilter-persistent\.service'; then
+        systemctl enable --now netfilter-persistent >/dev/null 2>&1 || true
+    fi
+    systemctl enable --now ws >/dev/null 2>&1 || true
+    systemctl enable --now fail2ban >/dev/null 2>&1 || true
 history -c
 echo "unset HISTFILE" >> /etc/profile
 
@@ -1298,7 +1320,9 @@ cat >/etc/rc.local <<EOF
 # By default this script does nothing.
 iptables -I INPUT -p udp --dport 5300 -j ACCEPT
 iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300
+if systemctl list-unit-files 2>/dev/null | grep -q '^netfilter-persistent\.service'; then
 systemctl restart netfilter-persistent
+fi
 exit 0
 EOF
 
@@ -1320,14 +1344,16 @@ clear
 print_install "Enable Service"
     validate_nginx_config
     systemctl daemon-reload
-    systemctl start netfilter-persistent
-    systemctl enable --now rc-local
-    systemctl enable --now cron
-    systemctl enable --now netfilter-persistent
-    systemctl restart nginx
-    systemctl restart xray
-    systemctl restart cron
-    systemctl restart haproxy
+    if systemctl list-unit-files 2>/dev/null | grep -q '^netfilter-persistent\.service'; then
+        systemctl start netfilter-persistent >/dev/null 2>&1 || true
+        systemctl enable --now netfilter-persistent >/dev/null 2>&1 || true
+    fi
+    systemctl enable --now rc-local >/dev/null 2>&1 || true
+    systemctl enable --now cron >/dev/null 2>&1 || true
+    systemctl restart nginx >/dev/null 2>&1 || true
+    systemctl restart xray >/dev/null 2>&1 || true
+    systemctl restart cron >/dev/null 2>&1 || true
+    systemctl restart haproxy >/dev/null 2>&1 || true
     print_success "Enable Service"
     clear
 }
