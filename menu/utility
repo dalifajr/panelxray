@@ -39,6 +39,7 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 20 "Perbaiki xray.crt & hap.pem"
    thm_menu_item 21 "Diagnosa Koneksi Protokol"
    thm_menu_item 22 "Tambah Sertifikat Custom SNI"
+   thm_menu_item 23 "Mode Cepat SNI (Self-Signed)"
    thm_menu_item 0 "Kembali Ke Menu Utama"
    thm_footer
 else
@@ -67,13 +68,14 @@ else
    echo -e "  ${Blue}[20] ${NC}${GREEN}Perbaiki xray.crt & hap.pem${NC}"
    echo -e "  ${Blue}[21] ${NC}${GREEN}Diagnosa Koneksi Protokol${NC}"
    echo -e "  ${Blue}[22] ${NC}${GREEN}Tambah Sertifikat Custom SNI${NC}"
+   echo -e "  ${Blue}[23] ${NC}${GREEN}Mode Cepat SNI (Self-Signed)${NC}"
    echo -e " \033[36m══════════════════════════════════════════════════════════${NC}"
    echo -e ""
    echo -e "  ${Blue}[0] ${NC} ${GREEN}Kembali Ke Menu Utama${NC}"
    echo -e ""
    echo -e "${GREEN}PanelXray Service Menu${NC}"
 fi
-read -p "  Pilih Menu [ 1 - 22 atau 0 untuk kembali ] : " menu
+read -p "  Pilih Menu [ 1 - 23 atau 0 untuk kembali ] : " menu
 case $menu in
 1) clear ;
     cek-service
@@ -140,6 +142,9 @@ case $menu in
    ;;
 22) clear ;
    add-sni-cert
+   ;;
+23) clear ;
+   quick-sni-insecure
    ;;
 0) clear ;
    menu
