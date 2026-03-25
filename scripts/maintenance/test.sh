@@ -559,8 +559,8 @@ EOF
 
 
 restart_system() {
-    USRSC=$(wget -qO- https://raw.githubusercontent.com/nishikazekazata/izin/main/ip | grep $ipsaya | awk '{print $2}')
-    EXPSC=$(wget -qO- https://raw.githubusercontent.com/nishikazekazata/izin/main/ip | grep $ipsaya | awk '{print $3}')
+    USRSC=$(cat /usr/bin/user 2>/dev/null || echo User)
+    EXPSC=$(cat /usr/bin/e 2>/dev/null || echo Lifetime)
     TIMEZONE=$(printf '%(%H:%M:%S)T')
     TEXT="
 <code>────────────────────</code>

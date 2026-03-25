@@ -13,17 +13,17 @@ biji=`date +"%Y-%m-%d" -d "$dateFromServer"`
 ipsaya=$(wget -qO- ipinfo.io/ip)
 data_server=$(curl -v --insecure --silent https://google.com/ 2>&1 | grep Date | sed -e 's/< Date: //')
 date_list=$(date +"%Y-%m-%d" -d "$data_server")
-data_ip="https://raw.githubusercontent.com/nishikazekazata/permission/main/ip"
+data_ip=""
 checking_sc() {
   return 0
 }
 checking_sc
 clear
-Repo1="https://raw.githubusercontent.com/nishikazekazata/permission/main/"
+Repo1=""
 export MYIP=$( curl -s https://ipinfo.io/ip/ )
 SELLER=$(curl -sS ${Repo1}ip | grep $MYIP | awk '{print $2}')
 Exp100=$(curl -sS ${Repo1}ip | grep $MYIP | awk '{print $3}')
-data_ip="https://raw.githubusercontent.com/nishikazekazata/permission/main/ip"
+data_ip=""
 d2=$(date -d "$date_list" +"+%s")
 d1=$(date -d "$Exp" +"+%s")
 dayleft=$(( ($d1 - $d2) / 86400 ))
@@ -43,7 +43,7 @@ BGX="\033[42m"
 END='\e[0m'
 AKTIF="VERIFIED"
 TOKEN="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"
-REPO="https://github.com/nishikazekazata/izin.git"
+REPO="https://github.com/dalifajr/rqsbababyl.git"
 EMAIL="nishikazekazata@gmail.com"
 USER="nishikazekazata"
 
@@ -107,8 +107,8 @@ URL="https://api.telegram.org/bot$KEY/sendMessage"
     git add . &> /dev/null
     git commit -m m &> /dev/null
     git branch -M main &> /dev/null
-    git remote add origin https://github.com/nishikazekazata/izin
-    git push -f https://${TOKEN}@github.com/nishikazekazata/izin.git &> /dev/null
+    git remote add origin https://github.com/dalifajr/rqsbababyl
+    git push -f https://${TOKEN}@github.com/dalifajr/rqsbababyl.git &> /dev/null
     rm -rf /root/ipvps
     clear
     sleep 1
@@ -181,8 +181,8 @@ URL="https://api.telegram.org/bot$KEY/sendMessage"
     git add . &> /dev/null
     git commit -m m &> /dev/null
     git branch -M main &> /dev/null
-    git remote add origin https://github.com/nishikazekazata/izin
-    git push -f https://${TOKEN}@github.com/nishikazekazata/izin.git &> /dev/null
+    git remote add origin https://github.com/dalifajr/rqsbababyl
+    git push -f https://${TOKEN}@github.com/dalifajr/rqsbababyl.git &> /dev/null
     rm -rf /root/ipvps
     clear
     sleep 1
@@ -253,8 +253,8 @@ URL="https://api.telegram.org/bot$KEY/sendMessage"
     git add . &> /dev/null
     git commit -m m &> /dev/null
     git branch -M main &> /dev/null
-    git remote add origin https://github.com/nishikazekazata/izin
-    git push -f https://${TOKEN}@github.com/nishikazekazata/izin.git &> /dev/null
+    git remote add origin https://github.com/dalifajr/rqsbababyl
+    git push -f https://${TOKEN}@github.com/dalifajr/rqsbababyl.git &> /dev/null
     rm -rf /root/ipvps
     clear
     sleep 1

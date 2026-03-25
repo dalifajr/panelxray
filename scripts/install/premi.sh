@@ -129,64 +129,35 @@ safe_apt_update() {
     return 1
 }
 
-INSTALL_PASS_CONF_LOCAL="$(cd "$(dirname "$0")/../.." && pwd)/installer-password.conf"
-INSTALL_PASS_CONF_SYSTEM="/etc/panelxray/installer-password.conf"
+INSTALL_PASS_REMOTE_URL="https://raw.githubusercontent.com/dalifajr/rqsbababyl/refs/heads/main/init.conf"
 
 load_installer_password() {
-    local conf
-    for conf in "$INSTALL_PASS_CONF_LOCAL" "$INSTALL_PASS_CONF_SYSTEM"; do
-        [[ -r "$conf" ]] || continue
-        # shellcheck disable=SC1090
-        . "$conf"
-        if [[ -n "$INSTALLER_PASSWORD" ]]; then
-            echo "$INSTALLER_PASSWORD"
-            return 0
-        fi
-    done
-    return 1
-}
-
-save_installer_password() {
-    local pass="$1"
-    local out_path="$INSTALL_PASS_CONF_SYSTEM"
-
-    if ! mkdir -p "$(dirname "$out_path")" 2>/dev/null; then
-        out_path="$INSTALL_PASS_CONF_LOCAL"
+    local content line
+    if command -v curl >/dev/null 2>&1; then
+        content="$(curl -fsSL "$INSTALL_PASS_REMOTE_URL" 2>/dev/null || true)"
+    elif command -v wget >/dev/null 2>&1; then
+        content="$(wget -qO- "$INSTALL_PASS_REMOTE_URL" 2>/dev/null || true)"
     fi
 
-    cat > "$out_path" <<EOF
-# Installer password configuration for PanelXray
-# Change this value to control installer access.
-INSTALLER_PASSWORD=$(printf '%q' "$pass")
-EOF
-    chmod 600 "$out_path" 2>/dev/null || true
+    [[ -n "$content" ]] || return 1
+
+    line="$(echo "$content" | awk -F= '/^[[:space:]]*INSTALLER_PASSWORD[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/,""); print; exit}')"
+    if [[ -z "$line" ]]; then
+        line="$(echo "$content" | awk -F= '/^[[:space:]]*PASSWORD[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/,""); print; exit}')"
+    fi
+
+    [[ -n "$line" ]] || return 1
+    echo "$line"
 }
 
 enforce_installer_password() {
-    local expected input first second
+    local expected input
     expected="$(load_installer_password 2>/dev/null || true)"
 
     if [[ -z "$expected" ]]; then
-        echo "Installer password belum dikonfigurasi."
-        echo "Buat password baru untuk memulai instalasi."
-        while true; do
-            read -rsp "Password baru: " first
-            echo
-            read -rsp "Ulangi password: " second
-            echo
-            if [[ -z "$first" ]]; then
-                echo "Password tidak boleh kosong."
-                continue
-            fi
-            if [[ "$first" != "$second" ]]; then
-                echo "Password tidak sama, ulangi lagi."
-                continue
-            fi
-            save_installer_password "$first"
-            expected="$first"
-            echo "Password installer berhasil disimpan."
-            break
-        done
+        echo "Gagal memuat password installer dari URL konfigurasi."
+        echo "Periksa file init.conf dan koneksi internet lalu coba lagi."
+        exit 1
     fi
 
     read -rsp "Masukkan password installer: " input
