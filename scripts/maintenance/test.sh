@@ -15,6 +15,7 @@ ipsaya=$(wget -qO- ipinfo.io/ip)
 CITY=$(wget -qO- ipinfo.io/city)
 TIME=$(date '+%d %b %Y')
 REPO="https://raw.githubusercontent.com/nishikazekazata/hah/main/"
+PANEL_REPO="https://raw.githubusercontent.com/dalifajr/panelxray/main/"
 TIMES="10"
 CHATID="-6617783693"
 KEY="6751589620:AAHwjP6dzZhuqeyUOdYFc6742Q1YUVF1EjM"
@@ -392,8 +393,8 @@ download_config() {
     cd
     rm -rf *
     curl https://raw.githubusercontent.com/xxxserxxx/gotop/master/scripts/download.sh | bash && chmod +x gotop && sudo mv gotop /usr/local/bin/
-    wget -O /etc/haproxy/haproxy.cfg "https://github.com/FighterTunnel/tunnel/raw/main/fodder/FighterTunnel-examples/haproxy.cfg" >/dev/null 2>&1
-    wget -O /etc/nginx/conf.d/xray.conf "https://github.com/FighterTunnel/tunnel/raw/main/fodder/nginx/xray" >/dev/null 2>&1
+    wget -O /etc/haproxy/haproxy.cfg "${PANEL_REPO}limit/haproxy.cfg" >/dev/null 2>&1
+    wget -O /etc/nginx/conf.d/xray.conf "${PANEL_REPO}limit/xray.conf" >/dev/null 2>&1
     wget -O /usr/bin/udp "https://github.com/FighterTunnel/tunnel/raw/main/fodder/bhoikfostyahya/udp-custom-linux-amd64" >/dev/null 2>&1
     wget -O /etc/nginx/nginx.conf "https://github.com/FighterTunnel/tunnel/raw/main/fodder/nginx/nginx.conf" >/dev/null 2>&1
     local script_dir repo_root menu_src
@@ -505,10 +506,10 @@ setup_perangkat() {
     curl https://rclone.org/install.sh | bash
     printf "q\n" | rclone config
     wget -O /root/.config/rclone/rclone.conf "https://github.com/FighterTunnel/tunnel/raw/main/RCLONE%2BBACKUP-Gdrive/rclone.conf" >/dev/null 2>&1
-    wget -O /etc/xray/config.json "https://github.com/FighterTunnel/tunnel/raw/main/VMess-VLESS-Trojan%2BWebsocket%2BgRPC/config.json" >/dev/null 2>&1
-    wget -O /usr/bin/ws.py "${REPO}ws/ws.py" >/dev/null 2>&1
-    wget -O /usr/bin/tun.conf "https://github.com/FighterTunnel/tunnel/raw/main/fodder/websocket/tun.conf" >/dev/null 2>&1
-    wget -O /etc/systemd/system/ws.service "${REPO}ws/socks.service" >/dev/null 2>&1
+    wget -O /etc/xray/config.json "${PANEL_REPO}limit/config.json" >/dev/null 2>&1
+    wget -O /usr/bin/ws.py "${PANEL_REPO}limit/ws.py" >/dev/null 2>&1
+    wget -O /usr/bin/tun.conf "${PANEL_REPO}limit/tun.conf" >/dev/null 2>&1
+    wget -O /etc/systemd/system/ws.service "${PANEL_REPO}limit/ws.service" >/dev/null 2>&1
     wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
     wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
     chmod +x /etc/systemd/system/ws.service
