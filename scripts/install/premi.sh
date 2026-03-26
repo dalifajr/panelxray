@@ -953,6 +953,10 @@ EOF
 
     # HAProxy 3.x removed bind-process; strip it if present for compatibility.
     sed -i -E '/^[[:space:]]*bind-process[[:space:]]+/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    # Remove optional/legacy directives that commonly break startup on mixed builds.
+    sed -i -E 's/[[:space:]]+tfo([[:space:]]|$)/ /g' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:109([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:143([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
 
     if ! haproxy -c -f /etc/haproxy/haproxy.cfg >>"$log_file" 2>&1; then
         backup_file="/etc/haproxy/haproxy.cfg.broken.$(date +%s)"
@@ -962,6 +966,9 @@ EOF
         wget -qO /etc/haproxy/haproxy.cfg "${REPO}limit/haproxy.cfg" || true
         sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg 2>/dev/null || true
         sed -i -E '/^[[:space:]]*bind-process[[:space:]]+/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E 's/[[:space:]]+tfo([[:space:]]|$)/ /g' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:109([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:143([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
 
         if [[ ! -s /etc/haproxy/hap.pem ]]; then
             sed -i '/haproxy-https accept-proxy ssl crt \/etc\/haproxy\/hap.pem/d' /etc/haproxy/haproxy.cfg

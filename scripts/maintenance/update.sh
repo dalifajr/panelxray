@@ -54,6 +54,10 @@ sync_runtime_configs() {
     if [[ -f "$TMP_DIR/limit/haproxy.cfg" ]]; then
         cp -f "$TMP_DIR/limit/haproxy.cfg" /etc/haproxy/haproxy.cfg
         sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E '/^[[:space:]]*bind-process[[:space:]]+/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E 's/[[:space:]]+tfo([[:space:]]|$)/ /g' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:109([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+        sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:143([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
     fi
 
     if [[ -f "$TMP_DIR/limit/tun.conf" ]]; then
