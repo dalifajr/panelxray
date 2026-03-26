@@ -1130,11 +1130,11 @@ clear
 print_install "Memasang SSHD"
 wget -q -O /etc/ssh/sshd_config "${REPO}limit/sshd" >/dev/null 2>&1
 chmod 700 /etc/ssh/sshd_config
-# force SSH listen on 22 and 143
+# keep SSHD on port 22 only, port 143 is reserved for dropbear
+sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
-grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
 
-# when socket activation is enabled, add 143 to ssh.socket listeners too
+# when socket activation is enabled, expose only port 22 for sshd
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
     mkdir -p /etc/systemd/system/ssh.socket.d
     cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
@@ -1142,8 +1142,6 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
 ListenStream=
 ListenStream=0.0.0.0:22
 ListenStream=[::]:22
-ListenStream=0.0.0.0:143
-ListenStream=[::]:143
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl restart ssh.socket >/dev/null 2>&1 || true
