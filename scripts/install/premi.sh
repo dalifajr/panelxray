@@ -151,17 +151,29 @@ resolve_subscription_expiry() {
     users_data="$1"
     login_user="$2"
 
-    echo "$users_data" | awk -F'[|,]' -v u="$login_user" '
+    echo "$users_data" | awk -v u="$login_user" '
         {
             line=$0
+            sub(/^\xef\xbb\xbf/, "", line)
             sub(/\r$/, "", line)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
             if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
-            split(line, a, /[|,]/)
-            user=a[1]
-            exp=a[2]
+
+            # Accept: user|expiry, user,expiry, or user<space>expiry
+            n = split(line, a, /[|,]/)
+            if (n >= 2) {
+                user=a[1]
+                exp=a[2]
+            } else {
+                n2 = split(line, b, /[[:space:]]+/)
+                user=b[1]
+                exp=b[2]
+            }
+
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", user)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", exp)
-            if (user == u) {
+
+            if (tolower(user) == tolower(u)) {
                 print exp
                 found=1
                 exit
@@ -178,7 +190,7 @@ enforce_subscription_login() {
     users_data="$(load_subscription_users 2>/dev/null || true)"
 
     if [[ -z "$users_data" ]]; then
-        echo "Gagal memuat data user dari init.txt (raw GitHub)."
+        echo "Gagal memuat data user dari server lisensi (raw GitHub)."
         echo "Pastikan URL raw GitHub aktif dan server memiliki koneksi internet."
         exit 1
     fi
@@ -192,7 +204,7 @@ enforce_subscription_login() {
 
     expiry="$(resolve_subscription_expiry "$users_data" "$input_user" 2>/dev/null || true)"
     if [[ -z "$expiry" ]]; then
-        echo "Username tidak ditemukan di init.txt."
+        echo "Username tidak terdaftar."
         exit 1
     fi
 
