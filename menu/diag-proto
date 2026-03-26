@@ -167,6 +167,28 @@ check_service() {
   return 1
 }
 
+attempt_self_heal() {
+  local need_heal="$1"
+  if [[ "$need_heal" -ne 1 ]]; then
+    return 0
+  fi
+
+  echo -e "${YELLOW}Auto-repair: mencoba memulihkan stack (xray/nginx/haproxy/ws)...${NC}"
+
+  if has_cmd nginx; then
+    if ! nginx -t >/tmp/diag-nginx-test.log 2>&1; then
+      echo -e "${RED}[WARN]${NC} nginx -t gagal, cek /tmp/diag-nginx-test.log"
+    fi
+  fi
+
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl restart xray >/dev/null 2>&1 || true
+  systemctl restart nginx >/dev/null 2>&1 || true
+  systemctl restart haproxy >/dev/null 2>&1 || true
+  systemctl restart ws >/dev/null 2>&1 || true
+  sleep 2
+}
+
 clear
 if declare -F thm_title >/dev/null; then
   thm_title "DIAGNOSA KONEKSI PROTOKOL XRAY"
@@ -203,37 +225,89 @@ for cmd in curl openssl ss systemctl; do
 done
 
 echo
+HAPROXY_ACTIVE=0
+NGINX_ACTIVE=0
+XRAY_ACTIVE=0
+
 if check_service haproxy; then
+  HAPROXY_ACTIVE=1
   report "SYSTEM" "Service" 1 "haproxy active"
 else
   report "SYSTEM" "Service" 0 "haproxy inactive"
 fi
 if check_service nginx; then
+  NGINX_ACTIVE=1
   report "SYSTEM" "Service" 1 "nginx active"
 else
   report "SYSTEM" "Service" 0 "nginx inactive"
 fi
 if check_service xray; then
+  XRAY_ACTIVE=1
   report "SYSTEM" "Service" 1 "xray active"
 else
   report "SYSTEM" "Service" 0 "xray inactive"
 fi
 
 echo
+P443_LISTEN=0
+P1010_LISTEN=0
+P1013_LISTEN=0
+
 if is_listening 443; then
+  P443_LISTEN=1
   report "SYSTEM" "Edge Port" 1 "443 listening"
 else
   report "SYSTEM" "Edge Port" 0 "443 not listening"
 fi
 if is_listening 1010; then
+  P1010_LISTEN=1
   report "SYSTEM" "Bridge Port" 1 "1010 listening"
 else
   report "SYSTEM" "Bridge Port" 0 "1010 not listening"
 fi
 if is_listening 1013; then
+  P1013_LISTEN=1
   report "SYSTEM" "Bridge Port" 1 "1013 listening"
 else
   report "SYSTEM" "Bridge Port" 0 "1013 not listening"
+fi
+
+NEED_HEAL=0
+if [[ "$NGINX_ACTIVE" -eq 0 || "$P1010_LISTEN" -eq 0 || "$P1013_LISTEN" -eq 0 ]]; then
+  NEED_HEAL=1
+fi
+attempt_self_heal "$NEED_HEAL"
+
+if [[ "$NEED_HEAL" -eq 1 ]]; then
+  echo
+  echo -e "${BLUE}=== VERIFIKASI PASCA AUTO-REPAIR ===${NC}"
+
+  if check_service haproxy; then
+    report "SYSTEM" "Service(recheck)" 1 "haproxy active"
+  else
+    report "SYSTEM" "Service(recheck)" 0 "haproxy inactive"
+  fi
+  if check_service nginx; then
+    report "SYSTEM" "Service(recheck)" 1 "nginx active"
+  else
+    report "SYSTEM" "Service(recheck)" 0 "nginx inactive"
+  fi
+  if check_service xray; then
+    report "SYSTEM" "Service(recheck)" 1 "xray active"
+  else
+    report "SYSTEM" "Service(recheck)" 0 "xray inactive"
+  fi
+
+  if is_listening 1010; then
+    report "SYSTEM" "Bridge Port(recheck)" 1 "1010 listening"
+  else
+    report "SYSTEM" "Bridge Port(recheck)" 0 "1010 not listening"
+  fi
+  if is_listening 1013; then
+    report "SYSTEM" "Bridge Port(recheck)" 1 "1013 listening"
+  else
+    report "SYSTEM" "Bridge Port(recheck)" 0 "1013 not listening"
+  fi
 fi
 
 TLS_PUBLIC_OK=0
@@ -316,6 +390,7 @@ echo
 echo "Catatan:"
 echo "- Jika TLS Public FAIL tapi TLS Local PASS, fokus di DNS/Cloudflare/NAT publik."
 echo "- Jika Edge path FAIL tapi Inbound PASS, fokus di HAProxy/Nginx/path ACL."
+echo "- Auto-repair dijalankan saat nginx/bridge port bermasalah (lihat blok recheck)."
 echo "- Jika Inbound FAIL, fokus di Xray inbound/proses xray."
 echo "- Jika TLS Public dan Local sama-sama FAIL, fokus di certificate/haproxy bind 443."
 echo "- Jika HTTP code 000, biasanya timeout/reset (network/firewall/edge)."
