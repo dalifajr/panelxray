@@ -100,34 +100,7 @@ sync_runtime_configs() {
     sed -i 's/target_port: 22/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
   fi
 
-  if [ -f /etc/ssh/sshd_config ]; then
-    grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
-    grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
-  fi
-
-  if [ -f /etc/default/dropbear ]; then
-    sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear 2>/dev/null || true
-    sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS=""/' /etc/default/dropbear 2>/dev/null || true
-  fi
-
-  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-    mkdir -p /etc/systemd/system/ssh.socket.d
-    cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
-[Socket]
-ListenStream=
-ListenStream=0.0.0.0:22
-ListenStream=[::]:22
-ListenStream=0.0.0.0:143
-ListenStream=[::]:143
-EOF
-  fi
-
   systemctl daemon-reload >/dev/null 2>&1 || true
-  if sshd -t >/dev/null 2>&1; then
-    systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
-  fi
-  systemctl restart ssh.socket >/dev/null 2>&1 || true
-  systemctl restart dropbear >/dev/null 2>&1 || true
   if nginx -t >/dev/null 2>&1; then
     systemctl restart nginx >/dev/null 2>&1 || true
   fi
@@ -151,7 +124,7 @@ echo -e "${green}Update selesai.${NC}"
 echo -e "${green}Old revision:${NC} $old_sha"
 echo -e "${green}New revision:${NC} $new_sha"
 echo -e "${green}Target path :${NC} $TARGET_SBIN"
-echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced (SSH main route 143 enforced)"
+echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced"
 
 echo ""
 read -n 1 -s -r -p "Press any key to back on menu"
