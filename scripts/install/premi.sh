@@ -698,6 +698,17 @@ sanitize_nginx_xray_conf() {
     ' "$conf_file" >"${conf_file}.tmp" && mv -f "${conf_file}.tmp" "$conf_file"
 }
 
+enforce_ssh_main_route_xray_conf() {
+    local conf_file
+    conf_file="/etc/nginx/conf.d/xray.conf"
+
+    [[ -f "$conf_file" ]] || return 0
+
+    # Force SSH websocket upstream host to Dropbear main port 143.
+    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
+    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
+}
+
 validate_nginx_config() {
     local log_file backup_file domain
     log_file="/var/log/panelxray-nginx-check.log"
@@ -705,6 +716,7 @@ validate_nginx_config() {
     touch "$log_file" 2>/dev/null || true
 
     ensure_valid_xray_certificates
+    enforce_ssh_main_route_xray_conf
     sanitize_nginx_xray_conf
 
     if nginx -t >>"$log_file" 2>&1; then
@@ -719,6 +731,7 @@ validate_nginx_config() {
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
 
     ensure_valid_xray_certificates
+    enforce_ssh_main_route_xray_conf
     sanitize_nginx_xray_conf
 
     if ! nginx -t >>"$log_file" 2>&1; then

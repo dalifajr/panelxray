@@ -86,6 +86,20 @@ sync_runtime_configs() {
     chmod 644 /etc/systemd/system/ws.service 2>/dev/null || true
   fi
 
+  # Force legacy nodes to use SSH main route 143 after update.
+  if [ -f /etc/nginx/conf.d/xray.conf ]; then
+    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:143"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+    sed -i 's/listen 81 ssl reuseport;/listen 81 ssl http2 reuseport;/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+    sed -i 's/listen 1013 proxy_protocol so_keepalive=on reuseport;/listen 1013 http2 proxy_protocol so_keepalive=on reuseport;/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+    sed -i '/^\s*http2 on;\s*$/d' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+  fi
+
+  if [ -f /usr/bin/tun.conf ]; then
+    sed -i 's/target_port: 109/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
+    sed -i 's/target_port: 22/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
+  fi
+
   systemctl daemon-reload >/dev/null 2>&1 || true
   if nginx -t >/dev/null 2>&1; then
     systemctl restart nginx >/dev/null 2>&1 || true
@@ -110,7 +124,7 @@ echo -e "${green}Update selesai.${NC}"
 echo -e "${green}Old revision:${NC} $old_sha"
 echo -e "${green}New revision:${NC} $new_sha"
 echo -e "${green}Target path :${NC} $TARGET_SBIN"
-echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced"
+echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced (SSH main route 143 enforced)"
 
 echo ""
 read -n 1 -s -r -p "Press any key to back on menu"
