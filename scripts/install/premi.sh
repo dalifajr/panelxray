@@ -1143,11 +1143,11 @@ clear
 print_install "Memasang SSHD"
 wget -q -O /etc/ssh/sshd_config "${REPO}limit/sshd" >/dev/null 2>&1
 chmod 700 /etc/ssh/sshd_config
-# keep SSHD on port 22 only, port 143 is reserved for dropbear
-sed -i '/^Port 143$/d' /etc/ssh/sshd_config
+# keep SSHD as main route on port 143 while preserving port 22
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
+grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
 
-# when socket activation is enabled, expose only port 22 for sshd
+# when socket activation is enabled, expose ports 22 and 143 for sshd
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
     mkdir -p /etc/systemd/system/ssh.socket.d
     cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
@@ -1155,6 +1155,8 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
 ListenStream=
 ListenStream=0.0.0.0:22
 ListenStream=[::]:22
+ListenStream=0.0.0.0:143
+ListenStream=[::]:143
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl restart ssh.socket >/dev/null 2>&1 || true
@@ -1180,8 +1182,8 @@ print_install "Menginstall Dropbear"
 apt-get install dropbear -y > /dev/null 2>&1
 wget -q -O /etc/default/dropbear "${REPO}limit/dropbear.conf"
 chmod +x /etc/default/dropbear
-sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear
-sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear
+sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear
+sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS=""/' /etc/default/dropbear
 /etc/init.d/dropbear restart
 /etc/init.d/dropbear status
 print_success "Dropbear"
