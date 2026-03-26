@@ -60,6 +60,42 @@ if [ ! -d "$TMP_DIR/limit/menu" ]; then
   exit 1
 fi
 
+sync_runtime_configs() {
+  local domain
+  domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+
+  mkdir -p /etc/nginx/conf.d /etc/haproxy /etc/systemd/system /usr/bin
+
+  if [ -f "$TMP_DIR/limit/xray.conf" ]; then
+    cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
+    sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+  fi
+
+  if [ -f "$TMP_DIR/limit/haproxy.cfg" ]; then
+    cp -f "$TMP_DIR/limit/haproxy.cfg" /etc/haproxy/haproxy.cfg
+    sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg 2>/dev/null || true
+  fi
+
+  if [ -f "$TMP_DIR/limit/tun.conf" ]; then
+    cp -f "$TMP_DIR/limit/tun.conf" /usr/bin/tun.conf
+    chmod 644 /usr/bin/tun.conf 2>/dev/null || true
+  fi
+
+  if [ -f "$TMP_DIR/limit/ws.service" ]; then
+    cp -f "$TMP_DIR/limit/ws.service" /etc/systemd/system/ws.service
+    chmod 644 /etc/systemd/system/ws.service 2>/dev/null || true
+  fi
+
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  if nginx -t >/dev/null 2>&1; then
+    systemctl restart nginx >/dev/null 2>&1 || true
+  fi
+  if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+    systemctl restart haproxy >/dev/null 2>&1 || true
+  fi
+  systemctl restart ws >/dev/null 2>&1 || true
+}
+
 old_sha="unknown"
 [ -f "$STATE_FILE" ] && old_sha="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
 new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -67,12 +103,14 @@ new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
 mkdir -p "$TARGET_SBIN" /etc/kyt
 cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
+sync_runtime_configs
 echo "$new_sha" > "$STATE_FILE"
 
 echo -e "${green}Update selesai.${NC}"
 echo -e "${green}Old revision:${NC} $old_sha"
 echo -e "${green}New revision:${NC} $new_sha"
 echo -e "${green}Target path :${NC} $TARGET_SBIN"
+echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced"
 
 echo ""
 read -n 1 -s -r -p "Press any key to back on menu"
