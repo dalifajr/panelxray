@@ -1235,6 +1235,18 @@ fi
 print_success "SSHD"
 }
 
+ensure_dropbear_port_override() {
+    mkdir -p /etc/systemd/system/dropbear.service.d
+    cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
+[Service]
+Environment=DROPBEAR_PORT=143
+Environment=DROPBEAR_EXTRA_ARGS=-p 109
+ExecStart=
+ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
+EOF
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
 clear
 function ins_dropbear(){
 clear
@@ -1245,6 +1257,8 @@ wget -q -O /etc/default/dropbear "${REPO}limit/dropbear.conf"
 chmod +x /etc/default/dropbear
 sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear
 sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear
+grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
+ensure_dropbear_port_override
 /etc/init.d/dropbear restart
 /etc/init.d/dropbear status
 print_success "Dropbear"
@@ -1431,6 +1445,7 @@ function ins_restart(){
 clear
 print_install "Restarting  All Packet"
 validate_nginx_config
+ensure_dropbear_port_override
 if [[ -x /etc/init.d/nginx ]]; then /etc/init.d/nginx restart >/dev/null 2>&1 || true; else systemctl restart nginx >/dev/null 2>&1 || true; fi
 if [[ -x /etc/init.d/openvpn ]]; then
     /etc/init.d/openvpn restart >/dev/null 2>&1 || true

@@ -80,6 +80,21 @@ sync_runtime_configs() {
         chmod 644 /etc/systemd/system/ws.service 2>/dev/null || true
     fi
 
+    mkdir -p /etc/systemd/system/dropbear.service.d
+    cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
+[Service]
+Environment=DROPBEAR_PORT=143
+Environment=DROPBEAR_EXTRA_ARGS=-p 109
+ExecStart=
+ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
+EOF
+
+    if [[ -f /etc/default/dropbear ]]; then
+        sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear 2>/dev/null || true
+        sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear 2>/dev/null || true
+        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
+    fi
+
     # Force legacy nodes to use SSH main route 143 after update.
     if [[ -f /etc/nginx/conf.d/xray.conf ]]; then
         sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
@@ -101,6 +116,7 @@ sync_runtime_configs() {
     if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
         systemctl restart haproxy >/dev/null 2>&1 || true
     fi
+    systemctl restart dropbear >/dev/null 2>&1 || true
     systemctl restart ws >/dev/null 2>&1 || true
 }
 

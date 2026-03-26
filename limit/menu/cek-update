@@ -74,6 +74,10 @@ sync_runtime_configs() {
   if [ -f "$TMP_DIR/limit/haproxy.cfg" ]; then
     cp -f "$TMP_DIR/limit/haproxy.cfg" /etc/haproxy/haproxy.cfg
     sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    sed -i -E '/^[[:space:]]*bind-process[[:space:]]+/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    sed -i -E 's/[[:space:]]+tfo([[:space:]]|$)/ /g' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:109([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:143([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
   fi
 
   if [ -f "$TMP_DIR/limit/tun.conf" ]; then
@@ -84,6 +88,21 @@ sync_runtime_configs() {
   if [ -f "$TMP_DIR/limit/ws.service" ]; then
     cp -f "$TMP_DIR/limit/ws.service" /etc/systemd/system/ws.service
     chmod 644 /etc/systemd/system/ws.service 2>/dev/null || true
+  fi
+
+  mkdir -p /etc/systemd/system/dropbear.service.d
+  cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
+[Service]
+Environment=DROPBEAR_PORT=143
+Environment=DROPBEAR_EXTRA_ARGS=-p 109
+ExecStart=
+ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
+EOF
+
+  if [ -f /etc/default/dropbear ]; then
+    sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear 2>/dev/null || true
+    sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear 2>/dev/null || true
+    grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
   fi
 
   # Force legacy nodes to use SSH main route 143 after update.
@@ -107,6 +126,7 @@ sync_runtime_configs() {
   if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
     systemctl restart haproxy >/dev/null 2>&1 || true
   fi
+  systemctl restart dropbear >/dev/null 2>&1 || true
   systemctl restart ws >/dev/null 2>&1 || true
 }
 
