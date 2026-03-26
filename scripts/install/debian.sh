@@ -88,16 +88,35 @@ resolve_subscription_expiry() {
     users_data="$1"
     login_user="$2"
 
-    echo "$users_data" | awk -F'[|,]' -v u="$login_user" '
+    # Normalize and parse defensively to avoid false negatives from CRLF/spacing variants.
+    echo "$users_data" | awk -v u="$login_user" '
+        function trim(s) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+            return s
+        }
+        BEGIN {
+            u=tolower(trim(u))
+        }
         {
             line=$0
             sub(/\r$/, "", line)
-            if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
-            split(line, a, /[|,]/)
-            user=a[1]
-            exp=a[2]
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", user)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", exp)
+            line=trim(line)
+            if (line ~ /^#/ || line == "") next
+
+            sep=""
+            if (index(line, "|") > 0) {
+                sep="|"
+            } else if (index(line, ",") > 0) {
+                sep=","
+            } else {
+                next
+            }
+
+            n=split(line, a, sep)
+            if (n < 2) next
+
+            user=tolower(trim(a[1]))
+            exp=trim(a[2])
             if (user == u) {
                 print exp
                 found=1
@@ -115,8 +134,8 @@ enforce_subscription_login() {
     users_data="$(load_subscription_users 2>/dev/null || true)"
 
     if [[ -z "$users_data" ]]; then
-        echo "Gagal memuat data user dari init.txt (raw GitHub)."
-        echo "Pastikan URL raw GitHub aktif dan server memiliki koneksi internet."
+        echo "Gagal memuat data user dari server lisensi."
+        echo "Pastikan URL lisensi aktif dan server memiliki koneksi internet."
         exit 1
     fi
 
@@ -129,7 +148,7 @@ enforce_subscription_login() {
 
     expiry="$(resolve_subscription_expiry "$users_data" "$input_user" 2>/dev/null || true)"
     if [[ -z "$expiry" ]]; then
-        echo "Username tidak ditemukan di init.txt."
+        echo "Username tidak ditemukan di data lisensi."
         exit 1
     fi
 
@@ -1052,9 +1071,34 @@ clear
 print_install "Memasang SSHD"
 wget -q -O /etc/ssh/sshd_config "${REPO}limit/sshd" >/dev/null 2>&1
 chmod 700 /etc/ssh/sshd_config
-/etc/init.d/ssh restart
-systemctl restart ssh
-/etc/init.d/ssh status
+# force SSH listen on 22 and 143
+grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
+grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
+
+# when socket activation is enabled, add 143 to ssh.socket listeners too
+if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+    mkdir -p /etc/systemd/system/ssh.socket.d
+    cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
+[Socket]
+ListenStream=
+ListenStream=0.0.0.0:22
+ListenStream=[::]:22
+ListenStream=0.0.0.0:143
+ListenStream=[::]:143
+EOF
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl restart ssh.socket >/dev/null 2>&1 || true
+fi
+
+if sshd -t >/dev/null 2>&1; then
+    if [[ -x /etc/init.d/ssh ]]; then
+        /etc/init.d/ssh restart >/dev/null 2>&1 || true
+    fi
+    systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
+fi
+if [[ -x /etc/init.d/ssh ]]; then
+    /etc/init.d/ssh status >/dev/null 2>&1 || true
+fi
 print_success "SSHD"
 }
 
