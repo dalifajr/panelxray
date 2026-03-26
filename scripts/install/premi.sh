@@ -901,7 +901,34 @@ validate_haproxy_config() {
 
     if [[ ! -s /etc/haproxy/haproxy.cfg ]]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] haproxy.cfg missing, writing fallback config" >>"$log_file"
-        cat >/etc/haproxy/haproxy.cfg <<EOF
+        if [[ -s /etc/haproxy/hap.pem ]]; then
+            cat >/etc/haproxy/haproxy.cfg <<EOF
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+
+defaults
+    log global
+    mode tcp
+    timeout connect 5s
+    timeout client 50s
+    timeout server 50s
+
+frontend panelxray_tls
+    bind *:443 ssl crt /etc/haproxy/hap.pem alpn h2,http/1.1
+    acl is_grpc ssl_fc_alpn -i h2
+    use_backend panelxray_grpc if is_grpc
+    default_backend panelxray_ws
+
+backend panelxray_ws
+    server local_ws 127.0.0.1:1010 send-proxy check
+
+backend panelxray_grpc
+    server local_grpc 127.0.0.1:1013 send-proxy check
+EOF
+        else
+            cat >/etc/haproxy/haproxy.cfg <<EOF
 global
     log /dev/log local0
     log /dev/log local1 notice
@@ -921,6 +948,7 @@ frontend panelxray_tcp
 backend panelxray_backend
     server local 127.0.0.1:1010 check
 EOF
+        fi
     fi
 
     # HAProxy 3.x removed bind-process; strip it if present for compatibility.
@@ -942,7 +970,34 @@ EOF
 
         if ! haproxy -c -f /etc/haproxy/haproxy.cfg >>"$log_file" 2>&1; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] template still invalid, applying minimal safe config" >>"$log_file"
-            cat >/etc/haproxy/haproxy.cfg <<EOF
+            if [[ -s /etc/haproxy/hap.pem ]]; then
+                cat >/etc/haproxy/haproxy.cfg <<EOF
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+
+defaults
+    log global
+    mode tcp
+    timeout connect 5s
+    timeout client 50s
+    timeout server 50s
+
+frontend panelxray_tls
+    bind *:443 ssl crt /etc/haproxy/hap.pem alpn h2,http/1.1
+    acl is_grpc ssl_fc_alpn -i h2
+    use_backend panelxray_grpc if is_grpc
+    default_backend panelxray_ws
+
+backend panelxray_ws
+    server local_ws 127.0.0.1:1010 send-proxy check
+
+backend panelxray_grpc
+    server local_grpc 127.0.0.1:1013 send-proxy check
+EOF
+            else
+                cat >/etc/haproxy/haproxy.cfg <<EOF
 global
     log /dev/log local0
     log /dev/log local1 notice
@@ -962,6 +1017,7 @@ frontend panelxray_tcp
 backend panelxray_backend
     server local 127.0.0.1:1010 check
 EOF
+            fi
         fi
     fi
 }
