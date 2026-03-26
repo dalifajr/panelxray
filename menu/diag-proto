@@ -167,6 +167,16 @@ check_service() {
   return 1
 }
 
+normalize_legacy_http2_directive() {
+  local conf_file="/etc/nginx/conf.d/xray.conf"
+  [[ -f "$conf_file" ]] || return 0
+
+  # Compat for older nginx: replace "http2 on;" with listen-level http2 flag.
+  sed -i 's/listen 81 ssl reuseport;/listen 81 ssl http2 reuseport;/g' "$conf_file" 2>/dev/null || true
+  sed -i 's/listen 1013 proxy_protocol so_keepalive=on reuseport;/listen 1013 http2 proxy_protocol so_keepalive=on reuseport;/g' "$conf_file" 2>/dev/null || true
+  sed -i '/^\s*http2 on;\s*$/d' "$conf_file" 2>/dev/null || true
+}
+
 attempt_self_heal() {
   local need_heal="$1"
   if [[ "$need_heal" -ne 1 ]]; then
@@ -174,6 +184,7 @@ attempt_self_heal() {
   fi
 
   echo -e "${YELLOW}Auto-repair: mencoba memulihkan stack (xray/nginx/haproxy/ws)...${NC}"
+  normalize_legacy_http2_directive
 
   if has_cmd nginx; then
     if ! nginx -t >/tmp/diag-nginx-test.log 2>&1; then
