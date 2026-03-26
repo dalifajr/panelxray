@@ -1,7 +1,5 @@
 #!/bin/bash
 
-STATE_ROOT="/etc/kyt/suspended"
-
 function send_log(){
 CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
 KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
@@ -12,73 +10,17 @@ TEXT="
 <b>⚠️ NOTIFICATIONS MULTI LOGIN ⚠️</b>
 <code>────────────────────</code>
 <code>Username  : </code><code>$user</code>
-<code>Limit Ip    : </code><code>$data</code>
+<code>Limit Ip    : </code><code>$iplimit</code>
 <code>────────────────────</code>
 "
 curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
 }
-
-function suspend_account(){
-    local service="$1"
-    local user="$2"
-    local exp="$3"
-    local reason="$4"
-    local marker=""
-    local dbfile=""
-    local tag1=""
-    local tag2=""
-    local uuid_key=""
-
-    case "$service" in
-        vmess)
-            marker="###"
-            dbfile="/etc/vmess/.vmess.db"
-            tag1="#vmess"
-            tag2="#vmessgrpc"
-            uuid_key="id"
-            ;;
-        vless)
-            marker="#&"
-            dbfile="/etc/vless/.vless.db"
-            tag1="#vless"
-            tag2="#vlessgrpc"
-            uuid_key="id"
-            ;;
-        trojan)
-            marker="#!"
-            dbfile="/etc/trojan/.trojan.db"
-            tag1="#trojanws"
-            tag2="#trojangrpc"
-            uuid_key="password"
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-
-    mkdir -p "$STATE_ROOT/$service"
-    if [[ -f "$STATE_ROOT/$service/$user" ]]; then
-        return 0
-    fi
-
-    local uuid
-    uuid=$(grep -wE "^### $user " "$dbfile" | awk '{print $4}' | head -n1)
-    if [[ -z "$uuid" || -z "$exp" ]]; then
-        return 1
-    fi
-
-    sed -i "/^${marker} $user $exp/,/^},{/d" /etc/xray/config.json
-    printf '%s %s %s\n' "$exp" "$uuid" "$reason" > "$STATE_ROOT/$service/$user"
-    systemctl restart xray >/dev/null 2>&1
-    return 0
-}
-
 function vmip(){
 #LIMITVMESSIP
 echo -n > /var/log/xray/access.log
-sleep 440
-data=( $(ls /etc/kyt/limit/vmess/ip 2>/dev/null) );
-#Decrypted By YADDY D PHREAKER
+sleep 1
+data=( `ls /etc/kyt/limit/vmess/ip`);
+#dancok
     for user in "${data[@]}"
     do
         iplimit=$(cat /etc/kyt/limit/vmess/ip/$user)
@@ -86,11 +28,12 @@ data=( $(ls /etc/kyt/limit/vmess/ip 2>/dev/null) );
         cekcek=$(echo -e "$ehh" | wc -l);
         if [[ $cekcek -gt $iplimit ]]; then
             exp=$(grep -w "^### $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  if [[ -n "$exp" ]]; then
-                      data=$iplimit
-                      suspend_account "vmess" "$user" "$exp" "limit-ip"
-                      send_log
-                  fi
+                  sed -i "/^### $user $exp/,/^},{/d" /etc/xray/config.json
+                  sed -i "/^### $user $exp/d" /etc/vmess/.vmess.db
+                  systemctl restart xray >> /dev/null 2>&1
+                  jum2=$(cat /tmp/ipvmess.txt | wc -l)
+                  rm -rf /etc/kyt/limit/vmess/ip/$user
+                  send_log
                 else
             echo ""
         fi
@@ -100,9 +43,9 @@ data=( $(ls /etc/kyt/limit/vmess/ip 2>/dev/null) );
 function vlip(){
 #LIMITVLESSIP
 echo -n > /var/log/xray/access.log
-sleep 440
-data=( $(ls /etc/kyt/limit/vless/ip 2>/dev/null) );
-#Decrypted By YADDY D PHREAKER
+sleep 1
+data=( `ls /etc/kyt/limit/vless/ip`);
+#ASU
     for user in "${data[@]}"
     do
         iplimit=$(cat /etc/kyt/limit/vless/ip/$user)
@@ -110,11 +53,12 @@ data=( $(ls /etc/kyt/limit/vless/ip 2>/dev/null) );
         cekcek=$(echo -e "$ehh" | wc -l);
         if [[ $cekcek -gt $iplimit ]]; then
             exp=$(grep -w "^#& $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  if [[ -n "$exp" ]]; then
-                      data=$iplimit
-                      suspend_account "vless" "$user" "$exp" "limit-ip"
-                      send_log
-                  fi
+                  sed -i "/^#& $user $exp/,/^},{/d" /etc/xray/config.json
+                  sed -i "/^### $user $exp/d" /etc/vless/.vless.db
+                  systemctl restart xray >> /dev/null 2>&1
+                  jum2=$(cat /tmp/ipvless.txt | wc -l)
+                  rm -rf /etc/kyt/limit/vless/ip/$user
+                  send_log
                 else
             echo ""
         fi
@@ -124,9 +68,9 @@ data=( $(ls /etc/kyt/limit/vless/ip 2>/dev/null) );
 function trip(){
 #LIMITIPTROJAN
 echo -n > /var/log/xray/access.log
-sleep 440
-data=( $(ls /etc/kyt/limit/trojan/ip 2>/dev/null) );
-#Decrypted By YADDY D PHREAKER
+sleep 1
+data=( `ls /etc/kyt/limit/trojan/ip`);
+#ASU
     for user in "${data[@]}"
     do
         iplimit=$(cat /etc/kyt/limit/trojan/ip/$user)
@@ -134,11 +78,12 @@ data=( $(ls /etc/kyt/limit/trojan/ip 2>/dev/null) );
         cekcek=$(echo -e "$ehh" | wc -l);
         if [[ $cekcek -gt $iplimit ]]; then
             exp=$(grep -w "^#! $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  if [[ -n "$exp" ]]; then
-                      data=$iplimit
-                      suspend_account "trojan" "$user" "$exp" "limit-ip"
-                      send_log
-                  fi
+                  sed -i "/^#! $user $exp/,/^},{/d" /etc/xray/config.json
+                  sed -i "/^### $user $exp/d" /etc/trojan/.trojan.db
+                  systemctl restart xray >> /dev/null 2>&1
+                  jum2=$(cat /tmp/iptrojan.txt | wc -l)
+                  rm -rf /etc/kyt/limit/trojan/ip/$user
+                  send_log
                 else
             echo ""
         fi

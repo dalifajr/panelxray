@@ -74,7 +74,7 @@ for user in ${data[@]}
       total=$(con ${bol})
       send-log
         rm -f /etc/shadowsocks/$user
-        rm -f /etc/kyt/limit/shadowsocks/ip/${user}
+        rm -f /etc/funny/limit/shadowsocks/ip/${user}
         rm -f /etc/limit/shadowsocks/$user
         rm -f /etc/limit/shadowsocks/quota/$user
         rm -f /var/www/html/sodosokws-$user.txt

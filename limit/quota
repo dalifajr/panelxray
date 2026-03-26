@@ -1,8 +1,8 @@
 #!/bin/bash
 
 function send-log(){
-CHATID="6617783693"
-KEY="6751589620:AAHwjP6dzZhuqeyUOdYFc6742Q1YUVF1EjM"
+CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
+KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
 TIME="10"
 URL="https://api.telegram.org/bot$KEY/sendMessage"
 TEXT="
@@ -11,6 +11,7 @@ TEXT="
 <code>────────────────────</code>
 <code>Username  : </code><code>$user</code>
 <code>Usage     : </code><code>$total</code>
+<code>Limit Quota : </code><code>$cekdulu</code>
 <code>────────────────────</code>
 "
 curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null

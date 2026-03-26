@@ -122,12 +122,4 @@ Subsystem	sftp	/usr/lib/openssh/sftp-server
 #	AllowTcpForwarding no
 #	PermitTTY no
 #	ForceCommand cvs server
-Banner /etc/kyt.txt
-
-# Compatibility profile for older SSH clients used by HTTP Custom payload mode.
-PasswordAuthentication yes
-KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group14-sha256,diffie-hellman-group-exchange-sha1
-Ciphers aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc
-MACs hmac-sha1,hmac-sha1-96,hmac-sha2-256,hmac-sha2-512,hmac-md5,hmac-md5-96
-HostKeyAlgorithms ssh-rsa,rsa-sha2-256,rsa-sha2-512
-PubkeyAcceptedAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+Banner /etc/issue.net

@@ -1,6 +1,6 @@
 [Unit]
 Description=Limit Usage Xray Service
-Documentation=FighterTunnel
+Documentation=https://github.com/Arya-Blitar22
 After=syslog.target network-online.target
 
 [Service]
