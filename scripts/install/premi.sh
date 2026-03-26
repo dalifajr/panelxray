@@ -151,38 +151,37 @@ resolve_subscription_expiry() {
     users_data="$1"
     login_user="$2"
 
-    echo "$users_data" | awk -v u="$login_user" '
-        {
-            line=$0
-            sub(/^\xef\xbb\xbf/, "", line)
-            sub(/\r$/, "", line)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-            if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
+    local line normalized user exp login_lc user_lc
+    login_lc="$(printf '%s' "$login_user" | tr '[:upper:]' '[:lower:]')"
 
-            # Accept: user|expiry, user,expiry, or user<space>expiry
-            n = split(line, a, /[|,]/)
-            if (n >= 2) {
-                user=a[1]
-                exp=a[2]
-            } else {
-                n2 = split(line, b, /[[:space:]]+/)
-                user=b[1]
-                exp=b[2]
-            }
+    while IFS= read -r line; do
+        # Normalize BOM/CRLF and surrounding whitespace.
+        line="${line#$'\xEF\xBB\xBF'}"
+        line="${line%$'\r'}"
+        line="$(printf '%s' "$line" | sed -e 's/^[[:space:]]\+//' -e 's/[[:space:]]\+$//')"
+        [[ -z "$line" || "${line#\#}" != "$line" ]] && continue
 
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", user)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", exp)
+        # Accept: user|expiry, user,expiry, or user<space>expiry
+        normalized="${line//,/|}"
+        if [[ "$normalized" == *"|"* ]]; then
+            user="${normalized%%|*}"
+            exp="${normalized#*|}"
+        else
+            user="${normalized%%[[:space:]]*}"
+            exp="${normalized#*[[:space:]]}"
+        fi
 
-            if (tolower(user) == tolower(u)) {
-                print exp
-                found=1
-                exit
-            }
-        }
-        END {
-            if (!found) exit 1
-        }
-    '
+        user="$(printf '%s' "$user" | sed -e 's/^[[:space:]]\+//' -e 's/[[:space:]]\+$//')"
+        exp="$(printf '%s' "$exp" | sed -e 's/^[[:space:]]\+//' -e 's/[[:space:]]\+$//')"
+        user_lc="$(printf '%s' "$user" | tr '[:upper:]' '[:lower:]')"
+
+        if [[ "$user_lc" == "$login_lc" && -n "$exp" ]]; then
+            printf '%s\n' "$exp"
+            return 0
+        fi
+    done <<< "$users_data"
+
+    return 1
 }
 
 enforce_subscription_login() {
