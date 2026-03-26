@@ -88,35 +88,16 @@ resolve_subscription_expiry() {
     users_data="$1"
     login_user="$2"
 
-    # Normalize and parse defensively to avoid false negatives from CRLF/spacing variants.
-    echo "$users_data" | awk -v u="$login_user" '
-        function trim(s) {
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
-            return s
-        }
-        BEGIN {
-            u=tolower(trim(u))
-        }
+    echo "$users_data" | awk -F'[|,]' -v u="$login_user" '
         {
             line=$0
             sub(/\r$/, "", line)
-            line=trim(line)
-            if (line ~ /^#/ || line == "") next
-
-            sep=""
-            if (index(line, "|") > 0) {
-                sep="|"
-            } else if (index(line, ",") > 0) {
-                sep=","
-            } else {
-                next
-            }
-
-            n=split(line, a, sep)
-            if (n < 2) next
-
-            user=tolower(trim(a[1]))
-            exp=trim(a[2])
+            if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
+            split(line, a, /[|,]/)
+            user=a[1]
+            exp=a[2]
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", user)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", exp)
             if (user == u) {
                 print exp
                 found=1
@@ -134,8 +115,8 @@ enforce_subscription_login() {
     users_data="$(load_subscription_users 2>/dev/null || true)"
 
     if [[ -z "$users_data" ]]; then
-        echo "Gagal memuat data user dari server lisensi."
-        echo "Pastikan URL lisensi aktif dan server memiliki koneksi internet."
+        echo "Gagal memuat data user dari init.txt (raw GitHub)."
+        echo "Pastikan URL raw GitHub aktif dan server memiliki koneksi internet."
         exit 1
     fi
 
@@ -148,7 +129,7 @@ enforce_subscription_login() {
 
     expiry="$(resolve_subscription_expiry "$users_data" "$input_user" 2>/dev/null || true)"
     if [[ -z "$expiry" ]]; then
-        echo "Username tidak ditemukan di data lisensi."
+        echo "Username tidak ditemukan di init.txt."
         exit 1
     fi
 
