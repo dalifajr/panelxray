@@ -1167,6 +1167,8 @@ print_install "Menginstall Dropbear"
 apt-get install dropbear -y > /dev/null 2>&1
 wget -q -O /etc/default/dropbear "${REPO}limit/dropbear.conf"
 chmod +x /etc/default/dropbear
+sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear
+sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear
 /etc/init.d/dropbear restart
 /etc/init.d/dropbear status
 print_success "Dropbear"
