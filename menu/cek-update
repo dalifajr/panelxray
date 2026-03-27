@@ -46,8 +46,37 @@ fi
 
 echo -e "${green}Target Branch:${NC} $BRANCH"
 
-if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1; then
-  echo -e "${red}Gagal clone branch $BRANCH dari repository.${NC}"
+fetch_repo() {
+  if git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  rm -rf "$TMP_DIR"
+  if git clone --branch "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  rm -rf "$TMP_DIR"
+  mkdir -p "$TMP_DIR/src"
+  if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
+    local archive_url extracted_dir
+    archive_url="https://codeload.github.com/dalifajr/panelxray/tar.gz/refs/heads/$BRANCH"
+    if curl -fsSL "$archive_url" -o "$TMP_DIR/repo.tgz" >/dev/null 2>&1 && \
+       tar -xzf "$TMP_DIR/repo.tgz" -C "$TMP_DIR/src" >/dev/null 2>&1; then
+      extracted_dir="$(find "$TMP_DIR/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+      if [ -n "$extracted_dir" ]; then
+        cp -a "$extracted_dir"/. "$TMP_DIR"/
+        rm -rf "$TMP_DIR/src" "$TMP_DIR/repo.tgz"
+        return 0
+      fi
+    fi
+  fi
+
+  return 1
+}
+
+if ! fetch_repo; then
+  echo -e "${red}Gagal clone/download branch $BRANCH dari repository.${NC}"
   read -n 1 -s -r -p "Press any key to back on menu"
   menu
   exit 1
