@@ -18,7 +18,8 @@ PASS = ""
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = "127.0.0.1:143"
-LEGACY_COMPAT_HOST = "127.0.0.1:22"
+# Legacy HTTP-custom clients are generally more compatible with dropbear.
+LEGACY_COMPAT_HOST = "127.0.0.1:143"
 RESPONSE = (
     b"HTTP/1.1 101 LunaticTunneling\r\n"
     b"Upgrade: websocket\r\n"
