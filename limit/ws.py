@@ -120,10 +120,11 @@ class ConnectionHandler(threading.Thread):
             if host_port == "":
                 host_port = DEFAULT_HOST
 
-            # Enhanced HTTP custom payload often uses PATCH /ssh-ws and legacy SSH stacks.
-            # Route this implicit path to OpenSSH backend for wider KEX compatibility.
-            request_line = self.client_buffer.split("\r\n", 1)[0].upper()
-            if host_port == DEFAULT_HOST and " /SSH-WS " in request_line:
+            # Enhanced HTTP custom payload may contain a first GET line and then
+            # a second PATCH /ssh-ws request in the same buffer.
+            # Inspect the full header block to select a legacy-compatible backend.
+            request_upper = self.client_buffer.upper()
+            if host_port == DEFAULT_HOST and " /SSH-WS" in request_upper:
                 host_port = LEGACY_COMPAT_HOST
 
             split = self.find_header(self.client_buffer, "X-Split")
