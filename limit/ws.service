@@ -1,12 +1,12 @@
 [Unit]
 Description=WebSocket
-Documentation=https://github.com/Arya-Blitar22
+Documentation=https://google.com
 After=syslog.target network-online.target
 
 [Service]
 User=root
 NoNewPrivileges=true
-ExecStart=/usr/bin/ws -f /usr/bin/tun.conf
+ExecStart=/usr/bin/python3 -O /etc/whoiamluna/ws.py 10015
 Restart=on-failure
 RestartPreventExitStatus=23
 LimitNPROC=10000

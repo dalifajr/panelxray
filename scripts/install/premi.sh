@@ -1403,9 +1403,12 @@ print_install "Menginstall ePro WebSocket Proxy"
     wget -O /usr/bin/ws.py "${REPO}limit/ws.py" >/dev/null 2>&1
     wget -O /usr/bin/tun.conf "${REPO}limit/tun.conf" >/dev/null 2>&1
     wget -O /etc/systemd/system/ws.service "${REPO}limit/ws.service" >/dev/null 2>&1
+    mkdir -p /etc/whoiamluna
+    cp -f /usr/bin/ws.py /etc/whoiamluna/ws.py >/dev/null 2>&1 || true
     chmod +x /etc/systemd/system/ws.service
     chmod +x /usr/bin/ws
     chmod +x /usr/bin/ws.py
+    chmod +x /etc/whoiamluna/ws.py
     chmod 644 /usr/bin/tun.conf
 systemctl disable ws
 systemctl stop ws

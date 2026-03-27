@@ -68,6 +68,9 @@ sync_runtime_configs() {
     if [[ -f "$TMP_DIR/limit/ws.py" ]]; then
         cp -f "$TMP_DIR/limit/ws.py" /usr/bin/ws.py
         chmod 755 /usr/bin/ws.py 2>/dev/null || true
+        mkdir -p /etc/whoiamluna
+        cp -f /usr/bin/ws.py /etc/whoiamluna/ws.py 2>/dev/null || true
+        chmod 755 /etc/whoiamluna/ws.py 2>/dev/null || true
     fi
 
     if [[ -f "$TMP_DIR/limit/ws" ]]; then
@@ -116,6 +119,7 @@ EOF
     if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
         systemctl restart haproxy >/dev/null 2>&1 || true
     fi
+    systemctl restart xray >/dev/null 2>&1 || true
     systemctl restart dropbear >/dev/null 2>&1 || true
     systemctl restart ws >/dev/null 2>&1 || true
 }
