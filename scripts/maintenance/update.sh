@@ -86,16 +86,33 @@ sync_runtime_configs() {
     mkdir -p /etc/systemd/system/dropbear.service.d
     cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
 [Service]
-Environment=DROPBEAR_PORT=143
-Environment=DROPBEAR_EXTRA_ARGS=-p 109
+Environment=DROPBEAR_PORT=109
+Environment=DROPBEAR_EXTRA_ARGS=
 ExecStart=
-ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
+ExecStart=/usr/sbin/dropbear -E -F -p 109
 EOF
 
     if [[ -f /etc/default/dropbear ]]; then
-        sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear 2>/dev/null || true
-        sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear 2>/dev/null || true
-        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
+        sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear 2>/dev/null || true
+        sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS=""/' /etc/default/dropbear 2>/dev/null || true
+        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS=""' >> /etc/default/dropbear
+    fi
+
+    if [[ -f /etc/ssh/sshd_config ]]; then
+        grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
+        grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
+    fi
+    if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+        mkdir -p /etc/systemd/system/ssh.socket.d
+        cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
+[Socket]
+ListenStream=
+ListenStream=0.0.0.0:22
+ListenStream=[::]:22
+ListenStream=0.0.0.0:143
+ListenStream=[::]:143
+EOF
+        systemctl restart ssh.socket >/dev/null 2>&1 || true
     fi
 
     # Keep legacy nodes aligned with SSH-WS tunnel route 109 from reference.
@@ -119,7 +136,7 @@ EOF
     if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
         systemctl restart haproxy >/dev/null 2>&1 || true
     fi
-    systemctl restart xray >/dev/null 2>&1 || true
+    systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
     systemctl restart dropbear >/dev/null 2>&1 || true
     systemctl restart ws >/dev/null 2>&1 || true
 }
