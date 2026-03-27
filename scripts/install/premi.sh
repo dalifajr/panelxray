@@ -1209,17 +1209,23 @@ chmod 700 /etc/ssh/sshd_config
 # keep SSHD on port 22 only, port 143 is reserved for dropbear
 sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
-sed -i '/^[#[:space:]]*KexAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*GSSAPIKexAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
 sed -i '/^[#[:space:]]*Ciphers[[:space:]]/d' /etc/ssh/sshd_config
 sed -i '/^[#[:space:]]*MACs[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*HostKeyAgent[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*KexAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
 sed -i '/^[#[:space:]]*HostKeyAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
-sed -i '/^[#[:space:]]*PubkeyAcceptedAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*HostKey[[:space:]]\+\/etc\/ssh\/ssh_host_\(rsa\|ecdsa\|ed25519\)_key[[:space:]]*$/d' /etc/ssh/sshd_config
 cat >>/etc/ssh/sshd_config <<'EOF'
-KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group14-sha256
-Ciphers aes128-cbc,aes256-cbc,aes128-ctr
-MACs hmac-sha1,hmac-sha2-256
-HostKeyAlgorithms +ssh-rsa
-PubkeyAcceptedAlgorithms +ssh-rsa
+GSSAPIKexAlgorithms gss-gex-sha1-,gss-group14-sha1-
+Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com
+MACs umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1
+HostKeyAgent none
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256
+HostKeyAlgorithms ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,ssh-ed25519-cert-v01@openssh.com,sk-ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ecdsa-sha2-nistp256@openssh.com,ssh-ed25519,sk-ssh-ed25519@openssh.com,rsa-sha2-512,rsa-sha2-256,ssh-rsa
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
 EOF
 
 # when socket activation is enabled, expose only port 22 for sshd
