@@ -115,18 +115,18 @@ EOF
         systemctl restart ssh.socket >/dev/null 2>&1 || true
     fi
 
-    # Keep legacy nodes aligned with SSH-WS tunnel route 109 from reference.
+    # Normalize SSH-WS upstream to OpenSSH for wider client compatibility.
     if [[ -f /etc/nginx/conf.d/xray.conf ]]; then
-        sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:109"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
-        sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:109"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:22"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:22"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         sed -i 's/listen 81 ssl reuseport;/listen 81 ssl http2 reuseport;/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         sed -i 's/listen 1013 proxy_protocol so_keepalive=on reuseport;/listen 1013 http2 proxy_protocol so_keepalive=on reuseport;/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         sed -i '/^\s*http2 on;\s*$/d' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
     fi
 
     if [[ -f /usr/bin/tun.conf ]]; then
-        sed -i 's/target_port: 143/target_port: 109/g' /usr/bin/tun.conf 2>/dev/null || true
-        sed -i 's/target_port: 22/target_port: 109/g' /usr/bin/tun.conf 2>/dev/null || true
+        sed -i 's/target_port: 143/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
+        sed -i 's/target_port: 109/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
     fi
 
     systemctl daemon-reload >/dev/null 2>&1 || true

@@ -707,9 +707,9 @@ enforce_ssh_main_route_xray_conf() {
 
     [[ -f "$conf_file" ]] || return 0
 
-    # Keep SSH websocket upstream host consistent with tun.conf (109).
-    sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:109"/g' "$conf_file" 2>/dev/null || true
-    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:109"/g' "$conf_file" 2>/dev/null || true
+    # Normalize SSH websocket upstream host to OpenSSH for wider compatibility.
+    sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:22"/g' "$conf_file" 2>/dev/null || true
+    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:22"/g' "$conf_file" 2>/dev/null || true
 }
 
 validate_nginx_config() {
@@ -1415,6 +1415,13 @@ print_install "Menginstall ePro WebSocket Proxy"
     chmod +x /usr/bin/ws.py
     chmod 755 /etc/whoiamluna/ws.py >/dev/null 2>&1 || true
     chmod 644 /usr/bin/tun.conf
+    sed -i 's/DEFAULT_HOST = "127.0.0.1:143"/DEFAULT_HOST = "127.0.0.1:22"/g' /usr/bin/ws.py 2>/dev/null || true
+    sed -i 's/DEFAULT_HOST = "127.0.0.1:109"/DEFAULT_HOST = "127.0.0.1:22"/g' /usr/bin/ws.py 2>/dev/null || true
+    sed -i 's/target_port: 143/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
+    sed -i 's/target_port: 109/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
+    mkdir -p /etc/whoiamluna
+    cp -f /usr/bin/ws.py /etc/whoiamluna/ws.py
+    chmod 755 /etc/whoiamluna/ws.py
 systemctl disable ws
 systemctl stop ws
 systemctl enable ws
