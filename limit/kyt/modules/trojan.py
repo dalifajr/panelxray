@@ -13,18 +13,49 @@ async def create_trojan(event):
 			"📅 **Pilih masa aktif:**",
 			["3", "7", "30", "60"],
 		)
+		sni_profile = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"🌐 **Pilih profil SNI:**\n1) support.zoom.us\n2) live.iflix.com\n3) Tanpa konfigurasi",
+			["1", "2", "3"],
+		)
+		cfg_mode = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"⚙️ **Pilih konfigurasi yang ditampilkan:**",
+			["TLS", "NTLS", "GRPC", "ALL"],
+		)
+		iplimit = await ask_text(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**")
+		iplimit = iplimit if iplimit else "1"
 		await short_progress(event, "Membuat akun TROJAN...")
-		cmd = f'printf "%s\n" "{user}" "{exp}" "{pw}" | addtr'
-		try:
-			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		except:
+		code, a = run_command("addtr", [sni_profile, user, exp, pw, iplimit])
+		if code != 0:
 			await event.respond("❌ **Username sudah terdaftar.**")
 		else:
 			today = DT.date.today()
 			later = today + DT.timedelta(days=int(exp))
 			b = [x.group() for x in re.finditer("trojan://(.*)",a)]
-			domain = re.search("@(.*?):",b[0]).group(1)
-			uuid = re.search("trojan://(.*?)@",b[0]).group(1)
+			if len(b) < 2:
+				await event.respond("❌ **Gagal membaca link TROJAN dari panel.**")
+				return
+			links = {
+				"TLS": next((x.replace(" ", "") for x in b if "security=tls" in x and "type=ws" in x), b[0].replace(" ", "")),
+				"NTLS": next((x.replace(" ", "") for x in b if "security=none" in x), ""),
+				"GRPC": next((x.replace(" ", "") for x in b if "type=grpc" in x), b[-1].replace(" ", "")),
+			}
+			domain = re.search("@(.*?):",links["TLS"]).group(1)
+			uuid = re.search("trojan://(.*?)@",links["TLS"]).group(1)
+			selected_links = []
+			if cfg_mode == "ALL":
+				selected_links = [("TLS/WS", links["TLS"]), ("NTLS/WS", links["NTLS"]), ("gRPC", links["GRPC"])]
+			elif cfg_mode == "GRPC":
+				selected_links = [("gRPC", links["GRPC"])]
+			elif cfg_mode == "NTLS":
+				selected_links = [("NTLS/WS", links["NTLS"])]
+			else:
+				selected_links = [("TLS/WS", links["TLS"])]
 			msg = build_result(
 				"TROJAN Account Created",
 				[
@@ -32,17 +63,16 @@ async def create_trojan(event):
 					("Host", domain),
 					("XRAY DNS", HOST),
 					("Quota", f"{pw} GB"),
+					("Limit IP", iplimit),
+					("Config", cfg_mode),
 					("Password/UUID", uuid),
 					("Expired", str(later)),
 				],
-				[
-					("WS", b[0].replace(" ", "")),
-					("gRPC", b[1].replace(" ", "")),
-					("OpenClash", f"https://{domain}:81/trojan-{user}.txt"),
-				],
+				selected_links + [("OpenClash", f"https://{domain}:81/trojan-{user}.txt")],
 			)
 			await event.respond(msg)
-			await send_tls_qr(event, b[0].replace(" ", ""), "QR TLS TROJAN")
+			if cfg_mode in ("TLS", "ALL"):
+				await send_tls_qr(event, links["TLS"], "QR TLS TROJAN")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -135,17 +165,39 @@ async def renew_trojan(event):
 async def trial_trojan(event):
 	async def trial_trojan_(event):
 		exp = await ask_choice(event, chat, sender.id, "⏱️ **Trial TROJAN (menit):**", ["10", "15", "30", "60"])
-		cmd = f'printf "%s\n" "{exp}" | trialtr'
+		cfg_mode = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"⚙️ **Pilih konfigurasi trial yang ditampilkan:**",
+			["TLS", "NTLS", "GRPC", "ALL"],
+		)
 		await short_progress(event, "Membuat trial TROJAN...")
-		try:
-			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		except:
+		code, a = run_command("trialtr", [cfg_mode, exp])
+		if code != 0:
 			await event.respond("❌ **Gagal membuat trial TROJAN.**")
 		else:
 			b = [x.group() for x in re.finditer("trojan://(.*)",a)]
-			remarks = re.search("#(.*)",b[0]).group(1)
-			domain = re.search("@(.*?):",b[0]).group(1)
-			uuid = re.search("trojan://(.*?)@",b[0]).group(1)
+			if len(b) < 2:
+				await event.respond("❌ **Gagal membaca link trial TROJAN dari panel.**")
+				return
+			links = {
+				"TLS": next((x.replace(" ", "") for x in b if "security=tls" in x and "type=ws" in x), b[0].replace(" ", "")),
+				"NTLS": next((x.replace(" ", "") for x in b if "security=none" in x), ""),
+				"GRPC": next((x.replace(" ", "") for x in b if "type=grpc" in x), b[-1].replace(" ", "")),
+			}
+			remarks = re.search("#(.*)",links["TLS"]).group(1)
+			domain = re.search("@(.*?):",links["TLS"]).group(1)
+			uuid = re.search("trojan://(.*?)@",links["TLS"]).group(1)
+			selected_links = []
+			if cfg_mode == "ALL":
+				selected_links = [("TLS/WS", links["TLS"]), ("NTLS/WS", links["NTLS"]), ("gRPC", links["GRPC"])]
+			elif cfg_mode == "GRPC":
+				selected_links = [("gRPC", links["GRPC"])]
+			elif cfg_mode == "NTLS":
+				selected_links = [("NTLS/WS", links["NTLS"])]
+			else:
+				selected_links = [("TLS/WS", links["TLS"])]
 			msg = build_result(
 				"TROJAN Trial Created",
 				[
@@ -153,15 +205,12 @@ async def trial_trojan(event):
 					("Host", domain),
 					("Password/UUID", uuid),
 					("Mode", "Trial"),
+					("Config", cfg_mode),
 					("Expired", f"{exp} menit"),
 				],
-				[
-					("TLS/WS", b[0].replace(" ", "")),
-					("gRPC", b[1].replace(" ", "")),
-				],
+				selected_links,
 			)
 			await event.respond(msg)
-			await send_tls_qr(event, b[0].replace(" ", ""), "QR TLS TROJAN Trial")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

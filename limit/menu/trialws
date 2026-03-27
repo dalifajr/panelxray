@@ -20,6 +20,26 @@ clear
 
 # // Create Account
 domain=$(cat /etc/xray/domain)
+CONFIG_MODE="ALL"
+if [ -t 0 ]; then
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e " PILIH KONFIGURASI TRIAL VMESS"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e "1) TLS"
+  echo -e "2) NTLS"
+  echo -e "3) GRPC"
+  echo -e "4) Semua"
+  read -rp "Pilih [1-4]: " CFG_MODE_CHOICE
+  case "$CFG_MODE_CHOICE" in
+    1) CONFIG_MODE="TLS" ;;
+    2) CONFIG_MODE="NTLS" ;;
+    3) CONFIG_MODE="GRPC" ;;
+    *) CONFIG_MODE="ALL" ;;
+  esac
+else
+  read -r _cfg_mode || true
+  read -r _trial_minutes || true
+fi
 masaaktif=1
 Quota=1
 iplimit=10
@@ -262,11 +282,26 @@ echo -e "Path             : /vmess"
 echo -e "Dynamic Path    : https://bugmu.com/vmess"
 echo -e "ServiceName      : vmess-grpc"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "Link TLS         : ${vmesslink1}"
+echo -e "Config Dipilih   : ${CONFIG_MODE}"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "Link none TLS    : ${vmesslink2}"
-echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "Link GRPC        : ${vmesslink3}"
+case "$CONFIG_MODE" in
+  TLS)
+    echo -e "Link TLS         : ${vmesslink1}"
+    ;;
+  NTLS)
+    echo -e "Link none TLS    : ${vmesslink2}"
+    ;;
+  GRPC)
+    echo -e "Link GRPC        : ${vmesslink3}"
+    ;;
+  *)
+    echo -e "Link TLS         : ${vmesslink1}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link none TLS    : ${vmesslink2}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link GRPC        : ${vmesslink3}"
+    ;;
+esac
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
 echo -e "Format OpenClash : https://${domain}:81/vmess-$user.txt"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"

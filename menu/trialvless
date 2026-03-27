@@ -50,6 +50,26 @@ clear
 domain=$(cat /etc/xray/domain)
 ISP=$(cat /etc/xray/isp)
 CITY=$(cat /etc/xray/city)
+CONFIG_MODE="ALL"
+if [ -t 0 ]; then
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e " PILIH KONFIGURASI TRIAL VLESS"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e "1) TLS"
+  echo -e "2) NTLS"
+  echo -e "3) GRPC"
+  echo -e "4) Semua"
+  read -rp "Pilih [1-4]: " CFG_MODE_CHOICE
+  case "$CFG_MODE_CHOICE" in
+    1) CONFIG_MODE="TLS" ;;
+    2) CONFIG_MODE="NTLS" ;;
+    3) CONFIG_MODE="GRPC" ;;
+    *) CONFIG_MODE="ALL" ;;
+  esac
+else
+  read -r _cfg_mode || true
+  read -r _trial_minutes || true
+fi
 masaaktif=1
 Quota=1
 iplimit=10
@@ -192,11 +212,26 @@ echo -e "Encryption  : none"
 echo -e "Path TLS    : /vless "
 echo -e "ServiceName : vless-grpc"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "Link TLS    : ${vlesslink1}"
+echo -e "Config Dipilih : ${CONFIG_MODE}"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "Link NTLS   : ${vlesslink2}"
-echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "Link GRPC   : ${vlesslink3}"
+case "$CONFIG_MODE" in
+  TLS)
+    echo -e "Link TLS    : ${vlesslink1}"
+    ;;
+  NTLS)
+    echo -e "Link NTLS   : ${vlesslink2}"
+    ;;
+  GRPC)
+    echo -e "Link GRPC   : ${vlesslink3}"
+    ;;
+  *)
+    echo -e "Link TLS    : ${vlesslink1}"
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e "Link NTLS   : ${vlesslink2}"
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e "Link GRPC   : ${vlesslink3}"
+    ;;
+esac
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Format OpenClash : https://${domain}:81/vless-$user.txt"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"

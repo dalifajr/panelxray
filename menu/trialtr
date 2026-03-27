@@ -21,6 +21,26 @@ clear
 # // Create Trial Trojan
 
 domain=$(cat /etc/xray/domain)
+CONFIG_MODE="ALL"
+if [ -t 0 ]; then
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e " PILIH KONFIGURASI TRIAL TROJAN"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e "1) TLS"
+  echo -e "2) NTLS"
+  echo -e "3) GRPC"
+  echo -e "4) Semua"
+  read -rp "Pilih [1-4]: " CFG_MODE_CHOICE
+  case "$CFG_MODE_CHOICE" in
+    1) CONFIG_MODE="TLS" ;;
+    2) CONFIG_MODE="NTLS" ;;
+    3) CONFIG_MODE="GRPC" ;;
+    *) CONFIG_MODE="ALL" ;;
+  esac
+else
+  read -r _cfg_mode || true
+  read -r _trial_minutes || true
+fi
 masaaktif=1
 Quota=1
 iplimit=10
@@ -141,11 +161,26 @@ echo -e "Key              : ${uuid}"
 echo -e "Path             : /trojan-ws" 
 echo -e "ServiceName      : trojan-grpc" 
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "Link WS          : ${trojanlink}" 
-echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "Link None Ws     : ${trojanlink2}" 
-echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "Link GRPC        : ${trojanlink1}" 
+echo -e "Config Dipilih   : ${CONFIG_MODE}"
+echo -e "\033[0;34m---------------------------------------------------\033[0m"
+case "$CONFIG_MODE" in
+  TLS)
+    echo -e "Link WS TLS      : ${trojanlink}"
+    ;;
+  NTLS)
+    echo -e "Link None WS     : ${trojanlink2}"
+    ;;
+  GRPC)
+    echo -e "Link GRPC        : ${trojanlink1}"
+    ;;
+  *)
+    echo -e "Link WS TLS      : ${trojanlink}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link None WS     : ${trojanlink2}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link GRPC        : ${trojanlink1}"
+    ;;
+esac
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
 echo -e "Format OpenClash : https://${domain}:81/trojan-$user.txt" 
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 

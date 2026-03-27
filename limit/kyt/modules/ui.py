@@ -94,7 +94,7 @@ async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
 
     qr_url = (
         "https://api.qrserver.com/v1/create-qr-code/"
-        f"?size=600x600&format=png&data={quote(tls_link, safe='')}"
+        f"?size=220x220&format=png&data={quote(tls_link, safe='')}"
     )
 
     caption = f"🧾 **{title}**\n🔐 Scan QR ini untuk koneksi TLS."

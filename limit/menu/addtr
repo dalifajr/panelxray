@@ -56,7 +56,7 @@ print_terminal_qr() {
   echo -e " QR ${label}"
   echo -e "\033[1;93m---------------------------------------------------\033[0m"
   if ensure_qrencode; then
-    qrencode -t ANSIUTF8 "$payload"
+    qrencode -t UTF8 -m 1 -s 1 "$payload"
   else
     echo "qrencode tidak tersedia. Install manual: apt-get update -y && apt-get install -y qrencode"
   fi
@@ -86,7 +86,12 @@ echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "1) support.zoom.us"
 echo -e "2) live.iflix.com"
 echo -e "3) Tanpa konfigurasi"
-read -rp "Pilih [1-3]: " CFG_CHOICE
+CFG_CHOICE="3"
+if [ -t 0 ]; then
+  read -rp "Pilih [1-3]: " CFG_CHOICE
+else
+  read -r CFG_CHOICE || CFG_CHOICE="3"
+fi
 case "$CFG_CHOICE" in
   1)
     WS_ADDR="support.zoom.us"
@@ -107,14 +112,33 @@ case "$CFG_CHOICE" in
     PROFILE_LABEL="Tanpa Konfigurasi"
     ;;
 esac
+
+CONFIG_MODE="ALL"
+if [ -t 0 ]; then
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e " PILIH KONFIGURASI LINK"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e "1) TLS"
+  echo -e "2) NTLS"
+  echo -e "3) GRPC"
+  echo -e "4) Semua"
+  read -rp "Pilih [1-4]: " CFG_MODE_CHOICE
+  case "$CFG_MODE_CHOICE" in
+    1) CONFIG_MODE="TLS" ;;
+    2) CONFIG_MODE="NTLS" ;;
+    3) CONFIG_MODE="GRPC" ;;
+    *) CONFIG_MODE="ALL" ;;
+  esac
+fi
 #tr="$(cat ~/log-install.txt | grep -w "Trojan WS " | cut -d: -f2|sed 's/ //g')"
+if [ -t 0 ]; then
 until [[ $user =~ ^[a-zA-Z0-9_]+$ && ${user_EXISTS} == '0' ]]; do
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e " CREATE TROJAN ACCOUNT          "
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 
 		read -rp "User: " -e user
-		user_EXISTS=$(grep -w $user /etc/xray/config.json | wc -l)
+		user_EXISTS=$(grep -w "$user" /etc/xray/config.json | wc -l)
 
 		if [[ ${user_EXISTS} == '1' ]]; then
 clear
@@ -129,11 +153,22 @@ clear
 			m-trojan
 		fi
 	done
-
-uuid=$(cat /proc/sys/kernel/random/uuid)
 read -p "Expired (days): " masaaktif
 read -p "Limit User (GB): " Quota
 read -p "Limit User (IP): " iplimit
+else
+read -r user
+user_EXISTS=$(grep -w "$user" /etc/xray/config.json | wc -l)
+if [[ ${user_EXISTS} != '0' ]]; then
+  echo "Username sudah terdaftar"
+  exit 1
+fi
+read -r masaaktif
+read -r Quota
+read -r iplimit
+fi
+
+uuid=$(cat /proc/sys/kernel/random/uuid)
 tgl=$(date -d "$masaaktif days" +"%d")
 bln=$(date -d "$masaaktif days" +"%b")
 thn=$(date -d "$masaaktif days" +"%Y")
@@ -209,12 +244,8 @@ systemctl reload nginx
 service cron restart
 trojanlink="trojan://${uuid}@${WS_ADDR}:443?path=%2Ftrojan-ws&security=tls&host=${WS_HOST}&type=ws&sni=${TLS_SNI}&allowInsecure=1#${user}"
 trojanlink1="trojan://${uuid}@${WS_ADDR}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${TLS_SNI}&allowInsecure=1#${user}"
-QR_WS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$trojanlink")"
-QR_NTLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$trojanlink2")"
-QR_GRPC_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$trojanlink1")"
+QR_WS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$trojanlink")"
 wget -q -O /var/www/html/trojan-${user}-ws.png "$QR_WS_LINK" >/dev/null 2>&1 || true
-wget -q -O /var/www/html/trojan-${user}-ntls.png "$QR_NTLS_LINK" >/dev/null 2>&1 || true
-wget -q -O /var/www/html/trojan-${user}-grpc.png "$QR_GRPC_LINK" >/dev/null 2>&1 || true
 if [ ! -e /etc/trojan ]; then
   mkdir -p /etc/trojan
 fi
@@ -260,24 +291,40 @@ echo -e "ISP              : $ISP"
 echo -e "Path             : /trojan-ws" 
 echo -e "ServiceName      : trojan-grpc" 
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "Link WS          : ${trojanlink}" 
-echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "Link None TLS     : ${trojanlink2}" 
-echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "Link GRPC        : ${trojanlink1}" 
-echo -e "\033[0;34m---------------------------------------------------\033[0m" 
-echo -e "QR WS            : https://${domain}:81/trojan-${user}-ws.png"
-echo -e "QR NTLS          : https://${domain}:81/trojan-${user}-ntls.png"
-echo -e "QR GRPC          : https://${domain}:81/trojan-${user}-grpc.png"
+echo -e "Config Dipilih   : ${CONFIG_MODE}"
+echo -e "\033[0;34m---------------------------------------------------\033[0m"
+case "$CONFIG_MODE" in
+  TLS)
+    echo -e "Link WS TLS      : ${trojanlink}"
+    ;;
+  NTLS)
+    echo -e "Link WS NTLS     : ${trojanlink2}"
+    ;;
+  GRPC)
+    echo -e "Link GRPC        : ${trojanlink1}"
+    ;;
+  *)
+    echo -e "Link WS TLS      : ${trojanlink}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link WS NTLS     : ${trojanlink2}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link GRPC        : ${trojanlink1}"
+    ;;
+esac
+echo -e "\033[0;34m---------------------------------------------------\033[0m"
+if [[ "$CONFIG_MODE" == "TLS" || "$CONFIG_MODE" == "ALL" ]]; then
+  echo -e "QR WS TLS        : https://${domain}:81/trojan-${user}-ws.png"
+  echo -e "\033[0;34m---------------------------------------------------\033[0m"
+fi
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
 echo -e "Format OpenClash : https://${domain}:81/trojan-$user.txt" 
 echo -e "\033[0;34m---------------------------------------------------\033[0m" 
 echo -e "Aktif Selama     : $masaaktif Hari"
 echo -e "Dibuat Pada      : $tnggl"
 echo -e "Berakhir Pada    : $expe" 
-print_terminal_qr "TROJAN WS" "$trojanlink"
-print_terminal_qr "TROJAN NTLS" "$trojanlink2"
-print_terminal_qr "TROJAN GRPC" "$trojanlink1"
+if [[ "$CONFIG_MODE" == "TLS" || "$CONFIG_MODE" == "ALL" ]]; then
+  print_terminal_qr "TROJAN WS TLS" "$trojanlink"
+fi
 echo -e "----------------------------------------------------------------------"
 echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "           Premium Script                     "

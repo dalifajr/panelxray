@@ -60,7 +60,7 @@ print_terminal_qr() {
   echo -e " QR ${label}"
   echo -e "\033[1;93m---------------------------------------------------\033[0m"
   if ensure_qrencode; then
-    qrencode -t ANSIUTF8 "$payload"
+    qrencode -t UTF8 -m 1 -s 1 "$payload"
   else
     echo "qrencode tidak tersedia. Install manual: apt-get update -y && apt-get install -y qrencode"
   fi
@@ -79,7 +79,12 @@ echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "1) support.zoom.us"
 echo -e "2) live.iflix.com"
 echo -e "3) Tanpa konfigurasi"
-read -rp "Pilih [1-3]: " CFG_CHOICE
+CFG_CHOICE="3"
+if [ -t 0 ]; then
+  read -rp "Pilih [1-3]: " CFG_CHOICE
+else
+  read -r CFG_CHOICE || CFG_CHOICE="3"
+fi
 case "$CFG_CHOICE" in
   1)
     WS_ADDR="support.zoom.us"
@@ -100,32 +105,62 @@ case "$CFG_CHOICE" in
     PROFILE_LABEL="Tanpa Konfigurasi"
     ;;
 esac
+
+CONFIG_MODE="ALL"
+if [ -t 0 ]; then
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e " PILIH KONFIGURASI LINK"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e "1) TLS"
+  echo -e "2) NTLS"
+  echo -e "3) GRPC"
+  echo -e "4) Semua"
+  read -rp "Pilih [1-4]: " CFG_MODE_CHOICE
+  case "$CFG_MODE_CHOICE" in
+    1) CONFIG_MODE="TLS" ;;
+    2) CONFIG_MODE="NTLS" ;;
+    3) CONFIG_MODE="GRPC" ;;
+    *) CONFIG_MODE="ALL" ;;
+  esac
+fi
 clear
-until [[ $user =~ ^[a-zA-Z0-9_]+$ && ${CLIENT_EXISTS} == '0' ]]; do
-  echo -e "\033[1;93m---------------------------------------------------\033[0m"
-  echo -e " CREATE VLESS ACCOUNT           "
-  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+if [ -t 0 ]; then
+  until [[ $user =~ ^[a-zA-Z0-9_]+$ && ${CLIENT_EXISTS} == '0' ]]; do
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e " CREATE VLESS ACCOUNT           "
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
 
-  read -rp "User: " -e user
-  CLIENT_EXISTS=$(grep -w $user /etc/xray/config.json | wc -l)
+    read -rp "User: " -e user
+    CLIENT_EXISTS=$(grep -w "$user" /etc/xray/config.json | wc -l)
 
-  if [[ ${CLIENT_EXISTS} == '1' ]]; then
-    clear
-  echo -e "\033[1;93m---------------------------------------------------\033[0m"
-  echo -e " CREATE VLESS ACCOUNT           "
-  echo -e "\033[1;93m---------------------------------------------------\033[0m"
-    echo ""
-    echo "A client with the specified name was already created, please choose another name."
-    echo ""
-    echo -e "\033[0;34m---------------------------------------------------\033[0m"
-    read -n 1 -s -r -p "Press any key to back on menu"
-    menu
+    if [[ ${CLIENT_EXISTS} == '1' ]]; then
+      clear
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e " CREATE VLESS ACCOUNT           "
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+      echo ""
+      echo "A client with the specified name was already created, please choose another name."
+      echo ""
+      echo -e "\033[0;34m---------------------------------------------------\033[0m"
+      read -n 1 -s -r -p "Press any key to back on menu"
+      menu
+    fi
+  done
+  read -p "Expired (days): " masaaktif
+  read -p "Limit User (GB): " Quota
+  read -p "Limit User (IP): " iplimit
+else
+  read -r user
+  CLIENT_EXISTS=$(grep -w "$user" /etc/xray/config.json | wc -l)
+  if [[ ${CLIENT_EXISTS} != '0' ]]; then
+    echo "Username sudah terdaftar"
+    exit 1
   fi
-done
+  read -r masaaktif
+  read -r Quota
+  read -r iplimit
+fi
 uuid=$(cat /proc/sys/kernel/random/uuid)
-read -p "Expired (days): " masaaktif
-read -p "Limit User (GB): " Quota
-read -p "Limit User (IP): " iplimit
 tgl=$(date -d "$masaaktif days" +"%d")
 bln=$(date -d "$masaaktif days" +"%b")
 thn=$(date -d "$masaaktif days" +"%Y")
@@ -242,12 +277,8 @@ ${vlesslink3}
 
 END
 
-QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vlesslink1")"
-QR_NTLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vlesslink2")"
-QR_GRPC_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vlesslink3")"
+QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$vlesslink1")"
 wget -q -O /var/www/html/vless-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
-wget -q -O /var/www/html/vless-${user}-ntls.png "$QR_NTLS_LINK" >/dev/null 2>&1 || true
-wget -q -O /var/www/html/vless-${user}-grpc.png "$QR_GRPC_LINK" >/dev/null 2>&1 || true
 
 systemctl restart xray
 systemctl restart nginx
@@ -271,24 +302,40 @@ echo -e "Encryption  : none"
 echo -e "Path TLS    : /vless "
 echo -e "ServiceName : vless-grpc"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "Link TLS    : ${vlesslink1}"
+echo -e "Config Dipilih : ${CONFIG_MODE}"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "Link NTLS   : ${vlesslink2}"
+case "$CONFIG_MODE" in
+  TLS)
+    echo -e "Link TLS    : ${vlesslink1}"
+    ;;
+  NTLS)
+    echo -e "Link NTLS   : ${vlesslink2}"
+    ;;
+  GRPC)
+    echo -e "Link GRPC   : ${vlesslink3}"
+    ;;
+  *)
+    echo -e "Link TLS    : ${vlesslink1}"
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e "Link NTLS   : ${vlesslink2}"
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e "Link GRPC   : ${vlesslink3}"
+    ;;
+esac
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "Link GRPC   : ${vlesslink3}"
-echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e "QR TLS      : https://${domain}:81/vless-${user}-tls.png"
-echo -e "QR NTLS     : https://${domain}:81/vless-${user}-ntls.png"
-echo -e "QR GRPC     : https://${domain}:81/vless-${user}-grpc.png"
+if [[ "$CONFIG_MODE" == "TLS" || "$CONFIG_MODE" == "ALL" ]]; then
+  echo -e "QR TLS      : https://${domain}:81/vless-${user}-tls.png"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+fi
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Format OpenClash : https://${domain}:81/vless-$user.txt"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Aktif Selama     : $masaaktif Hari"
 echo -e "Dibuat Pada      : $tnggl"
 echo -e "Berakhir Pada    : $expe"
-print_terminal_qr "VLESS TLS" "$vlesslink1"
-print_terminal_qr "VLESS NTLS" "$vlesslink2"
-print_terminal_qr "VLESS GRPC" "$vlesslink3"
+if [[ "$CONFIG_MODE" == "TLS" || "$CONFIG_MODE" == "ALL" ]]; then
+  print_terminal_qr "VLESS TLS" "$vlesslink1"
+fi
 echo -e "----------------------------------------------------------------------"
 echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "               Premium Script                  "

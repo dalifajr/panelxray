@@ -13,17 +13,46 @@ async def create_vless(event):
 			"📅 **Pilih masa aktif:**",
 			["3", "7", "30", "60"],
 		)
+		sni_profile = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"🌐 **Pilih profil SNI:**\n1) support.zoom.us\n2) live.iflix.com\n3) Tanpa konfigurasi",
+			["1", "2", "3"],
+		)
+		cfg_mode = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"⚙️ **Pilih konfigurasi yang ditampilkan:**",
+			["TLS", "NTLS", "GRPC", "ALL"],
+		)
+		iplimit = await ask_text(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**")
+		iplimit = iplimit if iplimit else "1"
 		await short_progress(event, "Membuat akun VLESS...")
-		cmd = f'printf "%s\n" "{user}" "{exp}" "{pw}" | addvless'
-		try:
-			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		except:
+		code, a = run_command("addvless", [sni_profile, user, exp, pw, iplimit])
+		if code != 0:
 			await event.respond("❌ **Username sudah terdaftar.**")
 		else:
 			today = DT.date.today()
 			later = today + DT.timedelta(days=int(exp))
 			x = [x.group() for x in re.finditer("vless://(.*)",a)]
+			if len(x) < 3:
+				await event.respond("❌ **Gagal membaca link VLESS dari panel.**")
+				return
 			uuid = re.search("vless://(.*?)@",x[0]).group(1)
+			links = {
+				"TLS": x[0].replace(" ", ""),
+				"NTLS": x[1].replace(" ", ""),
+				"GRPC": x[2].replace(" ", ""),
+			}
+			selected_links = []
+			if cfg_mode == "ALL":
+				selected_links = [("TLS", links["TLS"]), ("NTLS", links["NTLS"]), ("gRPC", links["GRPC"])]
+			elif cfg_mode == "GRPC":
+				selected_links = [("gRPC", links["GRPC"])]
+			else:
+				selected_links = [(cfg_mode, links[cfg_mode])]
 			msg = build_result(
 				"VLESS Account Created",
 				[
@@ -31,18 +60,16 @@ async def create_vless(event):
 					("Host", DOMAIN),
 					("XRAY DNS", HOST),
 					("Quota", f"{pw} GB"),
+					("Limit IP", iplimit),
+					("Config", cfg_mode),
 					("UUID", uuid),
 					("Expired", str(later)),
 				],
-				[
-					("TLS", x[0]),
-					("NTLS", x[1].replace(" ", "")),
-					("gRPC", x[2].replace(" ", "")),
-					("OpenClash", f"https://{DOMAIN}:81/vless-{user}.txt"),
-				],
+				selected_links + [("OpenClash", f"https://{DOMAIN}:81/vless-{user}.txt")],
 			)
 			await event.respond(msg)
-			await send_tls_qr(event, x[0], "QR TLS VLESS")
+			if cfg_mode in ("TLS", "ALL"):
+				await send_tls_qr(event, links["TLS"], "QR TLS VLESS")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -202,16 +229,36 @@ async def unsuspend_vless(event):
 async def trial_vless(event):
 	async def trial_vless_(event):
 		exp = await ask_choice(event, chat, sender.id, "⏱️ **Trial VLESS (menit):**", ["10", "15", "30", "60"])
+		cfg_mode = await ask_choice(
+			event,
+			chat,
+			sender.id,
+			"⚙️ **Pilih konfigurasi trial yang ditampilkan:**",
+			["TLS", "NTLS", "GRPC", "ALL"],
+		)
 		await short_progress(event, "Membuat trial VLESS...")
-		cmd = f'printf "%s\n" "{exp}" | trialvless'
-		try:
-			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		except:
+		code, a = run_command("trialvless", [cfg_mode, exp])
+		if code != 0:
 			await event.respond("❌ **Gagal membuat trial VLESS.**")
 		else:
 			x = [x.group() for x in re.finditer("vless://(.*)",a)]
+			if len(x) < 3:
+				await event.respond("❌ **Gagal membaca link trial VLESS dari panel.**")
+				return
 			remarks = re.search("#(.*)",x[0]).group(1)
 			uuid = re.search("vless://(.*?)@",x[0]).group(1)
+			links = {
+				"TLS": x[0].replace(" ", ""),
+				"NTLS": x[1].replace(" ", ""),
+				"GRPC": x[2].replace(" ", ""),
+			}
+			selected_links = []
+			if cfg_mode == "ALL":
+				selected_links = [("TLS", links["TLS"]), ("NTLS", links["NTLS"]), ("gRPC", links["GRPC"])]
+			elif cfg_mode == "GRPC":
+				selected_links = [("gRPC", links["GRPC"])]
+			else:
+				selected_links = [(cfg_mode, links[cfg_mode])]
 			msg = build_result(
 				"VLESS Trial Created",
 				[
@@ -219,16 +266,12 @@ async def trial_vless(event):
 					("Host", DOMAIN),
 					("UUID", uuid),
 					("Mode", "Trial"),
+					("Config", cfg_mode),
 					("Expired", f"{exp} menit"),
 				],
-				[
-					("TLS", x[0]),
-					("NTLS", x[1].replace(" ", "")),
-					("gRPC", x[2].replace(" ", "")),
-				],
+				selected_links,
 			)
 			await event.respond(msg)
-			await send_tls_qr(event, x[0], "QR TLS VLESS Trial")
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

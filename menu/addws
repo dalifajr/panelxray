@@ -60,7 +60,7 @@ print_terminal_qr() {
   echo -e " QR ${label}"
   echo -e "\033[1;93m---------------------------------------------------\033[0m"
   if ensure_qrencode; then
-    qrencode -t ANSIUTF8 "$payload"
+    qrencode -t UTF8 -m 1 -s 1 "$payload"
   else
     echo "qrencode tidak tersedia. Install manual: apt-get update -y && apt-get install -y qrencode"
   fi
@@ -83,7 +83,12 @@ echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "1) support.zoom.us"
 echo -e "2) live.iflix.com"
 echo -e "3) Tanpa konfigurasi"
-read -rp "Pilih [1-3]: " CFG_CHOICE
+CFG_CHOICE="3"
+if [ -t 0 ]; then
+  read -rp "Pilih [1-3]: " CFG_CHOICE
+else
+  read -r CFG_CHOICE || CFG_CHOICE="3"
+fi
 case "$CFG_CHOICE" in
   1)
     WS_ADDR="support.zoom.us"
@@ -105,36 +110,66 @@ case "$CFG_CHOICE" in
     ;;
 esac
 
+CONFIG_MODE="ALL"
+if [ -t 0 ]; then
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e " PILIH KONFIGURASI LINK"
+  echo -e "\033[1;93m---------------------------------------------------\033[0m"
+  echo -e "1) TLS"
+  echo -e "2) NTLS"
+  echo -e "3) GRPC"
+  echo -e "4) Semua"
+  read -rp "Pilih [1-4]: " CFG_MODE_CHOICE
+  case "$CFG_MODE_CHOICE" in
+    1) CONFIG_MODE="TLS" ;;
+    2) CONFIG_MODE="NTLS" ;;
+    3) CONFIG_MODE="GRPC" ;;
+    *) CONFIG_MODE="ALL" ;;
+  esac
+fi
+
 #tls="$(cat ~/log-install.txt | grep -w "Vmess TLS" | cut -d: -f2|sed 's/ //g')"
 #none="$(cat ~/log-install.txt | grep -w "Vmess None TLS" | cut -d: -f2|sed 's/ //g')"
+if [ -t 0 ]; then
 until [[ $user =~ ^[a-zA-Z0-9_]+$ && ${CLIENT_EXISTS} == '0' ]]; do
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "CREATE VMESS ACCOUNT           "
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 
-		read -rp "User: " -e user
-		CLIENT_EXISTS=$(grep -w $user /etc/xray/config.json | wc -l)
+    read -rp "User: " -e user
+    CLIENT_EXISTS=$(grep -w "$user" /etc/xray/config.json | wc -l)
 
-		if [[ ${CLIENT_EXISTS} == '1' ]]; then
+    if [[ ${CLIENT_EXISTS} == '1' ]]; then
 clear
             echo -e "\033[1;93m---------------------------------------------------\033[0m"
             echo -e " CREATE VMESS ACCOUNT           "
             echo -e "\033[1;93m---------------------------------------------------\033[0m"
 
-			echo ""
-			echo "A client with the specified name was already created, please choose another name."
-			echo ""
-			echo -e "\033[0;34m---------------------------------------------------\033[0m"
-			read -n 1 -s -r -p "Press any key to back on menu"
+      echo ""
+      echo "A client with the specified name was already created, please choose another name."
+      echo ""
+      echo -e "\033[0;34m---------------------------------------------------\033[0m"
+      read -n 1 -s -r -p "Press any key to back on menu"
       menu
-		fi
-	done
-ISP=$(cat /etc/xray/isp)
-CITY=$(cat /etc/xray/city)
-uuid=$(cat /proc/sys/kernel/random/uuid)
+    fi
+  done
 read -p "Expired (days): " masaaktif
 read -p "Limit User (GB): " Quota
 read -p "Limit User (IP): " iplimit
+else
+read -r user
+CLIENT_EXISTS=$(grep -w "$user" /etc/xray/config.json | wc -l)
+if [[ ${CLIENT_EXISTS} != '0' ]]; then
+  echo "Username sudah terdaftar"
+  exit 1
+fi
+read -r masaaktif
+read -r Quota
+read -r iplimit
+fi
+ISP=$(cat /etc/xray/isp)
+CITY=$(cat /etc/xray/city)
+uuid=$(cat /proc/sys/kernel/random/uuid)
 tgl=$(date -d "$masaaktif days" +"%d")
 bln=$(date -d "$masaaktif days" +"%b")
 thn=$(date -d "$masaaktif days" +"%Y")
@@ -283,12 +318,8 @@ ${vmesslink3}
 
 END
 
-QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vmesslink1")"
-QR_NTLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vmesslink2")"
-QR_GRPC_LINK="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=$(url_encode "$vmesslink3")"
+QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$vmesslink1")"
 wget -q -O /var/www/html/vmess-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
-wget -q -O /var/www/html/vmess-${user}-ntls.png "$QR_NTLS_LINK" >/dev/null 2>&1 || true
-wget -q -O /var/www/html/vmess-${user}-grpc.png "$QR_GRPC_LINK" >/dev/null 2>&1 || true
 
 if [ ! -e /etc/vmess ]; then
   mkdir -p /etc/vmess
@@ -383,24 +414,39 @@ echo -e "ServiceName      : vmess-grpc"
 echo -e "Location         : $CITY"
 #echo -e "Pub Key          : ${PUB}"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "Link TLS         : ${vmesslink1}"
+echo -e "Config Dipilih   : ${CONFIG_MODE}"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "Link none TLS    : ${vmesslink2}"
+case "$CONFIG_MODE" in
+  TLS)
+    echo -e "Link TLS         : ${vmesslink1}"
+    ;;
+  NTLS)
+    echo -e "Link none TLS    : ${vmesslink2}"
+    ;;
+  GRPC)
+    echo -e "Link GRPC        : ${vmesslink3}"
+    ;;
+  *)
+    echo -e "Link TLS         : ${vmesslink1}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link none TLS    : ${vmesslink2}"
+    echo -e "\033[0;34m---------------------------------------------------\033[0m"
+    echo -e "Link GRPC        : ${vmesslink3}"
+    ;;
+esac
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "Link GRPC        : ${vmesslink3}"
-echo -e "\033[0;34m---------------------------------------------------\033[0m"
-echo -e "QR TLS           : https://${domain}:81/vmess-${user}-tls.png"
-echo -e "QR NTLS          : https://${domain}:81/vmess-${user}-ntls.png"
-echo -e "QR GRPC          : https://${domain}:81/vmess-${user}-grpc.png"
-echo -e "\033[0;34m---------------------------------------------------\033[0m"
+if [[ "$CONFIG_MODE" == "TLS" || "$CONFIG_MODE" == "ALL" ]]; then
+  echo -e "QR TLS           : https://${domain}:81/vmess-${user}-tls.png"
+  echo -e "\033[0;34m---------------------------------------------------\033[0m"
+fi
 echo -e "Format OpenClash : https://${domain}:81/vmess-$user.txt"
 echo -e "\033[0;34m---------------------------------------------------\033[0m"
 echo -e "Aktif Selama     : $masaaktif Hari"
 echo -e "Dibuat Pada      : $tnggl"
 echo -e "Berakhir Pada    : $expe"
-print_terminal_qr "VMESS TLS" "$vmesslink1"
-print_terminal_qr "VMESS NTLS" "$vmesslink2"
-print_terminal_qr "VMESS GRPC" "$vmesslink3"
+if [[ "$CONFIG_MODE" == "TLS" || "$CONFIG_MODE" == "ALL" ]]; then
+  print_terminal_qr "VMESS TLS" "$vmesslink1"
+fi
 echo -e "----------------------------------------------------------------------"
 echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "               Premium Script                "
