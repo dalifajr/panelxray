@@ -70,6 +70,56 @@ if [[ ! -d "$TMP_DIR/limit/menu" ]]; then
     exit 1
 fi
 
+ensure_dropbear_legacy_runtime() {
+    local target_ver cur_ver src_root src_pkg tarball src_dir url
+    target_ver="2019.78"
+    cur_ver=""
+    src_root="/usr/local/src"
+    src_pkg="dropbear-${target_ver}"
+    tarball="${src_root}/${src_pkg}.tar.bz2"
+    src_dir="${src_root}/${src_pkg}"
+    url="https://matt.ucc.asn.au/dropbear/releases/${src_pkg}.tar.bz2"
+
+    if command -v /usr/sbin/dropbear >/dev/null 2>&1; then
+        cur_ver="$(/usr/sbin/dropbear -V 2>&1 | sed -n 's/^Dropbear v\([0-9.]*\).*/\1/p' | head -n 1)"
+    fi
+
+    if [[ "$cur_ver" != "$target_ver" ]]; then
+        apt-get install -y build-essential zlib1g-dev >/dev/null 2>&1 || apt install -y build-essential zlib1g-dev >/dev/null 2>&1 || true
+        mkdir -p "$src_root"
+        rm -rf "$src_dir"
+
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL "$url" -o "$tarball" >/dev/null 2>&1 || true
+        else
+            wget -qO "$tarball" "$url" >/dev/null 2>&1 || true
+        fi
+
+        if [[ -s "$tarball" ]]; then
+            tar -xjf "$tarball" -C "$src_root" >/dev/null 2>&1 || true
+            if [[ -d "$src_dir" ]]; then
+                (
+                    cd "$src_dir" || exit 0
+                    ./configure --prefix=/usr --sysconfdir=/etc/dropbear >/dev/null 2>&1 || exit 0
+                    make PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp" >/dev/null 2>&1 || exit 0
+                    install -m 0755 dropbear /usr/sbin/dropbear >/dev/null 2>&1 || true
+                    install -m 0755 dropbearkey /usr/bin/dropbearkey >/dev/null 2>&1 || true
+                    install -m 0755 dbclient /usr/bin/dbclient >/dev/null 2>&1 || true
+                    install -m 0755 scp /usr/bin/scp >/dev/null 2>&1 || true
+                )
+            fi
+        fi
+    fi
+
+    mkdir -p /etc/dropbear
+    if [[ ! -s /etc/dropbear/dropbear_rsa_host_key ]]; then
+        if command -v /usr/bin/dropbearkey >/dev/null 2>&1; then
+            /usr/bin/dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key >/dev/null 2>&1 || true
+        fi
+        chmod 600 /etc/dropbear/dropbear_rsa_host_key >/dev/null 2>&1 || true
+    fi
+}
+
 sync_runtime_configs() {
     local domain
     domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
@@ -112,19 +162,21 @@ sync_runtime_configs() {
         chmod 644 /etc/systemd/system/ws.service 2>/dev/null || true
     fi
 
+    ensure_dropbear_legacy_runtime
+
     mkdir -p /etc/systemd/system/dropbear.service.d
     cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
 [Service]
 Environment=DROPBEAR_PORT=143
-Environment=DROPBEAR_EXTRA_ARGS=-p 109
+Environment=DROPBEAR_EXTRA_ARGS=-p 109 -r /etc/dropbear/dropbear_rsa_host_key
 ExecStart=
-ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
+ExecStart=/usr/sbin/dropbear -E -F -r /etc/dropbear/dropbear_rsa_host_key -p 143 -p 109
 EOF
 
     if [[ -f /etc/default/dropbear ]]; then
         sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear 2>/dev/null || true
-        sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear 2>/dev/null || true
-        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
+        sed -i 's|^DROPBEAR_EXTRA_ARGS=.*|DROPBEAR_EXTRA_ARGS="-p 109 -r /etc/dropbear/dropbear_rsa_host_key"|' /etc/default/dropbear 2>/dev/null || true
+        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109 -r /etc/dropbear/dropbear_rsa_host_key"' >> /etc/default/dropbear
     fi
 
     if [[ -f /etc/ssh/sshd_config ]]; then
