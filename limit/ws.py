@@ -17,7 +17,7 @@ PASS = ""
 # CONST
 BUFLEN = 4096 * 4
 TIMEOUT = 60
-DEFAULT_HOST = "127.0.0.1:143"
+DEFAULT_HOST = "127.0.0.1:22"
 RESPONSE = (
     b"HTTP/1.1 101 LunaticTunneling\r\n"
     b"Upgrade: websocket\r\n"
@@ -90,6 +90,7 @@ class ConnectionHandler(threading.Thread):
         self.client_buffer = ""
         self.server = server
         self.log = "Connection: " + str(addr)
+        self.client_banner_seen = False
 
     def close(self):
         try:
@@ -112,7 +113,8 @@ class ConnectionHandler(threading.Thread):
 
     def run(self):
         try:
-            self.client_buffer = self.client.recv(BUFLEN).decode("utf-8", errors="ignore")
+            head_bytes = self.client.recv(BUFLEN)
+            self.client_buffer = head_bytes.decode("utf-8", errors="ignore")
 
             host_port = self.find_header(self.client_buffer, "X-Real-Host")
             if host_port == "":
@@ -197,6 +199,15 @@ class ConnectionHandler(threading.Thread):
                             if incoming is self.target:
                                 self.client.sendall(data)
                             else:
+                                if not self.client_banner_seen:
+                                    # Some HTTP custom clients send extra HTTP payload chunks
+                                    # before SSH starts. Skip any bytes before the SSH banner.
+                                    idx = data.find(b"SSH-")
+                                    if idx == -1:
+                                        count = 0
+                                        continue
+                                    data = data[idx:]
+                                    self.client_banner_seen = True
                                 while data:
                                     sent = self.target.send(data)
                                     data = data[sent:]
