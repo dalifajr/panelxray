@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, send_tls_qr, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, run_command, sanitize_username, send_tls_qr, short_progress
 
 #CRATE VMESS
 @bot.on(events.CallbackQuery(data=b'create-vmess'))
@@ -98,9 +98,8 @@ async def trial_vmess(event):
 async def cek_vmess(event):
 	async def cek_vmess_(event):
 		cmd = 'bot-cek-ws'.strip()
-		x = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-		print(x)
-		z = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		_, z = run_command(cmd)
+		z = z or "Tidak ada sesi login VMESS aktif."
 		await event.respond(f"""
 
 {z}
@@ -114,6 +113,66 @@ async def cek_vmess(event):
 		await cek_vmess_(event)
 	else:
 		await event.answer("Access Denied",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'list-vmess'))
+async def list_vmess(event):
+	async def list_vmess_(event):
+		cmd = "grep -E '^### ' /etc/vmess/.vmess.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
+		_, out = run_command(cmd)
+		if not out:
+			out = "Tidak ada user VMESS."
+		await event.respond(f"📋 **Daftar User VMESS**\n```\n{out}\n```")
+
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await list_vmess_(event)
+	else:
+		await event.answer("Access Denied",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'renew-vmess'))
+async def renew_vmess(event):
+	async def renew_vmess_(event):
+		user = await ask_text(event, chat, sender.id, "👤 **Masukkan Username VMESS:**")
+		user = sanitize_username(user)
+		if not user:
+			await event.respond("❌ Username tidak valid. Gunakan huruf/angka/._-")
+			return
+
+		days = await ask_choice(event, chat, sender.id, "📅 **Tambah masa aktif (hari):**", ["1", "3", "7", "30", "60"])
+		quota = await ask_text(event, chat, sender.id, "📦 **Quota baru (GB, kosong=0):**")
+		quota = quota if quota else "0"
+		iplim = await ask_text(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**")
+		iplim = iplim if iplim else "1"
+
+		await short_progress(event, "Memperpanjang akun VMESS...")
+		_, out = run_command("renewws", [user, days, quota, iplim])
+		_, exp = run_command(f"grep -wE '^### {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
+		if exp:
+			msg = build_result(
+				"VMESS Account Renewed",
+				[
+					("Username", user),
+					("Added Days", days),
+					("Quota", f"{quota} GB"),
+					("Limit IP", iplim),
+					("Expired", exp),
+				],
+				[("OpenClash", f"https://{DOMAIN}:81/vmess-{user}.txt")],
+			)
+			await event.respond(msg)
+		else:
+			await event.respond(f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```")
+
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await renew_vmess_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
 
 @bot.on(events.CallbackQuery(data=b'delete-vmess'))
 async def delete_vmess(event):
@@ -187,7 +246,8 @@ async def vmess(event):
 	async def vmess_(event):
 		inline = [
 			[Button.inline("🧪 Trial", "trial-vmess"), Button.inline("➕ Create", "create-vmess")],
-			[Button.inline("👀 Check Login", "cek-vmess"), Button.inline("🗑️ Delete", "delete-vmess")],
+			[Button.inline("👀 Check Login", "cek-vmess"), Button.inline("📋 List User", "list-vmess")],
+			[Button.inline("🗓️ Renew", "renew-vmess"), Button.inline("🗑️ Delete", "delete-vmess")],
 			[Button.inline("⛔ Suspend", "suspend-vmess"), Button.inline("✅ Unsuspend", "unsuspend-vmess")],
 			[Button.inline("⬅️ Main Menu", "menu")],
 		]

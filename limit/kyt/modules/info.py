@@ -28,9 +28,7 @@ async def info_vps(event):
 		await event.edit("`Processing... 100%\n█████████████████████████ `")
 		time.sleep(1)
 		await event.edit("`Wait.. Setting up Server Data`")
-		x = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-		print(x)
-		z = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		z = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
 		await event.respond(f"""```{z}```
 **🤖@myridtunnel**
 """,buttons=[[Button.inline("‹ Main Menu ›","menu")]])

@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, send_tls_qr, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, run_command, sanitize_username, send_tls_qr, short_progress
 
 @bot.on(events.CallbackQuery(data=b'create-vless'))
 async def create_vless(event):
@@ -55,9 +55,8 @@ async def create_vless(event):
 async def cek_vless(event):
 	async def cek_vless_(event):
 		cmd = 'bot-cek-vless'.strip()
-		x = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-		print(x)
-		z = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		_, z = run_command(cmd)
+		z = z or "Tidak ada sesi login VLESS aktif."
 		await event.respond(f"""
 
 {z}
@@ -71,6 +70,66 @@ async def cek_vless(event):
 		await cek_vless_(event)
 	else:
 		await event.answer("Access Denied",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'list-vless'))
+async def list_vless(event):
+	async def list_vless_(event):
+		cmd = "grep -E '^### ' /etc/vless/.vless.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
+		_, out = run_command(cmd)
+		if not out:
+			out = "Tidak ada user VLESS."
+		await event.respond(f"📋 **Daftar User VLESS**\n```\n{out}\n```")
+
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await list_vless_(event)
+	else:
+		await event.answer("Access Denied",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'renew-vless'))
+async def renew_vless(event):
+	async def renew_vless_(event):
+		user = await ask_text(event, chat, sender.id, "👤 **Masukkan Username VLESS:**")
+		user = sanitize_username(user)
+		if not user:
+			await event.respond("❌ Username tidak valid. Gunakan huruf/angka/._-")
+			return
+
+		days = await ask_choice(event, chat, sender.id, "📅 **Tambah masa aktif (hari):**", ["1", "3", "7", "30", "60"])
+		quota = await ask_text(event, chat, sender.id, "📦 **Quota baru (GB, kosong=0):**")
+		quota = quota if quota else "0"
+		iplim = await ask_text(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**")
+		iplim = iplim if iplim else "1"
+
+		await short_progress(event, "Memperpanjang akun VLESS...")
+		_, out = run_command("renewvless", [user, days, quota, iplim])
+		_, exp = run_command(f"grep -wE '^#& {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
+		if exp:
+			msg = build_result(
+				"VLESS Account Renewed",
+				[
+					("Username", user),
+					("Added Days", days),
+					("Quota", f"{quota} GB"),
+					("Limit IP", iplim),
+					("Expired", exp),
+				],
+				[("OpenClash", f"https://{DOMAIN}:81/vless-{user}.txt")],
+			)
+			await event.respond(msg)
+		else:
+			await event.respond(f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```")
+
+	chat = event.chat_id
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await renew_vless_(event)
+	else:
+		await event.answer("Akses Ditolak",alert=True)
 
 @bot.on(events.CallbackQuery(data=b'delete-vless'))
 async def delete_vless(event):
@@ -183,7 +242,8 @@ async def vless(event):
 	async def vless_(event):
 		inline = [
 			[Button.inline("🧪 Trial", "trial-vless"), Button.inline("➕ Create", "create-vless")],
-			[Button.inline("👀 Check Login", "cek-vless"), Button.inline("🗑️ Delete", "delete-vless")],
+			[Button.inline("👀 Check Login", "cek-vless"), Button.inline("📋 List User", "list-vless")],
+			[Button.inline("🗓️ Renew", "renew-vless"), Button.inline("🗑️ Delete", "delete-vless")],
 			[Button.inline("⛔ Suspend", "suspend-vless"), Button.inline("✅ Unsuspend", "unsuspend-vless")],
 			[Button.inline("⬅️ Main Menu", "menu")],
 		]

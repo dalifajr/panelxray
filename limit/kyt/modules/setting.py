@@ -81,9 +81,7 @@ async def resx(event):
 async def speedtest(event):
 	async def speedtest_(event):
 		cmd = 'speedtest-cli --share'.strip()
-		x = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-		print(x)
-		z = subprocess.check_output(cmd, shell=True).decode("utf-8")
+		z = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
 		time.sleep(0)
 		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
 		time.sleep(0)
@@ -155,7 +153,7 @@ async def restsore(event):
 		except:
 			await event.respond("**Link Not Exist**")
 		else:
-			msg = f"""```{z}```
+			msg = f"""```{a}```
 **🤖@AutoFTbot**
 """
 			await event.respond(msg)

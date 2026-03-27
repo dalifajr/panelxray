@@ -102,3 +102,33 @@ async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
         await event.respond(caption, file=qr_url)
     except Exception:
         await event.respond(f"{caption}\n{qr_url}")
+
+
+def sanitize_username(value: str) -> str:
+    value = (value or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", value):
+        return value
+    return ""
+
+
+def run_command(command: str, inputs=None):
+    if inputs is None:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+    else:
+        payload = "".join(f"{str(v).strip()}\n" for v in inputs)
+        proc = subprocess.run(
+            command,
+            shell=True,
+            text=True,
+            input=payload,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+
+    return proc.returncode, (proc.stdout or "").strip()
