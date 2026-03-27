@@ -18,6 +18,7 @@ PASS = ""
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = "127.0.0.1:143"
+LEGACY_COMPAT_HOST = "127.0.0.1:22"
 RESPONSE = (
     b"HTTP/1.1 101 LunaticTunneling\r\n"
     b"Upgrade: websocket\r\n"
@@ -118,6 +119,12 @@ class ConnectionHandler(threading.Thread):
             host_port = self.find_header(self.client_buffer, "X-Real-Host")
             if host_port == "":
                 host_port = DEFAULT_HOST
+
+            # Enhanced HTTP custom payload often uses PATCH /ssh-ws and legacy SSH stacks.
+            # Route this implicit path to OpenSSH backend for wider KEX compatibility.
+            request_line = self.client_buffer.split("\r\n", 1)[0].upper()
+            if host_port == DEFAULT_HOST and " /SSH-WS " in request_line:
+                host_port = LEGACY_COMPAT_HOST
 
             split = self.find_header(self.client_buffer, "X-Split")
             if split != "":
