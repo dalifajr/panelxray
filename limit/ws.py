@@ -17,7 +17,7 @@ PASS = ""
 # CONST
 BUFLEN = 4096 * 4
 TIMEOUT = 60
-DEFAULT_HOST = "127.0.0.1:22"
+DEFAULT_HOST = "127.0.0.1:143"
 RESPONSE = (
     b"HTTP/1.1 101 LunaticTunneling\r\n"
     b"Upgrade: websocket\r\n"
@@ -90,7 +90,6 @@ class ConnectionHandler(threading.Thread):
         self.client_buffer = ""
         self.server = server
         self.log = "Connection: " + str(addr)
-        self.client_banner_seen = False
 
     def close(self):
         try:
@@ -113,8 +112,8 @@ class ConnectionHandler(threading.Thread):
 
     def run(self):
         try:
-            head_bytes = self.client.recv(BUFLEN)
-            self.client_buffer = head_bytes.decode("utf-8", errors="ignore")
+            initial = self.client.recv(BUFLEN)
+            self.client_buffer = initial.decode("utf-8", errors="ignore")
 
             host_port = self.find_header(self.client_buffer, "X-Real-Host")
             if host_port == "":
@@ -122,17 +121,26 @@ class ConnectionHandler(threading.Thread):
 
             split = self.find_header(self.client_buffer, "X-Split")
             if split != "":
-                self.client.recv(BUFLEN)
+                extra = self.client.recv(BUFLEN)
+                initial += extra
+                self.client_buffer = initial.decode("utf-8", errors="ignore")
+
+            # Keep any bytes that arrive after the HTTP upgrade headers.
+            # Some clients send SSH banner/KEX in the same packet as upgrade.
+            payload = b""
+            head_end = initial.rfind(b"\r\n\r\n")
+            if head_end != -1:
+                payload = initial[head_end + 4 :]
 
             if host_port != "":
                 passwd = self.find_header(self.client_buffer, "X-Pass")
 
                 if len(PASS) != 0 and passwd == PASS:
-                    self.method_connect(host_port)
+                    self.method_connect(host_port, payload)
                 elif len(PASS) != 0 and passwd != PASS:
                     self.client.sendall(b"HTTP/1.1 400 WrongPass!\r\n\r\n")
                 elif host_port.startswith("127.0.0.1") or host_port.startswith("localhost"):
-                    self.method_connect(host_port)
+                    self.method_connect(host_port, payload)
                 else:
                     self.client.sendall(b"HTTP/1.1 403 Forbidden!\r\n\r\n")
             else:
@@ -172,11 +180,13 @@ class ConnectionHandler(threading.Thread):
         self.target_closed = False
         self.target.connect(address)
 
-    def method_connect(self, path):
+    def method_connect(self, path, payload=b""):
         self.log += " - CONNECT " + path
         self.connect_target(path)
         self.client.sendall(RESPONSE)
         self.client_buffer = ""
+        if payload:
+            self.target.sendall(payload)
         self.server.print_log(self.log)
         self.do_connect()
 
@@ -199,15 +209,6 @@ class ConnectionHandler(threading.Thread):
                             if incoming is self.target:
                                 self.client.sendall(data)
                             else:
-                                if not self.client_banner_seen:
-                                    # Some HTTP custom clients send extra HTTP payload chunks
-                                    # before SSH starts. Skip any bytes before the SSH banner.
-                                    idx = data.find(b"SSH-")
-                                    if idx == -1:
-                                        count = 0
-                                        continue
-                                    data = data[idx:]
-                                    self.client_banner_seen = True
                                 while data:
                                     sent = self.target.send(data)
                                     data = data[sent:]
