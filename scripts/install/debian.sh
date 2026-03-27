@@ -638,9 +638,9 @@ enforce_ssh_main_route_xray_conf() {
 
     [[ -f "$conf_file" ]] || return 0
 
-    # Normalize SSH websocket upstream host to OpenSSH for wider compatibility.
-    sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:22"/g' "$conf_file" 2>/dev/null || true
-    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:22"/g' "$conf_file" 2>/dev/null || true
+    # Force SSH websocket upstream host to Dropbear main port 143.
+    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
+    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
 }
 
 validate_nginx_config() {
@@ -1077,11 +1077,11 @@ clear
 print_install "Memasang SSHD"
 wget -q -O /etc/ssh/sshd_config "${REPO}limit/sshd" >/dev/null 2>&1
 chmod 700 /etc/ssh/sshd_config
-# keep healthy profile: SSHD serves 22 and 143
+# keep SSHD on port 22 only, port 143 is reserved for dropbear
+sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
-grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
 
-# when socket activation is enabled, expose ports 22 and 143 for sshd
+# when socket activation is enabled, expose only port 22 for sshd
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
     mkdir -p /etc/systemd/system/ssh.socket.d
     cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
@@ -1089,8 +1089,6 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
 ListenStream=
 ListenStream=0.0.0.0:22
 ListenStream=[::]:22
-ListenStream=0.0.0.0:143
-ListenStream=[::]:143
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl restart ssh.socket >/dev/null 2>&1 || true
@@ -1112,10 +1110,10 @@ ensure_dropbear_port_override() {
     mkdir -p /etc/systemd/system/dropbear.service.d
     cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
 [Service]
-Environment=DROPBEAR_PORT=109
-Environment=DROPBEAR_EXTRA_ARGS=
+Environment=DROPBEAR_PORT=143
+Environment=DROPBEAR_EXTRA_ARGS=-p 109
 ExecStart=
-ExecStart=/usr/sbin/dropbear -E -F -p 109
+ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || true
 }
@@ -1128,9 +1126,9 @@ print_install "Menginstall Dropbear"
 apt-get install dropbear -y > /dev/null 2>&1
 wget -q -O /etc/default/dropbear "${REPO}limit/dropbear.conf"
 chmod +x /etc/default/dropbear
-sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear
-sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS=""/' /etc/default/dropbear
-grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS=""' >> /etc/default/dropbear
+sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear
+sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear
+grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
 ensure_dropbear_port_override
 /etc/init.d/dropbear restart
 /etc/init.d/dropbear status
@@ -1283,13 +1281,6 @@ print_install "Menginstall ePro WebSocket Proxy"
     chmod +x /usr/bin/ws.py
     chmod 755 /etc/whoiamluna/ws.py >/dev/null 2>&1 || true
     chmod 644 /usr/bin/tun.conf
-    sed -i 's/DEFAULT_HOST = "127.0.0.1:143"/DEFAULT_HOST = "127.0.0.1:22"/g' /usr/bin/ws.py 2>/dev/null || true
-    sed -i 's/DEFAULT_HOST = "127.0.0.1:109"/DEFAULT_HOST = "127.0.0.1:22"/g' /usr/bin/ws.py 2>/dev/null || true
-    sed -i 's/target_port: 143/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
-    sed -i 's/target_port: 109/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
-    mkdir -p /etc/whoiamluna
-    cp -f /usr/bin/ws.py /etc/whoiamluna/ws.py
-    chmod 755 /etc/whoiamluna/ws.py
 systemctl disable ws
 systemctl stop ws
 systemctl enable ws
@@ -1328,6 +1319,7 @@ function ins_restart(){
 clear
 print_install "Restarting  All Packet"
 validate_nginx_config
+ensure_dropbear_port_override
 if [[ -x /etc/init.d/nginx ]]; then /etc/init.d/nginx restart >/dev/null 2>&1 || true; else systemctl restart nginx >/dev/null 2>&1 || true; fi
 if [[ -x /etc/init.d/openvpn ]]; then
     /etc/init.d/openvpn restart >/dev/null 2>&1 || true

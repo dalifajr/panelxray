@@ -535,9 +535,6 @@ function base_package() {
     echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
     echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
     sudo apt-get install -y speedtest-cli vnstat libnss3-dev libnspr4-dev pkg-config libpam0g-dev libcap-ng-dev libcap-ng-utils libselinux1-dev libcurl4-openssl-dev flex bison make libnss3-tools libevent-dev bc rsyslog dos2unix zlib1g-dev libssl-dev libsqlite3-dev sed dirmngr libxml-parser-perl build-essential gcc g++ python3 htop lsof tar wget curl gawk ruby zip unzip p7zip-full python3-pip libc6 util-linux build-essential msmtp-mta ca-certificates bsd-mailx iptables iptables-persistent netfilter-persistent net-tools openssl ca-certificates gnupg gnupg2 ca-certificates lsb-release gcc shc make cmake git screen socat xz-utils apt-transport-https dnsutils cron bash-completion ntpdate chrony jq openvpn easy-rsa netcat-openbsd
-    if apt-cache show python-is-python3 >/dev/null 2>&1; then
-        sudo apt-get install -y python-is-python3
-    fi
     print_success "Packet Yang Dibutuhkan"
     
 }
@@ -707,9 +704,9 @@ enforce_ssh_main_route_xray_conf() {
 
     [[ -f "$conf_file" ]] || return 0
 
-    # Normalize SSH websocket upstream host to OpenSSH for wider compatibility.
-    sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:22"/g' "$conf_file" 2>/dev/null || true
-    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:22"/g' "$conf_file" 2>/dev/null || true
+    # Keep SSH websocket upstream host on dropbear main port 143.
+    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
+    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
 }
 
 validate_nginx_config() {
@@ -1209,11 +1206,11 @@ clear
 print_install "Memasang SSHD"
 wget -q -O /etc/ssh/sshd_config "${REPO}limit/sshd" >/dev/null 2>&1
 chmod 700 /etc/ssh/sshd_config
-# keep healthy profile: SSHD serves 22 and 143
+# keep SSHD on port 22 only, port 143 is reserved for dropbear
+sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
-grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
 
-# when socket activation is enabled, expose ports 22 and 143 for sshd
+# when socket activation is enabled, expose only port 22 for sshd
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
     mkdir -p /etc/systemd/system/ssh.socket.d
     cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
@@ -1221,8 +1218,6 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
 ListenStream=
 ListenStream=0.0.0.0:22
 ListenStream=[::]:22
-ListenStream=0.0.0.0:143
-ListenStream=[::]:143
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl restart ssh.socket >/dev/null 2>&1 || true
@@ -1244,10 +1239,10 @@ ensure_dropbear_port_override() {
     mkdir -p /etc/systemd/system/dropbear.service.d
     cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
 [Service]
-Environment=DROPBEAR_PORT=109
-Environment=DROPBEAR_EXTRA_ARGS=
+Environment=DROPBEAR_PORT=143
+Environment=DROPBEAR_EXTRA_ARGS=-p 109
 ExecStart=
-ExecStart=/usr/sbin/dropbear -E -F -p 109
+ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
 EOF
     systemctl daemon-reload >/dev/null 2>&1 || true
 }
@@ -1260,9 +1255,9 @@ print_install "Menginstall Dropbear"
 apt-get install dropbear -y > /dev/null 2>&1
 wget -q -O /etc/default/dropbear "${REPO}limit/dropbear.conf"
 chmod +x /etc/default/dropbear
-sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear
-sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS=""/' /etc/default/dropbear
-grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS=""' >> /etc/default/dropbear
+sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear
+sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear
+grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
 ensure_dropbear_port_override
 /etc/init.d/dropbear restart
 /etc/init.d/dropbear status
@@ -1415,13 +1410,6 @@ print_install "Menginstall ePro WebSocket Proxy"
     chmod +x /usr/bin/ws.py
     chmod 755 /etc/whoiamluna/ws.py >/dev/null 2>&1 || true
     chmod 644 /usr/bin/tun.conf
-    sed -i 's/DEFAULT_HOST = "127.0.0.1:143"/DEFAULT_HOST = "127.0.0.1:22"/g' /usr/bin/ws.py 2>/dev/null || true
-    sed -i 's/DEFAULT_HOST = "127.0.0.1:109"/DEFAULT_HOST = "127.0.0.1:22"/g' /usr/bin/ws.py 2>/dev/null || true
-    sed -i 's/target_port: 143/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
-    sed -i 's/target_port: 109/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
-    mkdir -p /etc/whoiamluna
-    cp -f /usr/bin/ws.py /etc/whoiamluna/ws.py
-    chmod 755 /etc/whoiamluna/ws.py
 systemctl disable ws
 systemctl stop ws
 systemctl enable ws

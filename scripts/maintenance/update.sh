@@ -86,21 +86,21 @@ sync_runtime_configs() {
     mkdir -p /etc/systemd/system/dropbear.service.d
     cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
 [Service]
-Environment=DROPBEAR_PORT=109
-Environment=DROPBEAR_EXTRA_ARGS=
+Environment=DROPBEAR_PORT=143
+Environment=DROPBEAR_EXTRA_ARGS=-p 109
 ExecStart=
-ExecStart=/usr/sbin/dropbear -E -F -p 109
+ExecStart=/usr/sbin/dropbear -E -F -p 143 -p 109
 EOF
 
     if [[ -f /etc/default/dropbear ]]; then
-        sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear 2>/dev/null || true
-        sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS=""/' /etc/default/dropbear 2>/dev/null || true
-        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS=""' >> /etc/default/dropbear
+        sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear 2>/dev/null || true
+        sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-p 109"/' /etc/default/dropbear 2>/dev/null || true
+        grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109"' >> /etc/default/dropbear
     fi
 
     if [[ -f /etc/ssh/sshd_config ]]; then
+        sed -i '/^Port 143$/d' /etc/ssh/sshd_config 2>/dev/null || true
         grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
-        grep -q '^Port 143$' /etc/ssh/sshd_config || echo 'Port 143' >> /etc/ssh/sshd_config
     fi
     if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
         mkdir -p /etc/systemd/system/ssh.socket.d
@@ -109,24 +109,22 @@ EOF
 ListenStream=
 ListenStream=0.0.0.0:22
 ListenStream=[::]:22
-ListenStream=0.0.0.0:143
-ListenStream=[::]:143
 EOF
         systemctl restart ssh.socket >/dev/null 2>&1 || true
     fi
 
-    # Normalize SSH-WS upstream to OpenSSH for wider client compatibility.
+    # Keep SSH-WS route aligned to dropbear main port to avoid drift.
     if [[ -f /etc/nginx/conf.d/xray.conf ]]; then
-        sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:22"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
-        sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:22"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:143"/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         sed -i 's/listen 81 ssl reuseport;/listen 81 ssl http2 reuseport;/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         sed -i 's/listen 1013 proxy_protocol so_keepalive=on reuseport;/listen 1013 http2 proxy_protocol so_keepalive=on reuseport;/g' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         sed -i '/^\s*http2 on;\s*$/d' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
     fi
 
     if [[ -f /usr/bin/tun.conf ]]; then
-        sed -i 's/target_port: 143/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
-        sed -i 's/target_port: 109/target_port: 22/g' /usr/bin/tun.conf 2>/dev/null || true
+        sed -i 's/target_port: 109/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
+        sed -i 's/target_port: 22/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
     fi
 
     systemctl daemon-reload >/dev/null 2>&1 || true
