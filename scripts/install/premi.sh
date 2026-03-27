@@ -1210,10 +1210,16 @@ chmod 700 /etc/ssh/sshd_config
 sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
 sed -i '/^[#[:space:]]*KexAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*Ciphers[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*MACs[[:space:]]/d' /etc/ssh/sshd_config
 sed -i '/^[#[:space:]]*HostKeyAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*PubkeyAcceptedAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
 cat >>/etc/ssh/sshd_config <<'EOF'
-KexAlgorithms +diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256
-HostKeyAlgorithms +ssh-rsa,ssh-rsa-cert-v01@openssh.com
+KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group14-sha256
+Ciphers aes128-cbc,aes256-cbc,aes128-ctr
+MACs hmac-sha1,hmac-sha2-256
+HostKeyAlgorithms +ssh-rsa
+PubkeyAcceptedAlgorithms +ssh-rsa
 EOF
 
 # when socket activation is enabled, expose only port 22 for sshd

@@ -23,9 +23,12 @@ Port 2223
 
 # Ciphers and keying
 #RekeyLimit default none
-# Keep legacy-compatible KEX/hostkey algorithms for HTTP custom SSH clients.
-KexAlgorithms +diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256
-HostKeyAlgorithms +ssh-rsa,ssh-rsa-cert-v01@openssh.com
+# Keep legacy algorithm profile for HTTP custom SSH clients.
+KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group14-sha256
+Ciphers aes128-cbc,aes256-cbc,aes128-ctr
+MACs hmac-sha1,hmac-sha2-256
+HostKeyAlgorithms +ssh-rsa
+PubkeyAcceptedAlgorithms +ssh-rsa
 
 # Logging
 #SyslogFacility AUTH
