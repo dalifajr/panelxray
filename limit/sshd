@@ -123,10 +123,3 @@ Subsystem	sftp	/usr/lib/openssh/sftp-server
 #	PermitTTY no
 #	ForceCommand cvs server
 Banner /etc/issue.net
-
-# Compatibility profile for older mobile SSH tunneling clients.
-HostKeyAlgorithms +ssh-rsa
-PubkeyAcceptedAlgorithms +ssh-rsa
-KexAlgorithms +diffie-hellman-group14-sha1,diffie-hellman-group1-sha1
-Ciphers +aes128-cbc,aes256-cbc,3des-cbc
-MACs +hmac-sha1,hmac-sha1-96
