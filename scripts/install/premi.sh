@@ -1209,6 +1209,12 @@ chmod 700 /etc/ssh/sshd_config
 # keep SSHD on port 22 only, port 143 is reserved for dropbear
 sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*KexAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
+sed -i '/^[#[:space:]]*HostKeyAlgorithms[[:space:]]/d' /etc/ssh/sshd_config
+cat >>/etc/ssh/sshd_config <<'EOF'
+KexAlgorithms +diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256
+HostKeyAlgorithms +ssh-rsa,ssh-rsa-cert-v01@openssh.com
+EOF
 
 # when socket activation is enabled, expose only port 22 for sshd
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then

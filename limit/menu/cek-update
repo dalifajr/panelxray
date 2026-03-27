@@ -150,6 +150,12 @@ sync_runtime_configs() {
   if [ -f /etc/ssh/sshd_config ]; then
     sed -i '/^Port 143$/d' /etc/ssh/sshd_config 2>/dev/null || true
     grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
+    sed -i '/^[#[:space:]]*KexAlgorithms[[:space:]]/d' /etc/ssh/sshd_config 2>/dev/null || true
+    sed -i '/^[#[:space:]]*HostKeyAlgorithms[[:space:]]/d' /etc/ssh/sshd_config 2>/dev/null || true
+    printf '%s\n' \
+      'KexAlgorithms +diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256' \
+      'HostKeyAlgorithms +ssh-rsa,ssh-rsa-cert-v01@openssh.com' \
+      >> /etc/ssh/sshd_config
   fi
   if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
     mkdir -p /etc/systemd/system/ssh.socket.d
