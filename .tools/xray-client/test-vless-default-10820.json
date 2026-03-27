@@ -1,0 +1,50 @@
+{
+  "log": {
+    "loglevel": "debug"
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 10820,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "def.serverope.tech",
+            "port": 443,
+            "users": [
+              {
+                "id": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "def.serverope.tech",
+          "allowInsecure": true
+        },
+        "wsSettings": {
+          "path": "/vless",
+          "headers": {
+            "Host": "def.serverope.tech"
+          }
+        }
+      }
+    }
+  ]
+}
