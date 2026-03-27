@@ -68,6 +68,9 @@ sync_runtime_configs() {
     if [[ -f "$TMP_DIR/limit/ws.py" ]]; then
         cp -f "$TMP_DIR/limit/ws.py" /usr/bin/ws.py
         chmod 755 /usr/bin/ws.py 2>/dev/null || true
+        mkdir -p /etc/whoiamluna
+        cp -f /usr/bin/ws.py /etc/whoiamluna/ws.py 2>/dev/null || true
+        chmod 755 /etc/whoiamluna/ws.py 2>/dev/null || true
     fi
 
     if [[ -f "$TMP_DIR/limit/ws" ]]; then
