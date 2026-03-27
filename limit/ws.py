@@ -18,8 +18,8 @@ PASS = ""
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = "127.0.0.1:143"
-# Legacy HTTP-custom clients are generally more compatible with dropbear.
-LEGACY_COMPAT_HOST = "127.0.0.1:143"
+# Keep legacy route on the same backend as default to avoid ssh/dropbear drift.
+LEGACY_COMPAT_HOST = DEFAULT_HOST
 RESPONSE = (
     b"HTTP/1.1 101 LunaticTunneling\r\n"
     b"Upgrade: websocket\r\n"
