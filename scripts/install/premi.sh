@@ -704,9 +704,9 @@ enforce_ssh_main_route_xray_conf() {
 
     [[ -f "$conf_file" ]] || return 0
 
-    # Force SSH websocket upstream host to Dropbear main port 143.
-    sed -i 's/X-Real-Host "127.0.0.1:109"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
-    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:143"/g' "$conf_file" 2>/dev/null || true
+    # Keep SSH websocket upstream host consistent with tun.conf (109).
+    sed -i 's/X-Real-Host "127.0.0.1:143"/X-Real-Host "127.0.0.1:109"/g' "$conf_file" 2>/dev/null || true
+    sed -i 's/X-Real-Host "127.0.0.1:22"/X-Real-Host "127.0.0.1:109"/g' "$conf_file" 2>/dev/null || true
 }
 
 validate_nginx_config() {
