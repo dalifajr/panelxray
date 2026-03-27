@@ -27,6 +27,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+back_to_menu() {
+  if [ -t 0 ] && [ -x /usr/local/sbin/menu ]; then
+    echo ""
+    read -n 1 -s -r -p "Press any key to back on menu"
+    echo ""
+    /usr/local/sbin/menu
+  fi
+}
+
 clear
 echo -e "${cyan}==========================================================${NC}"
 echo -e "${yellow}                 UPDATE PROGRAM (GITHUB)                  ${NC}"
@@ -34,8 +43,7 @@ echo -e "${cyan}==========================================================${NC}"
 
 if ! command -v git >/dev/null 2>&1; then
   echo -e "${red}Git tidak ditemukan. Install git terlebih dahulu.${NC}"
-  read -n 1 -s -r -p "Press any key to back on menu"
-  menu
+  back_to_menu
   exit 1
 fi
 
@@ -77,15 +85,13 @@ fetch_repo() {
 
 if ! fetch_repo; then
   echo -e "${red}Gagal clone/download branch $BRANCH dari repository.${NC}"
-  read -n 1 -s -r -p "Press any key to back on menu"
-  menu
+  back_to_menu
   exit 1
 fi
 
 if [ ! -d "$TMP_DIR/limit/menu" ]; then
   echo -e "${red}Struktur repository tidak valid: limit/menu tidak ditemukan.${NC}"
-  read -n 1 -s -r -p "Press any key to back on menu"
-  menu
+  back_to_menu
   exit 1
 fi
 
@@ -219,7 +225,4 @@ echo -e "${green}Old revision:${NC} $old_sha"
 echo -e "${green}New revision:${NC} $new_sha"
 echo -e "${green}Target path :${NC} $TARGET_SBIN"
 echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced"
-
-echo ""
-read -n 1 -s -r -p "Press any key to back on menu"
-menu
+back_to_menu
