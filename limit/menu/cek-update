@@ -99,13 +99,13 @@ sync_runtime_configs() {
   fi
 
   mkdir -p /etc/systemd/system/dropbear.service.d
-  cat >/etc/systemd/system/dropbear.service.d/override.conf <<'EOF'
-[Service]
-Environment=DROPBEAR_PORT=109
-Environment=DROPBEAR_EXTRA_ARGS=
-ExecStart=
-ExecStart=/usr/sbin/dropbear -E -F -p 109
-EOF
+  printf '%s\n' \
+    '[Service]' \
+    'Environment=DROPBEAR_PORT=109' \
+    'Environment=DROPBEAR_EXTRA_ARGS=' \
+    'ExecStart=' \
+    'ExecStart=/usr/sbin/dropbear -E -F -p 109' \
+    >/etc/systemd/system/dropbear.service.d/override.conf
 
   if [ -f /etc/default/dropbear ]; then
     sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=109/' /etc/default/dropbear 2>/dev/null || true
@@ -119,14 +119,14 @@ EOF
   fi
   if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
     mkdir -p /etc/systemd/system/ssh.socket.d
-    cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
-[Socket]
-ListenStream=
-ListenStream=0.0.0.0:22
-ListenStream=[::]:22
-ListenStream=0.0.0.0:143
-ListenStream=[::]:143
-EOF
+    printf '%s\n' \
+      '[Socket]' \
+      'ListenStream=' \
+      'ListenStream=0.0.0.0:22' \
+      'ListenStream=[::]:22' \
+      'ListenStream=0.0.0.0:143' \
+      'ListenStream=[::]:143' \
+      >/etc/systemd/system/ssh.socket.d/override.conf
     systemctl restart ssh.socket >/dev/null 2>&1 || true
   fi
 
