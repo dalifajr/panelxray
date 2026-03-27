@@ -18,8 +18,8 @@ PASS = ""
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = "127.0.0.1:143"
-# Legacy injector clients that only offer ssh-rsa hostkey negotiate on OpenSSH.
-LEGACY_COMPAT_HOST = "127.0.0.1:22"
+# Keep legacy route on the same backend as default to avoid ssh/dropbear drift.
+LEGACY_COMPAT_HOST = DEFAULT_HOST
 RESPONSE = (
     b"HTTP/1.1 101 LunaticTunneling\r\n"
     b"Upgrade: websocket\r\n"
