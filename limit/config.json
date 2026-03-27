@@ -200,7 +200,8 @@
   "outbounds": [
     {
       "protocol": "freedom",
-      "settings": {}
+      "settings": {},
+      "tag": "direct"
     },
     {
       "protocol": "blackhole",
@@ -215,7 +216,7 @@
         "inboundTag": [
           "dnsIn"
         ],
-        "outboundTag": "dnsOut",
+        "outboundTag": "direct",
         "type": "field"
       },
       {
@@ -234,7 +235,7 @@
       },
       {
         "type": "field",
-        "outboundTag": "block",       
+        "outboundTag": "blocked",       
         "ip": [
           "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "::1/128", "fc00::/7", "fe80::/10"]
       },
@@ -242,7 +243,7 @@
         "inboundTag": [
           "api"
         ],
-        "outboundTag": "api",
+        "outboundTag": "direct",
         "type": "field"
       },
       {
@@ -254,13 +255,13 @@
       },
       {
         "type": "field",
-        "outboundTag": "proxy",
+        "outboundTag": "direct",
         "ip": ["1.1.1.1/32", "1.0.0.1/32",
           "8.8.8.8/32", "8.8.4.4/32", "geoip:us", "geoip:ca", "geoip:cloudflare", "geoip:cloudfront", "geoip:facebook", "geoip:fastly", "geoip:google", "geoip:netflix", "geoip:telegram", "geoip:yt", "geoip:twitter"]
       },
       {
         "type": "field",
-        "outboundTag": "block",       
+        "outboundTag": "blocked",       
         "ip": [
           "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "::1/128", "fc00::/7", "fe80::/10"]
       },
@@ -271,7 +272,7 @@
       },
       {
         "type": "field",
-        "outboundTag": "reject",
+        "outboundTag": "blocked",
         "domain": ["geosite:category-ads-all"]
       },
       {

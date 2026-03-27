@@ -127,6 +127,16 @@ EOF
         sed -i 's/target_port: 22/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
     fi
 
+    # Normalize xray routing tags to avoid outboundTag mismatch runtime drops.
+    if [[ -f /etc/xray/config.json ]]; then
+        sed -i '0,/"protocol"\s*:\s*"freedom"\s*,/s//"protocol": "freedom",\n      "tag": "direct",/' /etc/xray/config.json 2>/dev/null || true
+        sed -i 's/"outboundTag"\s*:\s*"dnsOut"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
+        sed -i 's/"outboundTag"\s*:\s*"api"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
+        sed -i 's/"outboundTag"\s*:\s*"proxy"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
+        sed -i 's/"outboundTag"\s*:\s*"reject"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
+        sed -i 's/"outboundTag"\s*:\s*"block"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
+    fi
+
     systemctl daemon-reload >/dev/null 2>&1 || true
     if nginx -t >/dev/null 2>&1; then
         systemctl restart nginx >/dev/null 2>&1 || true
@@ -137,6 +147,7 @@ EOF
     systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
     systemctl restart dropbear >/dev/null 2>&1 || true
     systemctl restart ws >/dev/null 2>&1 || true
+    systemctl restart xray >/dev/null 2>&1 || true
 }
 
 old_sha="unknown"
