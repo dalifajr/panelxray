@@ -507,13 +507,15 @@ setup_perangkat() {
     printf "q\n" | rclone config
     wget -O /root/.config/rclone/rclone.conf "https://github.com/FighterTunnel/tunnel/raw/main/RCLONE%2BBACKUP-Gdrive/rclone.conf" >/dev/null 2>&1
     wget -O /etc/xray/config.json "${PANEL_REPO}limit/config.json" >/dev/null 2>&1
-    wget -O /usr/bin/ws.py "${PANEL_REPO}limit/ws.py" >/dev/null 2>&1
+    mkdir -p /etc/whoiamluna
+    wget -O /etc/whoiamluna/ws.py "${PANEL_REPO}limit/ws.py" >/dev/null 2>&1
     wget -O /usr/bin/tun.conf "${PANEL_REPO}limit/tun.conf" >/dev/null 2>&1
     wget -O /etc/systemd/system/ws.service "${PANEL_REPO}limit/ws.service" >/dev/null 2>&1
     wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
     wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
     chmod +x /etc/systemd/system/ws.service
-    chmod +x /usr/bin/ws.py
+    chmod 755 /etc/whoiamluna/ws.py
+    rm -f /usr/bin/ws.py >/dev/null 2>&1 || true
     chmod 644 /usr/bin/tun.conf
     cat >/etc/msmtprc <<EOF
 defaults
