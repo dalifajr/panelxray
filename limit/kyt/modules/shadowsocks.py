@@ -62,7 +62,7 @@ async def create_shadowsocks(event):
                     ("Quota", f"{pw} GB"),
                     ("Password", uuid),
                     ("Cipher", "aes-128-gcm"),
-                    ("Expired", str(later)),
+                    ("Aktif sampai dengan", str(later)),
                 ],
                 [
                     ("TLS", x[0]),
@@ -168,7 +168,7 @@ async def trial_shadowsocks(event):
                     ("Host", DOMAIN),
                     ("Password", uuid),
                     ("Mode", "Trial"),
-                    ("Expired", f"{exp} menit"),
+                    ("Aktif sampai dengan", f"{exp} menit"),
                 ],
                 [
                     ("TLS", x[0]),

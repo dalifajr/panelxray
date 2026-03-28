@@ -1,4 +1,5 @@
 from kyt import *
+from kyt.modules.ui import menu_credit
 
 @bot.on(events.CallbackQuery(data=b'reboot'))
 async def rebooot(event):
@@ -180,7 +181,7 @@ Button.inline(" RESTORE","restore")],
 🔰 **» Hostname/IP:** `{DOMAIN}`
 🔰 **» ISP:** `{z["isp"]}`
 🔰 **» Country:** `{z["country"]}`
-🤖 **»@AutoFTbot**
+{menu_credit()}
 ━━━━━━━━━━━━━━━━━━━━━━━ 
 """
 		await event.edit(msg,buttons=inline)
@@ -209,7 +210,7 @@ Button.inline(" RESTART SERVICE","resx")],
 🔰 **» Hostname/IP:** `{DOMAIN}`
 🔰 **» ISP:** `{z["isp"]}`
 🔰 **» Country:** `{z["country"]}`
-🤖 **»@AutoFTbot**
+{menu_credit()}
 ━━━━━━━━━━━━━━━━━━━━━━━ 
 """
 		await event.edit(msg,buttons=inline)

@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import manager_banner, require_admin
+from kyt.modules.ui import manager_banner, require_admin, menu_credit
 
 
 def _run_count(cmd: str, divisor: int = 1) -> str:
@@ -63,7 +63,8 @@ async def create_menu(event):
 	msg = (
 		"🧰 **Create VPN Menu**\n"
 		"Pilih protokol yang ingin dibuat.\n"
-		"Semua create account sekarang memakai layout hasil yang ringkas."
+		"✨ Alur input sudah dirapikan agar lebih intuitif.\n"
+		f"{menu_credit()}"
 	)
 	await event.edit(msg, buttons=inline)
 

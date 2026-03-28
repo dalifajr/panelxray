@@ -31,22 +31,27 @@ async def delete_messages(chat_id: int, msg_ids: list):
         pass
 
 
-async def upsert_message(event, text: str, buttons=None, file=None):
+async def upsert_message(event, text: str, buttons=None, file=None, force_document: bool = False):
     """Edit current callback message when possible; fallback to new message."""
     try:
         if file is None:
             return await event.edit(text, buttons=buttons)
-        return await event.edit(text, file=file, buttons=buttons)
+
+        if not force_document:
+            return await event.edit(text, file=file, buttons=buttons)
     except Exception:
-        if file is None:
-            return await event.respond(text, buttons=buttons)
-        return await bot.send_file(
-            event.chat_id,
-            file=file,
-            caption=text,
-            force_document=False,
-            buttons=buttons,
-        )
+        pass
+
+    if file is None:
+        return await event.respond(text, buttons=buttons)
+
+    return await bot.send_file(
+        event.chat_id,
+        file=file,
+        caption=text,
+        force_document=force_document,
+        buttons=buttons,
+    )
 
 
 async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_to_delete: list = None) -> tuple:
@@ -364,6 +369,10 @@ def get_geo():
         return "Unknown", "Unknown"
 
 
+def menu_credit() -> str:
+    return "_created by: dzulfikrialifajri stores_"
+
+
 def manager_banner(title: str, service: str) -> str:
     isp, country = get_geo()
     server = globals().get("DOMAIN", "-")
@@ -372,7 +381,9 @@ def manager_banner(title: str, service: str) -> str:
         f"📍 **Server:** `{server}`\n"
         f"🛠️ **Service:** `{service}`\n"
         f"🌐 **ISP:** `{isp}`\n"
-        f"🌏 **Country:** `{country}`"
+        f"🌏 **Country:** `{country}`\n"
+        f"✨ Gunakan tombol di bawah untuk navigasi cepat.\n"
+        f"{menu_credit()}"
     )
 
 
@@ -399,7 +410,7 @@ async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
         if photo is None:
             raise RuntimeError("QR generation failed")
         photo.name = "create-qr-code.png"
-        await upsert_message(event, caption, file=photo)
+        await upsert_message(event, caption, file=photo, force_document=True)
     except Exception:
         await upsert_message(event, f"{caption}\n⚠️ QR code gagal dibuat saat ini.")
 
@@ -414,47 +425,10 @@ def get_qr_url(link: str, size: int = 200) -> str:
     )
 
 
-def build_local_qr_photo(link: str, size: int = 512):
-    """Generate QR PNG locally to avoid dependency on external QR APIs."""
-    if not link:
-        return None
-
-    try:
-        import qrcode
-        from qrcode.constants import ERROR_CORRECT_H
-
-        box_size = max(6, size // 64)
-        qr = qrcode.QRCode(
-            version=None,
-            error_correction=ERROR_CORRECT_H,
-            box_size=box_size,
-            border=2,
-        )
-        qr.add_data(link)
-        qr.make(fit=True)
-
-        img = qr.make_image(fill_color="black", back_color="white")
-        if hasattr(img, "resize"):
-            img = img.resize((size, size))
-
-        photo = io.BytesIO()
-        img.save(photo, format="PNG")
-        photo.seek(0)
-        photo.name = "create-qr-code.png"
-        return photo
-    except Exception:
-        return None
-
-
 def fetch_qr_photo(link: str, size: int = 512):
     """Fetch QR image bytes with resilient fallbacks, avoiding long GET URLs when possible."""
     if not link:
         return None
-
-    # First choice: generate QR locally so it works even when external APIs are blocked.
-    local_photo = build_local_qr_photo(link, size)
-    if local_photo is not None:
-        return local_photo
 
     endpoints = [
         (
@@ -480,16 +454,21 @@ def fetch_qr_photo(link: str, size: int = 512):
         ),
     ]
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (PanelXrayBot QR Fetcher)",
+    }
+
     for method, url, payload in endpoints:
         try:
             if method == "POST":
-                resp = requests.post(url, data=payload, timeout=20)
+                resp = requests.post(url, data=payload, headers=headers, timeout=25)
             else:
-                resp = requests.get(url, params=payload, timeout=20)
+                resp = requests.get(url, params=payload, headers=headers, timeout=25)
             resp.raise_for_status()
             if not resp.content:
                 continue
             photo = io.BytesIO(resp.content)
+            photo.seek(0)
             photo.name = "create-qr-code.png"
             return photo
         except Exception:
@@ -505,20 +484,22 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
     if not qr_link:
         await upsert_message(event, msg, buttons=buttons)
         return
-    
-    full_caption = f"{msg}\n\n🧾 **{qr_title}**\n🔐 Scan QR untuk koneksi."
-    if len(full_caption) > 1000:
-        full_caption = full_caption[:980] + "\n\n..."
+
+    home_hint = "🏠 Ketik `/mulai` untuk kembali ke menu utama."
+    full_caption = f"{msg}\n\n🧾 **{qr_title}**\n🔐 Scan QR untuk koneksi.\n\n{home_hint}"
+    if len(full_caption) > 1020:
+        available = 1020 - len(home_hint) - 8
+        full_caption = f"{full_caption[:max(200, available)]}\n\n...\n\n{home_hint}"
     
     try:
         photo = fetch_qr_photo(qr_link, 512)
         if photo is None:
             raise RuntimeError("QR generation failed")
-        await upsert_message(event, full_caption, file=photo, buttons=buttons)
+        await upsert_message(event, full_caption, file=photo, buttons=buttons, force_document=True)
     except Exception:
         await upsert_message(
             event,
-            f"{msg}\n\n⚠️ QR code gagal dibuat saat ini. Silakan coba lagi.",
+            f"{msg}\n\n⚠️ QR code gagal dibuat saat ini. Silakan coba lagi.\n\n{home_hint}",
             buttons=buttons,
         )
 

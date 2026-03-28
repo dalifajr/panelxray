@@ -1,7 +1,7 @@
 from kyt import *
-from kyt.modules.ui import require_admin
+from kyt.modules.ui import require_admin, menu_credit
 
-@bot.on(events.NewMessage(pattern=r"(?:.start|/start)$"))
+@bot.on(events.NewMessage(pattern=r"(?:\.start|/start|\.mulai|/mulai)$"))
 @bot.on(events.CallbackQuery(data=b'start'))
 async def start(event):
 	inline = [
@@ -22,7 +22,10 @@ async def start(event):
 		f"🖥️ **OS:** `{namaos}`\n"
 		f"🏙️ **City:** `{city}`\n"
 		f"🌐 **Domain:** `{DOMAIN}`\n"
-		f"📡 **IP VPS:** `{ipsaya}`"
+		f"📡 **IP VPS:** `{ipsaya}`\n\n"
+		"🧭 Gunakan tombol `Open Panel Menu` untuk mulai kelola akun.\n"
+		"🏠 Anda juga bisa ketik `/mulai` kapan saja untuk kembali ke halaman ini.\n"
+		f"{menu_credit()}"
 	)
 
 	x = await event.edit(msg, buttons=inline)

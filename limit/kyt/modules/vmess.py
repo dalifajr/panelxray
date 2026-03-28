@@ -32,34 +32,34 @@ async def create_vmess(event):
             await upsert_message(event, "❌ Quota kosong. Proses dibatalkan.")
             return
         
-        # Expiry (dengan tombol + custom)
+        # IP Limit
+        iplimit, msgs = await ask_text_clean(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**", [])
+        msgs_to_del.extend(msgs)
+        iplimit = iplimit if iplimit else "1"
+
+        # Masa aktif (tombol)
         exp, msgs = await ask_expiry(event, chat, sender.id, is_trial=False)
         msgs_to_del.extend(msgs)
         if not exp:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
             return
-        
-        # SNI Profile (dengan tombol)
-        sni_profile, msgs = await ask_sni_profile(event, chat, sender.id)
-        msgs_to_del.extend(msgs)
-        if not sni_profile:
-            await delete_messages(chat, msgs_to_del)
-            await upsert_message(event, "❌ Proses dibatalkan.")
-            return
-        
-        # Config Mode (dengan tombol)
+
+        # Konfigurasi (TLS / N-TLS / gRPC)
         cfg_mode, msgs = await ask_config_mode(event, chat, sender.id)
         msgs_to_del.extend(msgs)
         if not cfg_mode:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
             return
-        
-        # IP Limit
-        iplimit, msgs = await ask_text_clean(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**", [])
+
+        # Profil SNI (tombol)
+        sni_profile, msgs = await ask_sni_profile(event, chat, sender.id)
         msgs_to_del.extend(msgs)
-        iplimit = iplimit if iplimit else "1"
+        if not sni_profile:
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "❌ Proses dibatalkan.")
+            return
         
         # Hapus semua pesan input sebelum proses
         await delete_messages(chat, msgs_to_del)
@@ -111,7 +111,7 @@ async def create_vmess(event):
                     ("Limit IP", iplimit),
                     ("Config", cfg_mode),
                     ("User ID", z["id"]),
-                    ("Expired", str(later)),
+                    ("Aktif sampai dengan", str(later)),
                 ],
                 selected_links + [("OpenClash", f"https://{BOT_DOMAIN}:81/vmess-{user}.txt")],
             )
@@ -189,7 +189,7 @@ async def trial_vmess(event):
                     ("Domain", BOT_DOMAIN),
                     ("Mode", "Trial"),
                     ("Config", cfg_mode),
-                    ("Expired", f"{exp} menit"),
+                    ("Aktif sampai dengan", f"{exp} menit"),
                 ],
                 selected_links + [("OpenClash", f"https://{BOT_DOMAIN}:81/vmess-{z['ps']}.txt")],
             )
@@ -289,7 +289,7 @@ async def renew_vmess(event):
                     ("Added Days", days),
                     ("Quota", f"{quota} GB"),
                     ("Limit IP", iplim),
-                    ("Expired", exp),
+                    ("Aktif sampai dengan", exp),
                 ],
                 [("OpenClash", f"https://{BOT_DOMAIN}:81/vmess-{user}.txt")],
             )
