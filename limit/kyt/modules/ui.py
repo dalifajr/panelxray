@@ -1,6 +1,10 @@
 from kyt import *
 import asyncio
 from urllib.parse import quote
+import io
+
+# Global storage untuk callback data sementara
+_callback_data = {}
 
 
 def is_admin(sender_id: int) -> bool:
@@ -16,6 +20,34 @@ async def require_admin(event) -> bool:
             await event.respond("Akses ditolak")
         return False
     return True
+
+
+async def delete_messages(chat_id: int, msg_ids: list):
+    """Delete multiple messages silently"""
+    try:
+        if msg_ids:
+            await bot.delete_messages(chat_id, msg_ids)
+    except Exception:
+        pass
+
+
+async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_to_delete: list = None) -> tuple:
+    """Ask for text input and return (value, messages_to_delete)"""
+    msgs_to_del = msg_to_delete or []
+    async with bot.conversation(chat_id, timeout=180) as conv:
+        prompt_msg = await event.respond(prompt)
+        msgs_to_del.append(prompt_msg.id)
+        try:
+            reply = await conv.wait_event(
+                events.NewMessage(incoming=True, from_users=sender_id),
+                timeout=180,
+            )
+            msgs_to_del.append(reply.id)
+        except asyncio.TimeoutError:
+            await event.respond("⏱️ Waktu input habis. Silakan ulangi dari menu.")
+            return "", msgs_to_del
+
+        return (reply.raw_text or "").strip(), msgs_to_del
 
 
 async def ask_text(event, chat_id: int, sender_id: int, prompt: str) -> str:
@@ -51,6 +83,258 @@ async def ask_choice(event, chat_id: int, sender_id: int, prompt: str, options):
         if picked not in options:
             return options[0]
     return picked
+
+
+async def ask_choice_buttons(event, chat_id: int, sender_id: int, prompt: str, options: list, callback_prefix: str) -> str:
+    """
+    Ask user to select from inline buttons instead of typing.
+    Returns the selected option value.
+    """
+    # Build inline keyboard
+    buttons = []
+    row = []
+    for opt in options:
+        callback_data = f"{callback_prefix}_{opt}".encode()
+        row.append(Button.inline(opt, callback_data))
+        if len(row) >= 3:  # Max 3 buttons per row
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([Button.inline("❌ Batal", f"{callback_prefix}_CANCEL".encode())])
+    
+    # Store expected sender
+    key = f"{callback_prefix}_{chat_id}_{sender_id}"
+    _callback_data[key] = {"waiting": True, "value": None}
+    
+    prompt_msg = await event.respond(prompt, buttons=buttons)
+    
+    # Wait for callback
+    try:
+        start_time = asyncio.get_event_loop().time()
+        while _callback_data.get(key, {}).get("waiting", False):
+            await asyncio.sleep(0.3)
+            if asyncio.get_event_loop().time() - start_time > 60:  # 60 sec timeout
+                break
+        
+        result = _callback_data.get(key, {}).get("value", options[0])
+        if result == "CANCEL":
+            await prompt_msg.delete()
+            return ""
+        await prompt_msg.delete()
+        return result if result else options[0]
+    finally:
+        _callback_data.pop(key, None)
+
+
+def register_choice_callback(callback_prefix: str):
+    """
+    Register callback handler for choice buttons.
+    Call this once per prefix in the module.
+    """
+    @bot.on(events.CallbackQuery(pattern=f"^{callback_prefix}_(.+)$"))
+    async def handle_choice(event):
+        sender = await event.get_sender()
+        chat_id = event.chat_id
+        match = re.match(f"^{callback_prefix}_(.+)$", event.data.decode())
+        if match:
+            value = match.group(1)
+            key = f"{callback_prefix}_{chat_id}_{sender.id}"
+            if key in _callback_data:
+                _callback_data[key]["value"] = value
+                _callback_data[key]["waiting"] = False
+                await event.answer()
+
+
+async def ask_expiry(event, chat_id: int, sender_id: int, is_trial: bool = False) -> tuple:
+    """
+    Ask for expiry with buttons for common options + custom input option.
+    Returns (value, messages_to_delete)
+    """
+    msgs_to_del = []
+    
+    if is_trial:
+        # Trial: minutes
+        buttons = [
+            [Button.inline("10 Menit", b"exp_10"), Button.inline("15 Menit", b"exp_15")],
+            [Button.inline("30 Menit", b"exp_30"), Button.inline("60 Menit", b"exp_60")],
+            [Button.inline("Custom", b"exp_custom")],
+            [Button.inline("❌ Batal", b"exp_cancel")],
+        ]
+        prompt = "⏱️ **Pilih durasi trial:**"
+    else:
+        # Regular: days
+        buttons = [
+            [Button.inline("1 Hari", b"exp_1"), Button.inline("3 Hari", b"exp_3"), Button.inline("7 Hari", b"exp_7")],
+            [Button.inline("14 Hari", b"exp_14"), Button.inline("30 Hari", b"exp_30"), Button.inline("60 Hari", b"exp_60")],
+            [Button.inline("90 Hari", b"exp_90"), Button.inline("Custom", b"exp_custom")],
+            [Button.inline("❌ Batal", b"exp_cancel")],
+        ]
+        prompt = "📅 **Pilih masa aktif:**"
+    
+    key = f"exp_{chat_id}_{sender_id}"
+    _callback_data[key] = {"waiting": True, "value": None}
+    
+    prompt_msg = await event.respond(prompt, buttons=buttons)
+    msgs_to_del.append(prompt_msg.id)
+    
+    try:
+        start_time = asyncio.get_event_loop().time()
+        while _callback_data.get(key, {}).get("waiting", False):
+            await asyncio.sleep(0.3)
+            if asyncio.get_event_loop().time() - start_time > 60:
+                break
+        
+        result = _callback_data.get(key, {}).get("value", "")
+        
+        if result == "cancel":
+            await prompt_msg.delete()
+            return "", msgs_to_del
+        
+        if result == "custom":
+            await prompt_msg.delete()
+            msgs_to_del = []
+            unit = "menit" if is_trial else "hari"
+            custom_prompt = f"📝 **Masukkan jumlah {unit} (angka saja):**"
+            async with bot.conversation(chat_id, timeout=180) as conv:
+                cmsg = await event.respond(custom_prompt)
+                msgs_to_del.append(cmsg.id)
+                try:
+                    reply = await conv.wait_event(
+                        events.NewMessage(incoming=True, from_users=sender_id),
+                        timeout=180,
+                    )
+                    msgs_to_del.append(reply.id)
+                    val = (reply.raw_text or "").strip()
+                    if val.isdigit() and int(val) > 0:
+                        return val, msgs_to_del
+                    return "7" if not is_trial else "30", msgs_to_del
+                except asyncio.TimeoutError:
+                    return "7" if not is_trial else "30", msgs_to_del
+        
+        await prompt_msg.delete()
+        msgs_to_del = []
+        return result if result else ("7" if not is_trial else "30"), msgs_to_del
+    finally:
+        _callback_data.pop(key, None)
+
+
+async def ask_config_mode(event, chat_id: int, sender_id: int) -> tuple:
+    """Ask for config mode with buttons. Returns (value, messages_to_delete)"""
+    msgs_to_del = []
+    
+    buttons = [
+        [Button.inline("TLS", b"cfg_TLS"), Button.inline("N-TLS", b"cfg_NTLS")],
+        [Button.inline("gRPC", b"cfg_GRPC"), Button.inline("ALL", b"cfg_ALL")],
+        [Button.inline("❌ Batal", b"cfg_cancel")],
+    ]
+    prompt = "⚙️ **Pilih konfigurasi:**"
+    
+    key = f"cfg_{chat_id}_{sender_id}"
+    _callback_data[key] = {"waiting": True, "value": None}
+    
+    prompt_msg = await event.respond(prompt, buttons=buttons)
+    msgs_to_del.append(prompt_msg.id)
+    
+    try:
+        start_time = asyncio.get_event_loop().time()
+        while _callback_data.get(key, {}).get("waiting", False):
+            await asyncio.sleep(0.3)
+            if asyncio.get_event_loop().time() - start_time > 60:
+                break
+        
+        result = _callback_data.get(key, {}).get("value", "TLS")
+        
+        if result == "cancel":
+            await prompt_msg.delete()
+            return "", msgs_to_del
+        
+        await prompt_msg.delete()
+        msgs_to_del = []
+        return result if result else "TLS", msgs_to_del
+    finally:
+        _callback_data.pop(key, None)
+
+
+async def ask_sni_profile(event, chat_id: int, sender_id: int) -> tuple:
+    """Ask for SNI profile with buttons. Returns (value, messages_to_delete)"""
+    msgs_to_del = []
+    
+    buttons = [
+        [Button.inline("support.zoom.us", b"sni_1")],
+        [Button.inline("live.iflix.com", b"sni_2")],
+        [Button.inline("Tanpa SNI", b"sni_3")],
+        [Button.inline("❌ Batal", b"sni_cancel")],
+    ]
+    prompt = "🌐 **Pilih profil SNI:**"
+    
+    key = f"sni_{chat_id}_{sender_id}"
+    _callback_data[key] = {"waiting": True, "value": None}
+    
+    prompt_msg = await event.respond(prompt, buttons=buttons)
+    msgs_to_del.append(prompt_msg.id)
+    
+    try:
+        start_time = asyncio.get_event_loop().time()
+        while _callback_data.get(key, {}).get("waiting", False):
+            await asyncio.sleep(0.3)
+            if asyncio.get_event_loop().time() - start_time > 60:
+                break
+        
+        result = _callback_data.get(key, {}).get("value", "1")
+        
+        if result == "cancel":
+            await prompt_msg.delete()
+            return "", msgs_to_del
+        
+        await prompt_msg.delete()
+        msgs_to_del = []
+        return result if result else "1", msgs_to_del
+    finally:
+        _callback_data.pop(key, None)
+
+
+# Register callback handlers for buttons
+@bot.on(events.CallbackQuery(pattern=b"^exp_(.+)$"))
+async def handle_exp_callback(event):
+    sender = await event.get_sender()
+    chat_id = event.chat_id
+    match = re.match(b"^exp_(.+)$", event.data)
+    if match:
+        value = match.group(1).decode()
+        key = f"exp_{chat_id}_{sender.id}"
+        if key in _callback_data:
+            _callback_data[key]["value"] = value
+            _callback_data[key]["waiting"] = False
+            await event.answer()
+
+
+@bot.on(events.CallbackQuery(pattern=b"^cfg_(.+)$"))
+async def handle_cfg_callback(event):
+    sender = await event.get_sender()
+    chat_id = event.chat_id
+    match = re.match(b"^cfg_(.+)$", event.data)
+    if match:
+        value = match.group(1).decode()
+        key = f"cfg_{chat_id}_{sender.id}"
+        if key in _callback_data:
+            _callback_data[key]["value"] = value
+            _callback_data[key]["waiting"] = False
+            await event.answer()
+
+
+@bot.on(events.CallbackQuery(pattern=b"^sni_(.+)$"))
+async def handle_sni_callback(event):
+    sender = await event.get_sender()
+    chat_id = event.chat_id
+    match = re.match(b"^sni_(.+)$", event.data)
+    if match:
+        value = match.group(1).decode()
+        key = f"sni_{chat_id}_{sender.id}"
+        if key in _callback_data:
+            _callback_data[key]["value"] = value
+            _callback_data[key]["waiting"] = False
+            await event.answer()
 
 
 async def short_progress(event, text: str = "Menyiapkan akun"):
@@ -113,6 +397,35 @@ async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
         await event.respond(caption, file=qr_url)
     except Exception:
         await event.respond(f"{caption}\n{qr_url}")
+
+
+def get_qr_url(link: str, size: int = 200) -> str:
+    """Generate QR code URL for a link"""
+    if not link:
+        return ""
+    return (
+        "https://api.qrserver.com/v1/create-qr-code/"
+        f"?size={size}x{size}&format=png&data={quote(link, safe='')}"
+    )
+
+
+async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "QR Code", buttons=None):
+    """
+    Send account details with QR code in a single message (as photo with caption).
+    """
+    if not qr_link:
+        await event.respond(msg, buttons=buttons)
+        return
+    
+    qr_url = get_qr_url(qr_link, 250)
+    full_caption = f"{msg}\n\n🧾 **{qr_title}**\n🔐 Scan QR untuk koneksi."
+    
+    try:
+        await event.respond(full_caption, file=qr_url, buttons=buttons)
+    except Exception:
+        # Fallback: send as separate messages
+        await event.respond(msg, buttons=buttons)
+        await send_tls_qr(event, qr_link, qr_title)
 
 
 def sanitize_username(value: str) -> str:
