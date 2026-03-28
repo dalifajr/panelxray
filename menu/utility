@@ -15,12 +15,8 @@ BGX="\033[42m"
 #BOT="https://raw.githubusercontent.com/myridwan/src/ipuk/"
 UDPCORE="https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1S3IE25v_fyUfCLslnujFBSBMNunDHDk2' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1S3IE25v_fyUfCLslnujFBSBMNunDHDk2"
 clear
-panel_user="$(cat /usr/bin/user 2>/dev/null)"
-[[ -z "$panel_user" ]] && panel_user="User"
 if declare -F thm_title >/dev/null; then
-   thm_title "SYSTEM UTILITY CONTROL"
-   thm_welcome "$panel_user"
-   thm_section "SERVICE & MAINTENANCE"
+   thm_title "MENU UTILITAS SISTEM"
    thm_menu_item 1 "Cek Status Service"
    thm_menu_item 2 "Install UDP"
    thm_menu_item 3 "Registrasi IP VPS"
@@ -30,13 +26,11 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 7 "Perbaiki Pointing Domain"
    thm_menu_item 8 "Bersihkan Log"
    thm_menu_item 9 "Bersihkan Cache"
-   thm_section "BACKUP, BOT & MONITORING"
    thm_menu_item 10 "Backup/Restore Bot"
    thm_menu_item 11 "Hapus Semua Akun Expired"
    thm_menu_item 12 "Tambah Bot Notifikasi"
    thm_menu_item 13 "Monitor VPS"
    thm_menu_item 14 "Install DNS Nonton"
-   thm_section "NETWORK, PANEL & DIAGNOSTIC"
    thm_menu_item 15 "Install Panel"
    thm_menu_item 16 "Speedtest"
    thm_menu_item 17 "Auto Reboot"
@@ -46,7 +40,6 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 21 "Diagnosa Koneksi Protokol"
    thm_menu_item 22 "Tambah Sertifikat Custom SNI"
    thm_menu_item 23 "Mode Cepat SNI (Self-Signed)"
-   thm_section "NAVIGATION"
    thm_menu_item 0 "Kembali Ke Menu Utama"
    thm_footer
 else
@@ -82,12 +75,7 @@ else
    echo -e ""
    echo -e "${GREEN}PanelXray Service Menu${NC}"
 fi
-if declare -F thm_prompt >/dev/null; then
-   thm_prompt "Pilih Menu [ 1 - 23 atau 0 untuk kembali ] : "
-   read -r menu
-else
-   read -p "  Pilih Menu [ 1 - 23 atau 0 untuk kembali ] : " menu
-fi
+read -p "  Pilih Menu [ 1 - 23 atau 0 untuk kembali ] : " menu
 case $menu in
 1) clear ;
     cek-service

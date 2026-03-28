@@ -8,21 +8,16 @@ if [[ -r "$THEME_FILE" ]]; then
 fi
 
 clear
-panel_user="$(cat /usr/bin/user 2>/dev/null)"
-[[ -z "$panel_user" ]] && panel_user="User"
 
 if declare -F thm_title >/dev/null; then
-  thm_title "SHADOWSOCKS CONTROL CENTER"
+    thm_title "MENU SHADOWSOCKS"
     thm_welcome "$panel_user"
-  thm_section "ACCOUNT LIFECYCLE"
     thm_menu_item 1 "Buat Akun Shadowsocks WS/GRPC"
     thm_menu_item 2 "Buat Akun Trial Shadowsocks WS/GRPC"
     thm_menu_item 3 "Hapus Akun Shadowsocks WS/GRPC"
     thm_menu_item 4 "Perpanjang Akun Shadowsocks"
-  thm_section "MONITORING"
     thm_menu_item 5 "Cek Login Akun Shadowsocks"
     thm_menu_item 6 "Lihat Konfigurasi Shadowsocks"
-  thm_section "NAVIGATION"
     thm_menu_item 0 "Kembali Ke Menu Utama"
     thm_footer
 else
@@ -36,12 +31,7 @@ else
     echo "0) Kembali Ke Menu Utama"
 fi
 
-if declare -F thm_prompt >/dev/null; then
-  thm_prompt "Pilih Menu [ 0 - 6 ] : "
-  read -r menu
-else
-  read -p "Pilih Menu [ 0 - 6 ] : " menu
-fi
+read -p "Pilih Menu [ 0 - 6 ] : " menu
 case $menu in
 1) addss ;;
 2) trialss ;;
