@@ -383,10 +383,10 @@ def manager_banner(title: str, service: str) -> str:
     server = globals().get("DOMAIN", "-")
     return (
         f"📋 **{title}**\n"
-        f"📍 **Server:** `{server}`\n"
+        f"� **Server:** `{server}`\n"
         f"🛠️ **Service:** `{service}`\n"
-        f"🌐 **ISP:** `{isp}`\n"
-        f"🌏 **Country:** `{country}`\n"
+        f"� **ISP:** `{isp}`\n"
+        f"� **Country:** `{country}`\n"
         f"✨ Gunakan tombol di bawah untuk navigasi cepat.\n"
         f"{menu_credit()}"
     )
