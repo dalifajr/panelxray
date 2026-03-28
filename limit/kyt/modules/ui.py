@@ -414,10 +414,47 @@ def get_qr_url(link: str, size: int = 200) -> str:
     )
 
 
+def build_local_qr_photo(link: str, size: int = 512):
+    """Generate QR PNG locally to avoid dependency on external QR APIs."""
+    if not link:
+        return None
+
+    try:
+        import qrcode
+        from qrcode.constants import ERROR_CORRECT_H
+
+        box_size = max(6, size // 64)
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=ERROR_CORRECT_H,
+            box_size=box_size,
+            border=2,
+        )
+        qr.add_data(link)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        if hasattr(img, "resize"):
+            img = img.resize((size, size))
+
+        photo = io.BytesIO()
+        img.save(photo, format="PNG")
+        photo.seek(0)
+        photo.name = "create-qr-code.png"
+        return photo
+    except Exception:
+        return None
+
+
 def fetch_qr_photo(link: str, size: int = 512):
     """Fetch QR image bytes with resilient fallbacks, avoiding long GET URLs when possible."""
     if not link:
         return None
+
+    # First choice: generate QR locally so it works even when external APIs are blocked.
+    local_photo = build_local_qr_photo(link, size)
+    if local_photo is not None:
+        return local_photo
 
     endpoints = [
         (
