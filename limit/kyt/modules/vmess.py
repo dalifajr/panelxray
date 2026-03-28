@@ -1,12 +1,19 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, run_command, sanitize_username, send_tls_qr, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, run_command, sanitize_panel_username, sanitize_username, send_tls_qr, short_progress
 
 #CRATE VMESS
 @bot.on(events.CallbackQuery(data=b'create-vmess'))
 async def create_vmess(event):
 	async def create_vmess_(event):
 		user = await ask_text(event, chat, sender.id, "👤 **Masukkan Username VMESS:**")
+		user = sanitize_panel_username(user)
+		if not user:
+			await event.respond("❌ Username tidak valid. Gunakan huruf/angka/underscore (_), maksimal 32 karakter.")
+			return
 		pw = await ask_text(event, chat, sender.id, "📦 **Masukkan Quota (GB):**")
+		if not pw:
+			await event.respond("❌ Quota kosong. Proses dibatalkan.")
+			return
 		exp = await ask_choice(
 			event,
 			chat,
@@ -33,7 +40,10 @@ async def create_vmess(event):
 		await short_progress(event, "Membuat akun VMESS...")
 		code, a = run_command("addws", [sni_profile, user, exp, pw, iplimit])
 		if code != 0:
-			await event.respond("❌ **Username sudah terdaftar.**")
+			if code == 124:
+				await event.respond("❌ Proses create VMESS timeout. Cek script `addws` atau format input username.")
+			else:
+				await event.respond(f"❌ Gagal create VMESS.\n```\n{a or 'Tidak ada output'}\n```")
 		else:
 			today = DT.date.today()
 			later = today + DT.timedelta(days=int(exp))

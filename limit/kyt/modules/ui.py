@@ -19,24 +19,35 @@ async def require_admin(event) -> bool:
 
 
 async def ask_text(event, chat_id: int, sender_id: int, prompt: str) -> str:
-    async with bot.conversation(chat_id) as conv:
+    async with bot.conversation(chat_id, timeout=180) as conv:
         await event.respond(prompt)
-        reply = await conv.get_response()
-        if str(reply.sender_id) != str(sender_id):
+        try:
+            reply = await conv.wait_event(
+                events.NewMessage(incoming=True, from_users=sender_id),
+                timeout=180,
+            )
+        except asyncio.TimeoutError:
+            await event.respond("⏱️ Waktu input habis. Silakan ulangi dari menu.")
             return ""
-        reply = reply.raw_text.strip()
-    return reply
+
+        return (reply.raw_text or "").strip()
 
 
 async def ask_choice(event, chat_id: int, sender_id: int, prompt: str, options):
     options = [str(x).strip() for x in options]
     option_label = ", ".join(options)
-    async with bot.conversation(chat_id) as conv:
+    async with bot.conversation(chat_id, timeout=180) as conv:
         await event.respond(f"{prompt}\nKetik salah satu: {option_label}")
-        reply = await conv.get_response()
-        if str(reply.sender_id) != str(sender_id):
+        try:
+            reply = await conv.wait_event(
+                events.NewMessage(incoming=True, from_users=sender_id),
+                timeout=180,
+            )
+        except asyncio.TimeoutError:
+            await event.respond("⏱️ Waktu input habis. Dipilih default.")
             return options[0]
-        picked = reply.raw_text.strip()
+
+        picked = (reply.raw_text or "").strip()
         if picked not in options:
             return options[0]
     return picked
@@ -111,24 +122,40 @@ def sanitize_username(value: str) -> str:
     return ""
 
 
+def sanitize_panel_username(value: str) -> str:
+    # addws/addvless/addtr historically expect alnum+underscore usernames.
+    value = (value or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_]{1,32}", value):
+        return value
+    return ""
+
+
 def run_command(command: str, inputs=None):
     if inputs is None:
-        proc = subprocess.run(
-            command,
-            shell=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
+        try:
+            proc = subprocess.run(
+                command,
+                shell=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            return 124, "Perintah timeout (>180 detik)."
     else:
         payload = "".join(f"{str(v).strip()}\n" for v in inputs)
-        proc = subprocess.run(
-            command,
-            shell=True,
-            text=True,
-            input=payload,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
+        try:
+            proc = subprocess.run(
+                command,
+                shell=True,
+                text=True,
+                input=payload,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            return 124, "Perintah timeout (>180 detik)."
 
     return proc.returncode, (proc.stdout or "").strip()
