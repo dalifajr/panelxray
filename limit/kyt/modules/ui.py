@@ -31,12 +31,29 @@ async def delete_messages(chat_id: int, msg_ids: list):
         pass
 
 
+async def upsert_message(event, text: str, buttons=None, file=None):
+    """Edit current callback message when possible; fallback to new message."""
+    try:
+        if file is None:
+            return await event.edit(text, buttons=buttons)
+        return await event.edit(text, file=file, buttons=buttons)
+    except Exception:
+        if file is None:
+            return await event.respond(text, buttons=buttons)
+        return await bot.send_file(
+            event.chat_id,
+            file=file,
+            caption=text,
+            force_document=False,
+            buttons=buttons,
+        )
+
+
 async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_to_delete: list = None) -> tuple:
     """Ask for text input and return (value, messages_to_delete)"""
     msgs_to_del = msg_to_delete or []
     async with bot.conversation(chat_id, timeout=180) as conv:
-        prompt_msg = await event.respond(prompt)
-        msgs_to_del.append(prompt_msg.id)
+        await upsert_message(event, prompt)
         try:
             reply = await conv.wait_event(
                 events.NewMessage(incoming=True, from_users=sender_id),
@@ -175,8 +192,7 @@ async def ask_expiry(event, chat_id: int, sender_id: int, is_trial: bool = False
     key = f"exp_{chat_id}_{sender_id}"
     _callback_data[key] = {"waiting": True, "value": None}
     
-    prompt_msg = await event.respond(prompt, buttons=buttons)
-    msgs_to_del.append(prompt_msg.id)
+    await upsert_message(event, prompt, buttons=buttons)
     
     try:
         start_time = asyncio.get_event_loop().time()
@@ -188,17 +204,14 @@ async def ask_expiry(event, chat_id: int, sender_id: int, is_trial: bool = False
         result = _callback_data.get(key, {}).get("value", "")
         
         if result == "cancel":
-            await prompt_msg.delete()
             return "", msgs_to_del
         
         if result == "custom":
-            await prompt_msg.delete()
             msgs_to_del = []
             unit = "menit" if is_trial else "hari"
             custom_prompt = f"📝 **Masukkan jumlah {unit} (angka saja):**"
             async with bot.conversation(chat_id, timeout=180) as conv:
-                cmsg = await event.respond(custom_prompt)
-                msgs_to_del.append(cmsg.id)
+                await upsert_message(event, custom_prompt)
                 try:
                     reply = await conv.wait_event(
                         events.NewMessage(incoming=True, from_users=sender_id),
@@ -212,7 +225,6 @@ async def ask_expiry(event, chat_id: int, sender_id: int, is_trial: bool = False
                 except asyncio.TimeoutError:
                     return "7" if not is_trial else "30", msgs_to_del
         
-        await prompt_msg.delete()
         msgs_to_del = []
         return result if result else ("7" if not is_trial else "30"), msgs_to_del
     finally:
@@ -233,8 +245,7 @@ async def ask_config_mode(event, chat_id: int, sender_id: int) -> tuple:
     key = f"cfg_{chat_id}_{sender_id}"
     _callback_data[key] = {"waiting": True, "value": None}
     
-    prompt_msg = await event.respond(prompt, buttons=buttons)
-    msgs_to_del.append(prompt_msg.id)
+    await upsert_message(event, prompt, buttons=buttons)
     
     try:
         start_time = asyncio.get_event_loop().time()
@@ -246,10 +257,8 @@ async def ask_config_mode(event, chat_id: int, sender_id: int) -> tuple:
         result = _callback_data.get(key, {}).get("value", "TLS")
         
         if result == "cancel":
-            await prompt_msg.delete()
             return "", msgs_to_del
         
-        await prompt_msg.delete()
         msgs_to_del = []
         return result if result else "TLS", msgs_to_del
     finally:
@@ -271,8 +280,7 @@ async def ask_sni_profile(event, chat_id: int, sender_id: int) -> tuple:
     key = f"sni_{chat_id}_{sender_id}"
     _callback_data[key] = {"waiting": True, "value": None}
     
-    prompt_msg = await event.respond(prompt, buttons=buttons)
-    msgs_to_del.append(prompt_msg.id)
+    await upsert_message(event, prompt, buttons=buttons)
     
     try:
         start_time = asyncio.get_event_loop().time()
@@ -284,10 +292,8 @@ async def ask_sni_profile(event, chat_id: int, sender_id: int) -> tuple:
         result = _callback_data.get(key, {}).get("value", "1")
         
         if result == "cancel":
-            await prompt_msg.delete()
             return "", msgs_to_del
         
-        await prompt_msg.delete()
         msgs_to_del = []
         return result if result else "1", msgs_to_del
     finally:
@@ -394,7 +400,11 @@ async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
 
     caption = f"🧾 **{title}**\n🔐 Scan QR ini untuk koneksi TLS."
     try:
-        await event.respond(caption, file=qr_url)
+        img = requests.get(qr_url, timeout=15)
+        img.raise_for_status()
+        photo = io.BytesIO(img.content)
+        photo.name = "create-qr-code.png"
+        await upsert_message(event, caption, file=photo)
     except Exception:
         await event.respond(f"{caption}\n{qr_url}")
 
@@ -405,7 +415,7 @@ def get_qr_url(link: str, size: int = 200) -> str:
         return ""
     return (
         "https://api.qrserver.com/v1/create-qr-code/"
-        f"?size={size}x{size}&format=png&data={quote(link, safe='')}"
+        f"?size={size}x{size}&format=png&qzone=2&ecc=H&data={quote(link, safe='')}"
     )
 
 
@@ -414,17 +424,23 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
     Send account details with QR code in a single message (as photo with caption).
     """
     if not qr_link:
-        await event.respond(msg, buttons=buttons)
+        await upsert_message(event, msg, buttons=buttons)
         return
     
-    qr_url = get_qr_url(qr_link, 250)
+    qr_url = get_qr_url(qr_link, 512)
     full_caption = f"{msg}\n\n🧾 **{qr_title}**\n🔐 Scan QR untuk koneksi."
+    if len(full_caption) > 1000:
+        full_caption = full_caption[:980] + "\n\n..."
     
     try:
-        await event.respond(full_caption, file=qr_url, buttons=buttons)
+        img = requests.get(qr_url, timeout=15)
+        img.raise_for_status()
+        photo = io.BytesIO(img.content)
+        photo.name = "create-qr-code.png"
+        await upsert_message(event, full_caption, file=photo, buttons=buttons)
     except Exception:
         # Fallback: send as separate messages
-        await event.respond(msg, buttons=buttons)
+        await upsert_message(event, msg, buttons=buttons)
         await send_tls_qr(event, qr_link, qr_title)
 
 

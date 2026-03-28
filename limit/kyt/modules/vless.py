@@ -2,7 +2,7 @@ from kyt import *
 from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
-    send_account_with_qr, short_progress,
+    send_account_with_qr, short_progress, upsert_message,
     ask_expiry, ask_config_mode, ask_sni_profile
 )
 
@@ -17,7 +17,7 @@ async def create_vless(event):
         user = sanitize_panel_username(user)
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Username tidak valid. Gunakan huruf/angka/underscore (_), maksimal 32 karakter.")
+            await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/underscore (_), maksimal 32 karakter.")
             return
         
         # Quota
@@ -25,7 +25,7 @@ async def create_vless(event):
         msgs_to_del.extend(msgs)
         if not pw:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Quota kosong. Proses dibatalkan.")
+            await upsert_message(event, "❌ Quota kosong. Proses dibatalkan.")
             return
         
         # Expiry (dengan tombol + custom)
@@ -33,7 +33,7 @@ async def create_vless(event):
         msgs_to_del.extend(msgs)
         if not exp:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         # SNI Profile (dengan tombol)
@@ -41,7 +41,7 @@ async def create_vless(event):
         msgs_to_del.extend(msgs)
         if not sni_profile:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         # Config Mode (dengan tombol)
@@ -49,7 +49,7 @@ async def create_vless(event):
         msgs_to_del.extend(msgs)
         if not cfg_mode:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         # IP Limit
@@ -60,21 +60,20 @@ async def create_vless(event):
         # Hapus semua pesan input
         await delete_messages(chat, msgs_to_del)
         
-        progress_msg = await event.respond("⏳ Membuat akun VLESS...")
+        await upsert_message(event, "⏳ Membuat akun VLESS...")
         code, a = run_command("addvless", [sni_profile, user, exp, pw, iplimit])
-        await progress_msg.delete()
         
         if code != 0:
             if code == 124:
-                await event.respond("❌ Proses create VLESS timeout. Cek script `addvless` atau format input username.")
+                await upsert_message(event, "❌ Proses create VLESS timeout. Cek script `addvless` atau format input username.")
             else:
-                await event.respond(f"❌ Gagal create VLESS.\n```\n{a or 'Tidak ada output'}\n```")
+                await upsert_message(event, f"❌ Gagal create VLESS.\n```\n{a or 'Tidak ada output'}\n```")
         else:
             today = DT.date.today()
             later = today + DT.timedelta(days=int(exp))
             x = [x.group() for x in re.finditer("vless://(.*)",a)]
             if len(x) < 3:
-                await event.respond("❌ **Gagal membaca link VLESS dari panel.**")
+                await upsert_message(event, "❌ **Gagal membaca link VLESS dari panel.**")
                 return
             uuid = re.search("vless://(.*?)@",x[0]).group(1)
             links = {
@@ -127,13 +126,13 @@ async def cek_vless(event):
         cmd = 'bot-cek-vless'.strip()
         _, z = run_command(cmd)
         z = z or "Tidak ada sesi login VLESS aktif."
-        await event.respond(f"""
+        await upsert_message(event, f"""
 
 {z}
 
 **Shows Logged In Users Vless**
 **» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+""", buttons=[[Button.inline("‹ Main Menu ›","menu")]])
     sender = await event.get_sender()
     a = valid(str(sender.id))
     if a == "true":
@@ -149,7 +148,7 @@ async def list_vless(event):
         _, out = run_command(cmd)
         if not out:
             out = "Tidak ada user VLESS."
-        await event.respond(f"📋 **Daftar User VLESS**\n```\n{out}\n```")
+        await upsert_message(event, f"📋 **Daftar User VLESS**\n```\n{out}\n```")
 
     sender = await event.get_sender()
     a = valid(str(sender.id))
@@ -170,7 +169,7 @@ async def renew_vless(event):
         user = sanitize_username(user)
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Username tidak valid. Gunakan huruf/angka/._-")
+            await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/._-")
             return
 
         # Expiry (dengan tombol + custom)
@@ -178,7 +177,7 @@ async def renew_vless(event):
         msgs_to_del.extend(msgs)
         if not days:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         # Quota
@@ -194,10 +193,9 @@ async def renew_vless(event):
         # Hapus semua pesan input
         await delete_messages(chat, msgs_to_del)
         
-        progress_msg = await event.respond("⏳ Memperpanjang akun VLESS...")
+        await upsert_message(event, "⏳ Memperpanjang akun VLESS...")
         _, out = run_command("renewvless", [user, days, quota, iplim])
         _, exp = run_command(f"grep -wE '^#& {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
-        await progress_msg.delete()
         
         if exp:
             msg = build_result(
@@ -211,9 +209,9 @@ async def renew_vless(event):
                 ],
                 [("OpenClash", f"https://{DOMAIN}:81/vless-{user}.txt")],
             )
-            await event.respond(msg)
+            await upsert_message(event, msg)
         else:
-            await event.respond(f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```")
+            await upsert_message(event, f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```")
 
     chat = event.chat_id
     sender = await event.get_sender()
@@ -232,7 +230,7 @@ async def delete_vless(event):
         
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -241,9 +239,9 @@ async def delete_vless(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await event.respond("**User Not Found**")
+            await upsert_message(event, "**User Not Found**")
         else:
-            await event.respond(f"✅ **User `{user}` berhasil dihapus.**")
+            await upsert_message(event, f"✅ **User `{user}` berhasil dihapus.**")
     
     chat = event.chat_id
     sender = await event.get_sender()
@@ -262,7 +260,7 @@ async def suspend_vless(event):
         
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -271,9 +269,9 @@ async def suspend_vless(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await event.respond("**Failed to suspend user**")
+            await upsert_message(event, "**Failed to suspend user**")
         else:
-            await event.respond(f"⛔ **{a.strip()}**")
+            await upsert_message(event, f"⛔ **{a.strip()}**")
     
     chat = event.chat_id
     sender = await event.get_sender()
@@ -292,7 +290,7 @@ async def unsuspend_vless(event):
         
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -301,9 +299,9 @@ async def unsuspend_vless(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await event.respond("**Failed to unsuspend user**")
+            await upsert_message(event, "**Failed to unsuspend user**")
         else:
-            await event.respond(f"✅ **{a.strip()}**")
+            await upsert_message(event, f"✅ **{a.strip()}**")
     
     chat = event.chat_id
     sender = await event.get_sender()
@@ -323,7 +321,7 @@ async def trial_vless(event):
         msgs_to_del.extend(msgs)
         if not exp:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         # Config Mode (dengan tombol)
@@ -331,22 +329,21 @@ async def trial_vless(event):
         msgs_to_del.extend(msgs)
         if not cfg_mode:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         # Hapus semua pesan input
         await delete_messages(chat, msgs_to_del)
         
-        progress_msg = await event.respond("⏳ Membuat trial VLESS...")
+        await upsert_message(event, "⏳ Membuat trial VLESS...")
         code, a = run_command("trialvless", [cfg_mode, exp])
-        await progress_msg.delete()
         
         if code != 0:
-            await event.respond("❌ **Gagal membuat trial VLESS.**")
+            await upsert_message(event, "❌ **Gagal membuat trial VLESS.**")
         else:
             x = [x.group() for x in re.finditer("vless://(.*)",a)]
             if len(x) < 3:
-                await event.respond("❌ **Gagal membaca link trial VLESS dari panel.**")
+                await upsert_message(event, "❌ **Gagal membaca link trial VLESS dari panel.**")
                 return
             remarks = re.search("#(.*)",x[0]).group(1)
             uuid = re.search("vless://(.*?)@",x[0]).group(1)

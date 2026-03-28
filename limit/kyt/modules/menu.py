@@ -5,7 +5,6 @@ from kyt.modules.ui import manager_banner, require_admin
 @bot.on(events.CallbackQuery(data=b'menu'))
 async def menu(event):
 	inline = [
-		[Button.inline("🧰 Create VPN", "create-menu")],
 		[Button.inline("👤 SSH", "ssh"), Button.inline("🛰️ VMESS", "vmess")],
 		[Button.inline("🧩 VLESS", "vless"), Button.inline("🛡️ TROJAN", "trojan")],
 		[Button.inline("🌘 SHADOWSOCKS", "shadowsocks"), Button.inline("📊 VPS Info", "info")],

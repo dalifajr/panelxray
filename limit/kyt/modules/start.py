@@ -6,7 +6,6 @@ from kyt.modules.ui import require_admin
 async def start(event):
 	inline = [
 		[Button.inline("🚀 Open Panel Menu", "menu")],
-		[Button.inline("🧰 Create VPN Cepat", "create-menu")],
 		[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
 	]
 
