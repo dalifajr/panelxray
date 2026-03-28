@@ -138,7 +138,12 @@ thm_info_row "DAYS LEFT" "$days_left"
 
 thm_footer
 echo
-read -rp "Options [ 1 - 16 ] >>> " opt
+if declare -F thm_prompt >/dev/null; then
+  thm_prompt "Options [ 1 - 16 ] >>> "
+  read -r opt
+else
+  read -rp "Options [ 1 - 16 ] >>> " opt
+fi
 echo
 
 case "$opt" in

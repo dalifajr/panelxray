@@ -8,20 +8,25 @@ if [[ -r "$THEME_FILE" ]]; then
 fi
 
 clear
+panel_user="$(cat /usr/bin/user 2>/dev/null)"
+[[ -z "$panel_user" ]] && panel_user="User"
 
 if declare -F thm_title >/dev/null; then
-    thm_title "MENU SSH & OPENVPN"
+  thm_title "SSH & OPENVPN CONTROL CENTER"
     thm_welcome "$panel_user"
+  thm_section "ACCOUNT LIFECYCLE"
     thm_menu_item 1 "Buat Akun SSH & OpenVPN"
     thm_menu_item 2 "Buat Akun Trial SSH & OpenVPN"
     thm_menu_item 3 "Perpanjang Akun SSH & OpenVPN"
-    thm_menu_item 4 "Cek Login Pengguna SSH & OpenVPN"
-    thm_menu_item 5 "Daftar Pengguna SSH & OpenVPN"
     thm_menu_item 6 "Hapus Akun SSH & OpenVPN"
     thm_menu_item 7 "Hapus Pengguna Expired"
+  thm_section "MONITORING & SECURITY"
+  thm_menu_item 4 "Cek Login Pengguna SSH & OpenVPN"
+  thm_menu_item 5 "Daftar Pengguna SSH & OpenVPN"
     thm_menu_item 8 "Atur Auto Kill SSH"
     thm_menu_item 9 "Cek Multi Login SSH"
     thm_menu_item 10 "Lihat Konfigurasi SSH"
+  thm_section "NAVIGATION"
     thm_menu_item 0 "Kembali Ke Menu Utama"
     thm_footer
 else
@@ -39,7 +44,12 @@ else
     echo "0) Kembali Ke Menu Utama"
 fi
 
-read -p "Pilih Menu [ 0 - 10 ] : " menu
+if declare -F thm_prompt >/dev/null; then
+  thm_prompt "Pilih Menu [ 0 - 10 ] : "
+  read -r menu
+else
+  read -p "Pilih Menu [ 0 - 10 ] : " menu
+fi
 echo
 
 case $menu in

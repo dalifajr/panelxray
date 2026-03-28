@@ -8,18 +8,23 @@ if [[ -r "$THEME_FILE" ]]; then
 fi
 
 clear
+panel_user="$(cat /usr/bin/user 2>/dev/null)"
+[[ -z "$panel_user" ]] && panel_user="User"
 
 if declare -F thm_title >/dev/null; then
-    thm_title "MENU VMESS"
+  thm_title "VMESS CONTROL CENTER"
     thm_welcome "$panel_user"
+  thm_section "ACCOUNT LIFECYCLE"
     thm_menu_item 1 "Buat Akun Vmess WS/GRPC"
     thm_menu_item 2 "Buat Akun Trial Vmess WS/GRPC"
     thm_menu_item 3 "Hapus Akun Vmess WS/GRPC"
     thm_menu_item 4 "Perpanjang Akun Vmess"
+  thm_section "MONITORING & POLICY"
     thm_menu_item 5 "Cek Login Akun Vmess"
     thm_menu_item 6 "Lihat Konfigurasi Vmess"
     thm_menu_item 7 "Suspend Akun Vmess"
     thm_menu_item 8 "Aktifkan Kembali Akun Vmess"
+  thm_section "NAVIGATION"
     thm_menu_item 0 "Kembali Ke Menu Utama"
     thm_footer
 else
@@ -35,7 +40,12 @@ else
     echo "0) Kembali Ke Menu Utama"
 fi
 
-read -p "Pilih Menu [ 0 - 8 ] : " menu
+if declare -F thm_prompt >/dev/null; then
+  thm_prompt "Pilih Menu [ 0 - 8 ] : "
+  read -r menu
+else
+  read -p "Pilih Menu [ 0 - 8 ] : " menu
+fi
 
 case $menu in
 1) clear; addws ;;
