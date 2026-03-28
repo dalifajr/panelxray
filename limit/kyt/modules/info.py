@@ -1,4 +1,5 @@
 from kyt import *
+from kyt.modules.ui import manager_banner, back_button
 #CEK VMESS
 @bot.on(events.CallbackQuery(data=b'info'))
 async def info_vps(event):
@@ -29,9 +30,8 @@ async def info_vps(event):
 		time.sleep(1)
 		await event.edit("`Wait.. Setting up Server Data`")
 		z = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-		await event.respond(f"""```{z}```
-**🤖@myridtunnel**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+		msg = f"{manager_banner('VPS Information', 'SYSTEM')}\n\n```{z}```"
+		await event.respond(msg, buttons=back_button("menu"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":

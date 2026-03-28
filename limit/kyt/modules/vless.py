@@ -3,7 +3,7 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
-    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back
+    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button
 )
 
 @bot.on(events.CallbackQuery(data=b'create-vless'))
@@ -128,11 +128,11 @@ async def cek_vless(event):
         z = z or "Tidak ada sesi login VLESS aktif."
         await upsert_message(event, f"""
 
+    📋 **VLESS • Check Login**
+
 {z}
 
-**Shows Logged In Users Vless**
-**» 🤖@AutoFTbot**
-""", buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+    """, buttons=back_button("vless"))
     sender = await event.get_sender()
     a = valid(str(sender.id))
     if a == "true":
@@ -148,7 +148,7 @@ async def list_vless(event):
         _, out = run_command(cmd)
         if not out:
             out = "Tidak ada user VLESS."
-        await upsert_message(event, f"📋 **Daftar User VLESS**\n```\n{out}\n```")
+        await upsert_message(event, f"📋 **Daftar User VLESS**\n```\n{out}\n```", buttons=back_button("vless"))
 
     sender = await event.get_sender()
     a = valid(str(sender.id))
@@ -209,9 +209,9 @@ async def renew_vless(event):
                 ],
                 [("OpenClash", f"https://{DOMAIN}:81/vless-{user}.txt")],
             )
-            await upsert_message(event, msg)
+            await upsert_message(event, msg, buttons=back_button("vless"))
         else:
-            await upsert_message(event, f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```")
+            await upsert_message(event, f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```", buttons=back_button("vless"))
 
     chat = event.chat_id
     sender = await event.get_sender()
@@ -269,9 +269,9 @@ async def suspend_vless(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await upsert_message(event, "**Failed to suspend user**")
+            await upsert_message(event, "**Failed to suspend user**", buttons=back_button("vless"))
         else:
-            await upsert_message(event, f"⛔ **{a.strip()}**")
+            await upsert_message(event, f"⛔ **{a.strip()}**", buttons=back_button("vless"))
     
     chat = event.chat_id
     sender = await event.get_sender()
@@ -299,9 +299,9 @@ async def unsuspend_vless(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await upsert_message(event, "**Failed to unsuspend user**")
+            await upsert_message(event, "**Failed to unsuspend user**", buttons=back_button("vless"))
         else:
-            await upsert_message(event, f"✅ **{a.strip()}**")
+            await upsert_message(event, f"✅ **{a.strip()}**", buttons=back_button("vless"))
     
     chat = event.chat_id
     sender = await event.get_sender()

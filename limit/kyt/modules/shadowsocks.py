@@ -2,7 +2,7 @@ from kyt import *
 from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     send_account_with_qr, short_progress, run_command,
-    ask_expiry, upsert_message, notify_then_back
+    ask_expiry, upsert_message, notify_then_back, back_button
 )
 
 @bot.on(events.CallbackQuery(data=b'create-shadowsocks'))
@@ -86,13 +86,13 @@ async def cek_shadowsocks(event):
         cmd = 'bot-cek-ss'.strip()
         _, z = run_command(cmd)
         z = z or "Tidak ada sesi login Shadowsocks aktif."
-        await event.respond(f"""
+        await upsert_message(event, f"""
+
+    📋 **SHADOWSOCKS • Check Login**
 
 {z}
 
-**Shows Logged In Users Shadowsocks**
-**» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+    """,buttons=back_button("shadowsocks"))
     sender = await event.get_sender()
     a = valid(str(sender.id))
     if a == "true":

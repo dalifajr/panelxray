@@ -374,6 +374,10 @@ def menu_credit() -> str:
     return "𝘤𝘳𝘦𝘢𝘵𝘦𝘥 𝘣𝘺: 𝘥𝘻𝘶𝘭𝘧𝘪𝘬𝘳𝘪𝘢𝘭𝘪𝘧𝘢𝘫𝘳𝘪 𝘴𝘵𝘰𝘳𝘦𝘴"
 
 
+def back_button(target: str):
+    return [[Button.inline("⬅️ Kembali", target)]]
+
+
 def manager_banner(title: str, service: str) -> str:
     isp, country = get_geo()
     server = globals().get("DOMAIN", "-")
@@ -490,12 +494,10 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
     Send account details with QR code in a single message (as photo with caption).
     """
     if not qr_link:
-        nav_buttons = buttons if buttons is not None else [[Button.inline("⬅️ Main Menu", "menu")]]
-        await upsert_message(event, msg, buttons=nav_buttons)
+        await upsert_message(event, msg, buttons=buttons)
         return
 
-    nav_buttons = buttons if buttons is not None else [[Button.inline("⬅️ Main Menu", "menu")]]
-    home_hint = "🏠 Ketik /mulai atau /menu untuk kembali ke menu utama."
+    home_hint = "🏠 Ketik /menu untuk kembali ke menu utama."
     full_caption = f"{msg}\n\n🧾 **{qr_title}**\n🔐 Scan QR untuk koneksi.\n\n{home_hint}"
     if len(full_caption) > 1020:
         available = 1020 - len(home_hint) - 8
@@ -505,7 +507,7 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
         photo = fetch_qr_photo(qr_link, 512)
         if photo is None:
             raise RuntimeError("QR generation failed")
-        await upsert_message(event, full_caption, file=photo, buttons=nav_buttons, force_document=True)
+        await upsert_message(event, full_caption, file=photo, buttons=buttons, force_document=True)
     except Exception:
         fallback_url = get_qr_url(qr_link, 512)
         if fallback_url:
@@ -514,7 +516,7 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
                     event,
                     full_caption,
                     file=fallback_url,
-                    buttons=nav_buttons,
+                    buttons=buttons,
                     force_document=True,
                 )
                 return
@@ -523,7 +525,7 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
         await upsert_message(
             event,
             f"{msg}\n\n⚠️ QR code gagal dibuat saat ini. Silakan coba lagi.\n\n{home_hint}",
-            buttons=nav_buttons,
+            buttons=buttons,
         )
 
 

@@ -3,7 +3,7 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
-    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back
+    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button
 )
 
 @bot.on(events.CallbackQuery(data=b'create-trojan'))
@@ -129,11 +129,11 @@ async def cek_trojan(event):
         z = z or "Tidak ada sesi login TROJAN aktif."
         await upsert_message(event, f"""
 
+    📋 **TROJAN • Check Login**
+
 {z}
 
-**Shows Logged In Users Trojan**
-**» 🤖@AutoFTbot**
-""", buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+    """, buttons=back_button("trojan"))
     sender = await event.get_sender()
     a = valid(str(sender.id))
     if a == "true":
@@ -149,7 +149,7 @@ async def list_trojan(event):
         _, out = run_command(cmd)
         if not out:
             out = "Tidak ada user TROJAN."
-        await upsert_message(event, f"📋 **Daftar User TROJAN**\n```\n{out}\n```")
+        await upsert_message(event, f"📋 **Daftar User TROJAN**\n```\n{out}\n```", buttons=back_button("trojan"))
 
     sender = await event.get_sender()
     a = valid(str(sender.id))
@@ -210,9 +210,9 @@ async def renew_trojan(event):
                 ],
                 [("OpenClash", f"https://{DOMAIN}:81/trojan-{user}.txt")],
             )
-            await upsert_message(event, msg)
+            await upsert_message(event, msg, buttons=back_button("trojan"))
         else:
-            await upsert_message(event, f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```")
+            await upsert_message(event, f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```", buttons=back_button("trojan"))
 
     chat = event.chat_id
     sender = await event.get_sender()
@@ -349,9 +349,9 @@ async def suspend_trojan(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await upsert_message(event, "**Failed to suspend user**")
+            await upsert_message(event, "**Failed to suspend user**", buttons=back_button("trojan"))
         else:
-            await upsert_message(event, f"⛔ **{a.strip()}**")
+            await upsert_message(event, f"⛔ **{a.strip()}**", buttons=back_button("trojan"))
     
     chat = event.chat_id
     sender = await event.get_sender()
@@ -379,9 +379,9 @@ async def unsuspend_trojan(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await upsert_message(event, "**Failed to unsuspend user**")
+            await upsert_message(event, "**Failed to unsuspend user**", buttons=back_button("trojan"))
         else:
-            await upsert_message(event, f"✅ **{a.strip()}**")
+            await upsert_message(event, f"✅ **{a.strip()}**", buttons=back_button("trojan"))
     
     chat = event.chat_id
     sender = await event.get_sender()

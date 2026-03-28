@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import menu_credit
+from kyt.modules.ui import manager_banner, back_button
 
 @bot.on(events.CallbackQuery(data=b'reboot'))
 async def rebooot(event):
@@ -31,7 +31,7 @@ async def rebooot(event):
 		await event.edit(f"""
 **» REBOOT SERVER**
 **» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+""",buttons=back_button("setting"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -70,7 +70,7 @@ async def resx(event):
 ```Processing... 100%\n█████████████████████████ ```
 **» Restarting Service Done**
 **» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+""",buttons=back_button("setting"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -104,7 +104,7 @@ async def speedtest(event):
 {z}
 **
 **» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+""",buttons=back_button("setting"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -132,7 +132,7 @@ async def backup(event):
 ```
 **» 🤖@AutoFTbot**
 """
-			await event.respond(msg)
+			await event.respond(msg, buttons=back_button("backer"))
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -157,7 +157,7 @@ async def restsore(event):
 			msg = f"""```{a}```
 **🤖@AutoFTbot**
 """
-			await event.respond(msg)
+			await event.respond(msg, buttons=back_button("backer"))
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -172,18 +172,8 @@ async def backers(event):
 		inline = [
 [Button.inline(" BACKUP","backup"),
 Button.inline(" RESTORE","restore")],
-[Button.inline("‹ Main Menu ›","menu")]]
-		z = requests.get(f"http://ip-api.com/json/?fields=country,region,city,timezone,isp").json()
-		msg = f"""
-━━━━━━━━━━━━━━━━━━━━━━━ 
-**🐾🕊️ PREMIUM PANEL MENU 🕊️🐾**
-━━━━━━━━━━━━━━━━━━━━━━━ 
-🔰 **» Hostname/IP:** `{DOMAIN}`
-🔰 **» ISP:** `{z["isp"]}`
-🔰 **» Country:** `{z["country"]}`
-{menu_credit()}
-━━━━━━━━━━━━━━━━━━━━━━━ 
-"""
+[Button.inline("⬅️ Kembali","setting")]]
+		msg = f"{manager_banner('Backup & Restore', 'UTILITY')}\n\n📦 Pilih aksi backup atau restore."
 		await event.edit(msg,buttons=inline)
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -201,18 +191,8 @@ async def settings(event):
 Button.inline(" BACKUP & RESTORE","backer")],
 [Button.inline(" REBOOT SERVER","reboot"),
 Button.inline(" RESTART SERVICE","resx")],
-[Button.inline("‹ Main Menu ›","menu")]]
-		z = requests.get(f"http://ip-api.com/json/?fields=country,region,city,timezone,isp").json()
-		msg = f"""
-━━━━━━━━━━━━━━━━━━━━━━━ 
-**🐾🕊️ PREMIUM PANEL MENU 🕊️🐾**
-━━━━━━━━━━━━━━━━━━━━━━━ 
-🔰 **» Hostname/IP:** `{DOMAIN}`
-🔰 **» ISP:** `{z["isp"]}`
-🔰 **» Country:** `{z["country"]}`
-{menu_credit()}
-━━━━━━━━━━━━━━━━━━━━━━━ 
-"""
+[Button.inline("⬅️ Kembali","menu")]]
+		msg = f"{manager_banner('Settings & Utilities', 'UTILITY')}\n\n⚙️ Pilih aksi maintenance server."
 		await event.edit(msg,buttons=inline)
 	sender = await event.get_sender()
 	a = valid(str(sender.id))

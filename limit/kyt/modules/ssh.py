@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress
+from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress, back_button
 
 #DELETESSH
 @bot.on(events.CallbackQuery(data=b'delete-ssh'))
@@ -13,9 +13,9 @@ async def delete_ssh(event):
 		try:
 			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
 		except:
-			await event.respond(f"**User** `{user}` **Not Found**")
+			await event.respond(f"**User** `{user}` **Not Found**", buttons=back_button("ssh"))
 		else:
-			await event.respond(f"**Successfully Deleted** `{user}`")
+			await event.respond(f"**Successfully Deleted** `{user}`", buttons=back_button("ssh"))
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -87,7 +87,7 @@ async def show_ssh(event):
 ```
 **Show All SSH User**
 **» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+""",buttons=back_button("ssh"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -199,7 +199,7 @@ async def login_ssh(event):
 
 **shows logged in users SSH Ovpn**
 **» 🤖@AutoFTbot**
-""",buttons=[[Button.inline("‹ Main Menu ›","menu")]])
+""",buttons=back_button("ssh"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -235,9 +235,9 @@ async def regis_ip(event):
 		try:
 			out = subprocess.check_output(cmd, shell=True).decode("utf-8", errors="ignore").strip()
 		except Exception:
-			await event.respond("❌ Gagal registrasi IP.")
+			await event.respond("❌ Gagal registrasi IP.", buttons=back_button("ssh"))
 		else:
-			await event.respond(f"✅ Registrasi IP berhasil.\n`{out}`")
+			await event.respond(f"✅ Registrasi IP berhasil.\n`{out}`", buttons=back_button("ssh"))
 
 	chat = event.chat_id
 	sender = await event.get_sender()
