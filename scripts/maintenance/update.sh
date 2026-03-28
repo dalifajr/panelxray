@@ -249,6 +249,31 @@ EOF
     systemctl restart xray >/dev/null 2>&1 || true
 }
 
+sync_kyt_bot_assets() {
+    local kyt_dir venv_pip
+    kyt_dir="/usr/bin/kyt"
+    venv_pip="${kyt_dir}/.venv/bin/pip"
+
+    if [[ -d "$TMP_DIR/limit/bot" ]]; then
+        cp -rf "$TMP_DIR/limit/bot/." /usr/bin/ 2>/dev/null || true
+        chmod +x /usr/bin/bot-* 2>/dev/null || true
+    fi
+
+    if [[ -d "$TMP_DIR/limit/kyt" ]]; then
+        mkdir -p "$kyt_dir"
+        cp -rf "$TMP_DIR/limit/kyt/." "$kyt_dir/"
+    fi
+
+    if [[ -x "$venv_pip" && -f "${kyt_dir}/requirements.txt" ]]; then
+        "$venv_pip" install -r "${kyt_dir}/requirements.txt" >/dev/null 2>&1 || true
+    fi
+
+    if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl restart kyt >/dev/null 2>&1 || true
+    fi
+}
+
 old_sha="unknown"
 [[ -f "$STATE_FILE" ]] && old_sha="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
 new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -257,6 +282,7 @@ mkdir -p "$TARGET_SBIN" /etc/kyt
 cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
 sync_runtime_configs
+sync_kyt_bot_assets
 echo "$new_sha" > "$STATE_FILE"
 
 echo -e "\033[0;32mUpdate selesai.\033[0m"
@@ -264,3 +290,4 @@ echo -e "Old revision : $old_sha"
 echo -e "New revision : $new_sha"
 echo -e "Target path  : $TARGET_SBIN"
 echo -e "Runtime cfg  : nginx/haproxy/ws synced"
+echo -e "Bot assets   : /usr/bin/kyt + bot scripts synced"
