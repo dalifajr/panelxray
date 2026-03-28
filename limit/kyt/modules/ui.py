@@ -393,20 +393,15 @@ async def send_tls_qr(event, tls_link: str, title: str = "TLS QR"):
     if not tls_link:
         return
 
-    qr_url = (
-        "https://api.qrserver.com/v1/create-qr-code/"
-        f"?size=220x220&format=png&data={quote(tls_link, safe='')}"
-    )
-
     caption = f"🧾 **{title}**\n🔐 Scan QR ini untuk koneksi TLS."
     try:
-        img = requests.get(qr_url, timeout=15)
-        img.raise_for_status()
-        photo = io.BytesIO(img.content)
+        photo = fetch_qr_photo(tls_link, 512)
+        if photo is None:
+            raise RuntimeError("QR generation failed")
         photo.name = "create-qr-code.png"
         await upsert_message(event, caption, file=photo)
     except Exception:
-        await event.respond(f"{caption}\n{qr_url}")
+        await upsert_message(event, f"{caption}\n⚠️ QR code gagal dibuat saat ini.")
 
 
 def get_qr_url(link: str, size: int = 200) -> str:
@@ -419,6 +414,53 @@ def get_qr_url(link: str, size: int = 200) -> str:
     )
 
 
+def fetch_qr_photo(link: str, size: int = 512):
+    """Fetch QR image bytes with resilient fallbacks, avoiding long GET URLs when possible."""
+    if not link:
+        return None
+
+    endpoints = [
+        (
+            "POST",
+            "https://api.qrserver.com/v1/create-qr-code/",
+            {
+                "size": f"{size}x{size}",
+                "format": "png",
+                "qzone": "2",
+                "ecc": "H",
+                "data": link,
+            },
+        ),
+        (
+            "GET",
+            "https://quickchart.io/qr",
+            {
+                "size": str(size),
+                "ecLevel": "H",
+                "margin": "2",
+                "text": link,
+            },
+        ),
+    ]
+
+    for method, url, payload in endpoints:
+        try:
+            if method == "POST":
+                resp = requests.post(url, data=payload, timeout=20)
+            else:
+                resp = requests.get(url, params=payload, timeout=20)
+            resp.raise_for_status()
+            if not resp.content:
+                continue
+            photo = io.BytesIO(resp.content)
+            photo.name = "create-qr-code.png"
+            return photo
+        except Exception:
+            continue
+
+    return None
+
+
 async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "QR Code", buttons=None):
     """
     Send account details with QR code in a single message (as photo with caption).
@@ -427,21 +469,28 @@ async def send_account_with_qr(event, msg: str, qr_link: str, qr_title: str = "Q
         await upsert_message(event, msg, buttons=buttons)
         return
     
-    qr_url = get_qr_url(qr_link, 512)
     full_caption = f"{msg}\n\n🧾 **{qr_title}**\n🔐 Scan QR untuk koneksi."
     if len(full_caption) > 1000:
         full_caption = full_caption[:980] + "\n\n..."
     
     try:
-        img = requests.get(qr_url, timeout=15)
-        img.raise_for_status()
-        photo = io.BytesIO(img.content)
-        photo.name = "create-qr-code.png"
+        photo = fetch_qr_photo(qr_link, 512)
+        if photo is None:
+            raise RuntimeError("QR generation failed")
         await upsert_message(event, full_caption, file=photo, buttons=buttons)
     except Exception:
-        # Fallback: send as separate messages
-        await upsert_message(event, msg, buttons=buttons)
-        await send_tls_qr(event, qr_link, qr_title)
+        await upsert_message(
+            event,
+            f"{msg}\n\n⚠️ QR code gagal dibuat saat ini. Silakan coba lagi.",
+            buttons=buttons,
+        )
+
+
+async def notify_then_back(event, text: str, back_handler, delay: int = 3):
+    """Show a short notification then return to previous menu."""
+    await upsert_message(event, f"{text}\n\n↩️ Kembali ke menu sebelumnya dalam {delay} detik...")
+    await asyncio.sleep(max(1, int(delay)))
+    await back_handler(event)
 
 
 def sanitize_username(value: str) -> str:

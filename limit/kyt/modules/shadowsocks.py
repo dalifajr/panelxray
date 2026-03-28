@@ -2,7 +2,7 @@ from kyt import *
 from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     send_account_with_qr, short_progress, run_command,
-    ask_expiry
+    ask_expiry, upsert_message, notify_then_back
 )
 
 @bot.on(events.CallbackQuery(data=b'create-shadowsocks'))
@@ -109,7 +109,7 @@ async def delete_shadowsocks(event):
         
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await event.respond("❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -118,9 +118,9 @@ async def delete_shadowsocks(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await event.respond("**User Not Found**")
+            await upsert_message(event, "**User Not Found**")
         else:
-            await event.respond(f"✅ **User `{user}` berhasil dihapus.**")
+            await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", shadowsocks, delay=3)
     
     chat = event.chat_id
     sender = await event.get_sender()

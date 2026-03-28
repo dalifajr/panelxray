@@ -3,7 +3,7 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
-    ask_expiry, ask_config_mode, ask_sni_profile
+    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back
 )
 
 BOT_DOMAIN = str(globals().get("DOMAIN", globals().get("domain", "-")))
@@ -325,7 +325,7 @@ async def delete_vmess(event):
         except:
             await upsert_message(event, "**User Not Found**")
         else:
-            await upsert_message(event, f"✅ **User `{user}` berhasil dihapus.**")
+            await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", vmess, delay=3)
     
     chat = event.chat_id
     sender = await event.get_sender()

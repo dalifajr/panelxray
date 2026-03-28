@@ -1,6 +1,17 @@
 from kyt import *
 from kyt.modules.ui import manager_banner, require_admin
 
+
+def _run_count(cmd: str, divisor: int = 1) -> str:
+	try:
+		out = subprocess.check_output(cmd, shell=True).decode("ascii", errors="ignore").strip()
+		val = int(out or "0")
+		if divisor > 1:
+			val = val // divisor
+		return str(max(0, val))
+	except Exception:
+		return "0"
+
 @bot.on(events.NewMessage(pattern=r"(?:.menu|/menu)$"))
 @bot.on(events.CallbackQuery(data=b'menu'))
 async def menu(event):
@@ -15,19 +26,12 @@ async def menu(event):
 	if not await require_admin(event):
 		return
 
-	sh = 'cat /etc/ssh/.ssh.db | grep "###" | wc -l'
-	ssh = subprocess.check_output(sh, shell=True).decode("ascii").strip()
-	vm = 'cat /etc/vmess/.vmess.db | grep "###" | wc -l'
-	vms = subprocess.check_output(vm, shell=True).decode("ascii").strip()
-	vl = 'cat /etc/vless/.vless.db | grep "###" | wc -l'
-	vls = subprocess.check_output(vl, shell=True).decode("ascii").strip()
-	tr = 'cat /etc/trojan/.trojan.db | grep "###" | wc -l'
-	trj = subprocess.check_output(tr, shell=True).decode("ascii").strip()
-	ss = 'cat /etc/shadowsocks/.shadowsocks.db 2>/dev/null | grep "###" | wc -l'
-	try:
-		ssn = subprocess.check_output(ss, shell=True).decode("ascii").strip()
-	except Exception:
-		ssn = "0"
+	# Keep source in sync with shell panel counters.
+	ssh = _run_count("awk -F: '$3>=1000 && $1!=\"nobody\" {c++} END{print c+0}' /etc/passwd 2>/dev/null")
+	vms = _run_count("grep -c -E '^### ' /etc/xray/config.json 2>/dev/null", divisor=2)
+	vls = _run_count("grep -c -E '^#& ' /etc/xray/config.json 2>/dev/null", divisor=2)
+	trj = _run_count("grep -c -E '^#! ' /etc/xray/config.json 2>/dev/null", divisor=2)
+	ssn = _run_count("grep -c -E '^#!# ' /etc/xray/config.json 2>/dev/null", divisor=2)
 
 	msg = (
 		f"{manager_banner('PanelXray Telegram Bot', 'All Services')}\n\n"
