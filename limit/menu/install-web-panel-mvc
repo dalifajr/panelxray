@@ -1,0 +1,1797 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+set -e
+
+APP_NAME="vpnxray-web-panel"
+APP_ROOT="/opt/${APP_NAME}"
+APP_PORT="9999"
+APP_HOST="127.0.0.1"
+SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+NGINX_CONF="/etc/nginx/conf.d/xray.conf"
+PANEL_ETC_DIR="/etc/${APP_NAME}"
+ENV_FILE="${PANEL_ETC_DIR}/panel.env"
+PASS_FILE="${PANEL_ETC_DIR}/admin_password"
+
+msg_info() {
+  echo -e "\033[1;36m[INFO]\033[0m $1"
+}
+
+msg_warn() {
+  echo -e "\033[1;33m[WARN]\033[0m $1"
+}
+
+msg_ok() {
+  echo -e "\033[1;32m[OK]\033[0m $1"
+}
+
+show_header() {
+  clear
+  if declare -F thm_title >/dev/null; then
+    thm_title "INSTALL WEB PANEL MVC"
+    thm_welcome "Material 3 Expressive"
+    thm_footer
+  else
+    echo "============================================"
+    echo " INSTALL WEB PANEL MVC (MATERIAL 3)"
+    echo "============================================"
+  fi
+}
+
+require_root() {
+  if [[ $EUID -ne 0 ]]; then
+    msg_warn "Installer harus dijalankan sebagai root."
+    exit 1
+  fi
+}
+
+install_dependencies() {
+  if ! command -v apt-get >/dev/null 2>&1; then
+    msg_warn "Sistem tidak mendukung apt-get. Installer dihentikan."
+    exit 1
+  fi
+
+  msg_info "Menginstall dependency Python runtime."
+  apt-get update -y >/dev/null 2>&1 || true
+  DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip >/dev/null
+}
+
+write_app_files() {
+  msg_info "Menyiapkan source aplikasi MVC di ${APP_ROOT}."
+  mkdir -p "${APP_ROOT}/controllers" "${APP_ROOT}/models" "${APP_ROOT}/templates" "${APP_ROOT}/static/css" "${APP_ROOT}/static/js" "${APP_ROOT}/data"
+
+  cat > "${APP_ROOT}/requirements.txt" <<'REQ'
+Flask==3.0.3
+gunicorn==22.0.0
+REQ
+
+  cat > "${APP_ROOT}/app.py" <<'PY'
+from flask import Flask, redirect, url_for
+from controllers.auth_controller import auth_bp
+from controllers.dashboard_controller import dashboard_bp
+import os
+
+
+def create_app():
+    app = Flask(__name__, static_url_path="/panel/static", static_folder="static")
+    app.config["SECRET_KEY"] = os.environ.get("VPNXRAY_PANEL_SECRET", "vpnxray-dev-secret")
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(dashboard_bp)
+
+    @app.get("/")
+    def root_redirect():
+        return redirect(url_for("dashboard.home"))
+
+    return app
+
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=9999)
+PY
+
+  cat > "${APP_ROOT}/controllers/__init__.py" <<'PY'
+"""Controllers package for VPNXRay panel."""
+PY
+
+  cat > "${APP_ROOT}/controllers/auth_controller.py" <<'PY'
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from models.auth_model import verify_admin
+
+auth_bp = Blueprint("auth", __name__, url_prefix="/panel")
+
+
+@auth_bp.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("panel_user"):
+        return redirect(url_for("dashboard.home"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        if verify_admin(username, password):
+            session["panel_user"] = username
+            return redirect(url_for("dashboard.home"))
+
+        flash("Username atau password salah.", "error")
+
+    return render_template("login.html", page_title="Login")
+
+
+@auth_bp.get("/logout")
+def logout():
+    session.pop("panel_user", None)
+    return redirect(url_for("auth.login"))
+PY
+
+    cat > "${APP_ROOT}/controllers/dashboard_controller.py" <<'PY'
+from functools import wraps
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from models.account_model import (
+  create_account as create_vpn_account,
+  delete_account as delete_vpn_account,
+  get_account_summary,
+  list_accounts,
+  update_account_expiry,
+)
+from models.system_model import (
+  control_service,
+  get_realtime_stats,
+  get_service_statuses,
+  get_system_summary,
+)
+
+dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/panel")
+
+
+def login_required(view_func):
+  @wraps(view_func)
+  def wrapped(*args, **kwargs):
+    if not session.get("panel_user"):
+      return redirect(url_for("auth.login"))
+    return view_func(*args, **kwargs)
+
+  return wrapped
+
+
+@dashboard_bp.get("/")
+@login_required
+def home():
+  return render_template(
+    "dashboard.html",
+    page_title="Dashboard",
+    system_summary=get_system_summary(),
+    realtime_stats=get_realtime_stats(),
+    service_statuses=get_service_statuses(),
+    account_summary=get_account_summary(),
+  )
+
+
+@dashboard_bp.get("/accounts")
+@login_required
+def accounts():
+  return render_template(
+    "accounts.html",
+    page_title="Akun VPN",
+    accounts=list_accounts(),
+  )
+
+
+@dashboard_bp.post("/accounts/create")
+@login_required
+def create_account():
+  protocol = request.form.get("protocol", "").strip().lower()
+  username = request.form.get("username", "").strip()
+  expiry_days = request.form.get("expiry_days", "").strip()
+
+  try:
+    result = create_vpn_account(protocol=protocol, username=username, expiry_days=expiry_days)
+    flash(
+      f"Akun {result['protocol']} untuk {result['username']} berhasil dibuat. Backup: {result['backup_path']}",
+      "success",
+    )
+  except Exception as exc:
+    flash(f"Gagal membuat akun: {exc}", "error")
+
+  return redirect(url_for("dashboard.accounts"))
+
+
+@dashboard_bp.post("/accounts/<protocol>/<username>/update")
+@login_required
+def update_account(protocol: str, username: str):
+  expiry_days = request.form.get("expiry_days", "").strip()
+
+  try:
+    result = update_account_expiry(protocol=protocol.lower(), username=username, expiry_days=expiry_days)
+    flash(
+      f"Expired akun {result['username']} diperbarui ke {result['expiry']}. Backup: {result['backup_path']}",
+      "success",
+    )
+  except Exception as exc:
+    flash(f"Gagal update akun: {exc}", "error")
+
+  return redirect(url_for("dashboard.accounts"))
+
+
+@dashboard_bp.post("/accounts/<protocol>/<username>/delete")
+@login_required
+def delete_account(protocol: str, username: str):
+  try:
+    result = delete_vpn_account(protocol=protocol.lower(), username=username)
+    flash(
+      f"Akun {result['protocol']} untuk {result['username']} berhasil dihapus. Backup: {result['backup_path']}",
+      "success",
+    )
+  except Exception as exc:
+    flash(f"Gagal hapus akun: {exc}", "error")
+
+  return redirect(url_for("dashboard.accounts"))
+
+
+@dashboard_bp.post("/services/<unit>/<action>")
+@login_required
+def service_action(unit: str, action: str):
+  try:
+    result = control_service(unit=unit.lower(), action=action.lower())
+    flash(
+      f"Service {result['name']} ({result['unit']}) berhasil {result['action']}. Status: {result['state']}",
+      "success",
+    )
+  except Exception as exc:
+    flash(f"Gagal kontrol service: {exc}", "error")
+
+  return redirect(url_for("dashboard.home"))
+
+
+@dashboard_bp.get("/api/stats")
+@login_required
+def api_stats():
+  realtime_stats = get_realtime_stats()
+  return jsonify(
+    {
+      "generated_at": realtime_stats["time"],
+      "system_summary": get_system_summary(),
+      "realtime_stats": realtime_stats,
+      "service_statuses": get_service_statuses(),
+      "account_summary": get_account_summary(),
+    }
+  )
+PY
+
+cat > "${APP_ROOT}/models/__init__.py" <<'PY'
+"""Models package for VPNXRay panel."""
+PY
+
+  cat > "${APP_ROOT}/models/auth_model.py" <<'PY'
+import os
+import sqlite3
+from werkzeug.security import check_password_hash
+
+DB_PATH = os.environ.get("VPNXRAY_PANEL_DB", "/opt/vpnxray-web-panel/data/panel.db")
+
+
+def verify_admin(username: str, password: str) -> bool:
+    if not username or not password:
+        return False
+
+    if not os.path.exists(DB_PATH):
+        return False
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT username, password_hash FROM admins WHERE username = ?",
+            (username,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return False
+
+    return check_password_hash(row["password_hash"], password)
+PY
+
+    cat > "${APP_ROOT}/models/account_model.py" <<'PY'
+from datetime import datetime, timedelta
+from pathlib import Path
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import uuid
+
+XRAY_CONFIG_PATH = Path("/etc/xray/config.json")
+XRAY_BACKUP_DIR = Path("/etc/xray/backup-web-panel")
+KEEP_BACKUP_COUNT = 30
+USERNAME_REGEX = re.compile(r"^[a-zA-Z0-9_]+$")
+CREDENTIAL_REGEX = re.compile(r'"(?:id|password)"\s*:\s*"([^"]+)"')
+
+MARKER_TO_PROTOCOL = {
+  "#!#": "shadowsocks",
+  "###": "vmess",
+  "#&": "vless",
+  "#!": "trojan",
+}
+
+PROTOCOL_RULES = {
+  "vmess": {
+    "display": "VMESS",
+    "marker": "###",
+    "anchors": ["#vmess", "#vmessgrpc"],
+    "entry_template": '},{"id": "{credential}","alterId": 0,"email": "{username}"',
+  },
+  "vless": {
+    "display": "VLESS",
+    "marker": "#&",
+    "anchors": ["#vless", "#vlessgrpc"],
+    "entry_template": '},{"id": "{credential}","email": "{username}"',
+  },
+  "trojan": {
+    "display": "TROJAN",
+    "marker": "#!",
+    "anchors": ["#trojanws", "#trojangrpc"],
+    "entry_template": '},{"password": "{credential}","email": "{username}"',
+  },
+  "shadowsocks": {
+    "display": "SHADOWSOCKS",
+    "marker": "#!#",
+    "anchors": ["#ssws", "#ssgrpc"],
+    "entry_template": '},{"password": "{credential}","method": "aes-128-gcm","email": "{username}"',
+  },
+}
+
+SIDE_CAR_DB_PATHS = {
+  "vmess": Path("/etc/vmess/.vmess.db"),
+  "vless": Path("/etc/vless/.vless.db"),
+  "trojan": Path("/etc/trojan/.trojan.db"),
+  "shadowsocks": Path("/etc/shadowsocks/.shadowsocks.db"),
+}
+
+REQUIRED_ANCHORS = [
+  "#vless",
+  "#vlessgrpc",
+  "#vmess",
+  "#vmessgrpc",
+  "#trojanws",
+  "#trojangrpc",
+  "#ssws",
+  "#ssgrpc",
+]
+
+
+def _parse_account_line(raw_line: str):
+  line = raw_line.strip()
+  for marker, protocol in MARKER_TO_PROTOCOL.items():
+    prefix = f"{marker} "
+    if line.startswith(prefix):
+      parts = line.split()
+      if len(parts) >= 3:
+        return {
+          "protocol_key": protocol,
+          "protocol": PROTOCOL_RULES[protocol]["display"],
+          "username": parts[1],
+          "expiry": parts[2],
+          "marker": marker,
+        }
+  return None
+
+
+def _read_config_lines():
+  if not XRAY_CONFIG_PATH.exists():
+    raise FileNotFoundError(f"Config Xray tidak ditemukan: {XRAY_CONFIG_PATH}")
+  return XRAY_CONFIG_PATH.read_text(encoding="utf-8", errors="ignore").splitlines(keepends=True)
+
+
+def _validate_username(username: str):
+  if not username:
+    raise ValueError("Username wajib diisi.")
+  if not USERNAME_REGEX.fullmatch(username):
+    raise ValueError("Username hanya boleh huruf, angka, dan underscore.")
+
+
+def _validate_protocol(protocol: str):
+  if protocol not in PROTOCOL_RULES:
+    raise ValueError("Protocol tidak valid.")
+
+
+def _normalize_expiry_days(expiry_days):
+  try:
+    days = int(str(expiry_days).strip())
+  except ValueError as exc:
+    raise ValueError("Expired (hari) harus berupa angka.") from exc
+
+  if days <= 0 or days > 3650:
+    raise ValueError("Expired (hari) harus di antara 1 sampai 3650.")
+
+  return days
+
+
+def _expiry_from_days(days: int):
+  return (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
+
+
+def _create_backup():
+  XRAY_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+  timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+  backup_path = XRAY_BACKUP_DIR / f"config.json.{timestamp}.bak"
+  shutil.copy2(XRAY_CONFIG_PATH, backup_path)
+
+  backups = sorted(XRAY_BACKUP_DIR.glob("config.json.*.bak"))
+  while len(backups) > KEEP_BACKUP_COUNT:
+    oldest = backups.pop(0)
+    try:
+      oldest.unlink()
+    except OSError:
+      break
+
+  return backup_path
+
+
+def _atomic_write_path(target_path: Path, content: str):
+  target_path.parent.mkdir(parents=True, exist_ok=True)
+  fd, tmp_path = tempfile.mkstemp(prefix=f"{target_path.name}-", dir=str(target_path.parent))
+  try:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+      handle.write(content)
+      handle.flush()
+      os.fsync(handle.fileno())
+    os.replace(tmp_path, target_path)
+  finally:
+    if os.path.exists(tmp_path):
+      os.unlink(tmp_path)
+
+
+def _atomic_write(lines):
+  content = "".join(lines)
+  for anchor in REQUIRED_ANCHORS:
+    if anchor not in content:
+      raise ValueError(f"Anchor {anchor} hilang, write dibatalkan untuk mencegah korupsi config.")
+  _atomic_write_path(XRAY_CONFIG_PATH, content)
+
+
+def _restart_xray():
+  commands = [
+    ["systemctl", "restart", "xray"],
+    ["service", "xray", "restart"],
+  ]
+  for command in commands:
+    try:
+      subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+      return True
+    except Exception:
+      continue
+  return False
+
+
+def _find_anchor_index(lines, anchor):
+  for idx, line in enumerate(lines):
+    if line.strip().startswith(anchor):
+      return idx
+  raise ValueError(f"Anchor {anchor} tidak ditemukan di config xray.")
+
+
+def _username_exists(lines, username):
+  for line in lines:
+    parsed = _parse_account_line(line)
+    if parsed and parsed["username"] == username:
+      return True
+  return False
+
+
+def _parse_sidecar_line(raw_line: str):
+  parts = raw_line.strip().split()
+  if len(parts) < 4:
+    return None
+  marker = parts[0]
+  if marker not in {"###", "#&", "#!", "#!#"}:
+    return None
+  return {
+    "marker": marker,
+    "username": parts[1],
+    "expiry": parts[2],
+    "credential": parts[3],
+    "quota": parts[4] if len(parts) > 4 else "0",
+    "iplimit": parts[5] if len(parts) > 5 else "0",
+  }
+
+
+def _read_sidecar_metadata(protocol: str):
+  metadata = {}
+  path = SIDE_CAR_DB_PATHS[protocol]
+  if not path.exists():
+    return metadata
+
+  for raw_line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    parsed = _parse_sidecar_line(raw_line)
+    if not parsed:
+      continue
+    metadata[parsed["username"]] = parsed
+
+  return metadata
+
+
+def _extract_credential_near(lines, marker_index: int, username: str):
+  upper = min(len(lines), marker_index + 12)
+  fallback = None
+
+  for idx in range(marker_index + 1, upper):
+    line = lines[idx]
+    if _parse_account_line(line):
+      break
+
+    match = CREDENTIAL_REGEX.search(line)
+    if not match:
+      continue
+
+    if fallback is None:
+      fallback = match.group(1)
+
+    if f'"email":"{username}"' in line or f'"email": "{username}"' in line:
+      return match.group(1)
+
+  return fallback
+
+
+def _collect_accounts_for_sidecar(lines):
+  dedup = {}
+  for idx, line in enumerate(lines):
+    parsed = _parse_account_line(line)
+    if not parsed:
+      continue
+    credential = _extract_credential_near(lines, idx, parsed["username"])
+    key = (parsed["protocol_key"], parsed["username"])
+    dedup[key] = {
+      "protocol_key": parsed["protocol_key"],
+      "username": parsed["username"],
+      "expiry": parsed["expiry"],
+      "credential": credential,
+    }
+
+  return sorted(dedup.values(), key=lambda item: (item["protocol_key"], item["username"]))
+
+
+def _render_sidecar_line(protocol: str, account: dict, metadata: dict):
+  username = account["username"]
+  existing = metadata.get(username, {})
+  credential = account["credential"] or existing.get("credential") or str(uuid.uuid4())
+
+  if protocol == "shadowsocks":
+    return f"### {username} {account['expiry']} {credential}\n"
+
+  quota = existing.get("quota", "0") or "0"
+  iplimit = existing.get("iplimit", "0") or "0"
+  return f"### {username} {account['expiry']} {credential} {quota} {iplimit}\n"
+
+
+def _sync_sidecar_databases(lines):
+  accounts = _collect_accounts_for_sidecar(lines)
+  by_protocol = {key: [] for key in SIDE_CAR_DB_PATHS}
+
+  for account in accounts:
+    by_protocol[account["protocol_key"]].append(account)
+
+  for protocol, sidecar_path in SIDE_CAR_DB_PATHS.items():
+    metadata = _read_sidecar_metadata(protocol)
+    rendered_lines = []
+    for account in by_protocol[protocol]:
+      rendered_lines.append(_render_sidecar_line(protocol, account, metadata))
+    _atomic_write_path(sidecar_path, "".join(rendered_lines))
+
+
+def _mutate_config(mutator):
+  lines = _read_config_lines()
+  backup_path = _create_backup()
+  updated_lines = mutator(list(lines))
+  _atomic_write(updated_lines)
+
+  if not _restart_xray():
+    shutil.copy2(backup_path, XRAY_CONFIG_PATH)
+    _restart_xray()
+    raise RuntimeError("Restart xray gagal. Config otomatis dikembalikan dari backup.")
+
+  try:
+    _sync_sidecar_databases(_read_config_lines())
+  except Exception as exc:
+    shutil.copy2(backup_path, XRAY_CONFIG_PATH)
+    _restart_xray()
+    try:
+      _sync_sidecar_databases(_read_config_lines())
+    except Exception:
+      pass
+    raise RuntimeError(
+      f"Sinkronisasi sidecar gagal. Config otomatis dikembalikan dari backup. Detail: {exc}"
+    ) from exc
+
+  return str(backup_path)
+
+
+def list_accounts():
+  lines = _read_config_lines()
+  dedup = {}
+  for line in lines:
+    parsed = _parse_account_line(line)
+    if not parsed:
+      continue
+    key = (parsed["protocol_key"], parsed["username"])
+    dedup[key] = {
+      "protocol": parsed["protocol"],
+      "protocol_key": parsed["protocol_key"],
+      "username": parsed["username"],
+      "expiry": parsed["expiry"],
+    }
+
+  return sorted(dedup.values(), key=lambda item: (item["protocol"], item["username"]))
+
+
+def get_account_summary():
+  summary = {
+    "VMESS": 0,
+    "VLESS": 0,
+    "TROJAN": 0,
+    "SHADOWSOCKS": 0,
+    "TOTAL": 0,
+  }
+
+  for account in list_accounts():
+    summary[account["protocol"]] = summary.get(account["protocol"], 0) + 1
+    summary["TOTAL"] += 1
+
+  return summary
+
+
+def create_account(protocol: str, username: str, expiry_days):
+  protocol = protocol.lower()
+  _validate_protocol(protocol)
+  _validate_username(username)
+  days = _normalize_expiry_days(expiry_days)
+
+  rule = PROTOCOL_RULES[protocol]
+  marker = rule["marker"]
+  expiry = _expiry_from_days(days)
+  credential = str(uuid.uuid4())
+
+  def mutator(lines):
+    if _username_exists(lines, username):
+      raise ValueError("Username sudah terdaftar di config Xray.")
+
+    entry_line = rule["entry_template"].format(credential=credential, username=username)
+    insert_lines = [f"{marker} {username} {expiry}\n", f"{entry_line}\n"]
+
+    for anchor in rule["anchors"]:
+      anchor_index = _find_anchor_index(lines, anchor)
+      lines[anchor_index + 1:anchor_index + 1] = insert_lines
+
+    return lines
+
+  backup_path = _mutate_config(mutator)
+  return {
+    "protocol": rule["display"],
+    "username": username,
+    "expiry": expiry,
+    "credential": credential,
+    "backup_path": backup_path,
+  }
+
+
+def update_account_expiry(protocol: str, username: str, expiry_days):
+  protocol = protocol.lower()
+  _validate_protocol(protocol)
+  _validate_username(username)
+  days = _normalize_expiry_days(expiry_days)
+
+  rule = PROTOCOL_RULES[protocol]
+  marker = rule["marker"]
+  expiry = _expiry_from_days(days)
+
+  def mutator(lines):
+    changed = 0
+    for idx, line in enumerate(lines):
+      parsed = _parse_account_line(line)
+      if parsed and parsed["protocol_key"] == protocol and parsed["username"] == username:
+        lines[idx] = f"{marker} {username} {expiry}\n"
+        changed += 1
+
+    if changed == 0:
+      raise ValueError("Akun tidak ditemukan.")
+
+    return lines
+
+  backup_path = _mutate_config(mutator)
+  return {
+    "protocol": rule["display"],
+    "username": username,
+    "expiry": expiry,
+    "backup_path": backup_path,
+  }
+
+
+def delete_account(protocol: str, username: str):
+  protocol = protocol.lower()
+  _validate_protocol(protocol)
+  _validate_username(username)
+
+  rule = PROTOCOL_RULES[protocol]
+
+  def mutator(lines):
+    blocks = []
+
+    for idx, line in enumerate(lines):
+      parsed = _parse_account_line(line)
+      if not parsed:
+        continue
+      if parsed["protocol_key"] != protocol or parsed["username"] != username:
+        continue
+
+      block_end = None
+      for cursor in range(idx + 1, len(lines)):
+        if lines[cursor].lstrip().startswith("},{"):
+          block_end = cursor
+          break
+
+      if block_end is None:
+        raise ValueError("Struktur account block tidak valid. Hapus dibatalkan.")
+
+      blocks.append((idx, block_end))
+
+    if not blocks:
+      raise ValueError("Akun tidak ditemukan.")
+
+    for start, end in reversed(blocks):
+      del lines[start:end + 1]
+
+    return lines
+
+  backup_path = _mutate_config(mutator)
+  return {
+    "protocol": rule["display"],
+    "username": username,
+    "backup_path": backup_path,
+  }
+PY
+
+  cat > "${APP_ROOT}/models/system_model.py" <<'PY'
+from datetime import datetime
+from pathlib import Path
+import os
+import shutil
+import socket
+import subprocess
+
+MANAGED_SERVICES = [
+    {"name": "SSH", "unit": "ssh", "fallback": "sshd"},
+    {"name": "DROPBEAR", "unit": "dropbear"},
+    {"name": "XRAY", "unit": "xray"},
+    {"name": "NGINX", "unit": "nginx"},
+    {"name": "HAPROXY", "unit": "haproxy"},
+    {"name": "WS", "unit": "ws"},
+]
+ALLOWED_ACTIONS = {"start", "stop", "restart"}
+
+
+def _read_text(path: str, fallback: str = "-") -> str:
+    file_path = Path(path)
+    if not file_path.exists():
+        return fallback
+    value = file_path.read_text(encoding="utf-8", errors="ignore").strip()
+    return value if value else fallback
+
+
+def _service_state(name: str) -> str:
+    result = subprocess.run(
+        ["systemctl", "is-active", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return "ON" if result.returncode == 0 else "OFF"
+
+
+def _run_service_action(unit: str, action: str) -> bool:
+    commands = [
+        ["systemctl", action, unit],
+        ["service", unit, action],
+    ]
+    for command in commands:
+        result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def _uptime_human() -> str:
+    uptime_path = Path("/proc/uptime")
+    if not uptime_path.exists():
+        return "-"
+
+    raw_seconds = float(uptime_path.read_text().split()[0])
+    minutes = int(raw_seconds // 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+def _primary_ip() -> str:
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        return probe.getsockname()[0]
+    except OSError:
+        return "-"
+    finally:
+        probe.close()
+
+
+def _read_meminfo_kb():
+    meminfo = {}
+    meminfo_path = Path("/proc/meminfo")
+    if not meminfo_path.exists():
+        return meminfo
+
+    for line in meminfo_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        parts = value.strip().split()
+        if not parts:
+            continue
+        try:
+            meminfo[key] = int(parts[0])
+        except ValueError:
+            continue
+    return meminfo
+
+
+def _load_average() -> str:
+    try:
+        load1, load5, load15 = os.getloadavg()
+        return f"{load1:.2f} {load5:.2f} {load15:.2f}"
+    except OSError:
+        return "-"
+
+
+def _established_tcp_count() -> int:
+    result = subprocess.run(
+        ["ss", "-Hant", "state", "established"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        return 0
+    return len([line for line in result.stdout.splitlines() if line.strip()])
+
+
+def get_system_summary():
+    meminfo = _read_meminfo_kb()
+    total_ram_mb = round(meminfo.get("MemTotal", 0) / 1024) if meminfo else 0
+    ram_text = f"{total_ram_mb} MB" if total_ram_mb > 0 else "-"
+
+    return {
+        "hostname": socket.gethostname(),
+        "domain": _read_text("/etc/xray/domain"),
+        "isp": _read_text("/etc/xray/isp"),
+        "city": _read_text("/etc/xray/city"),
+        "ip": _primary_ip(),
+        "uptime": _uptime_human(),
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ram": ram_text,
+    }
+
+
+def get_realtime_stats():
+    meminfo = _read_meminfo_kb()
+    mem_total_kb = meminfo.get("MemTotal", 0)
+    mem_available_kb = meminfo.get("MemAvailable", 0)
+    mem_used_kb = max(mem_total_kb - mem_available_kb, 0)
+
+    mem_total_mb = round(mem_total_kb / 1024) if mem_total_kb else 0
+    mem_used_mb = round(mem_used_kb / 1024) if mem_used_kb else 0
+    mem_percent = round((mem_used_kb / mem_total_kb) * 100, 2) if mem_total_kb else 0
+
+    disk_total, disk_used, _disk_free = shutil.disk_usage("/")
+    disk_total_gb = round(disk_total / (1024 ** 3), 2)
+    disk_used_gb = round(disk_used / (1024 ** 3), 2)
+    disk_percent = round((disk_used / disk_total) * 100, 2) if disk_total else 0
+
+    return {
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "uptime": _uptime_human(),
+        "loadavg": _load_average(),
+        "ram_total_mb": mem_total_mb,
+        "ram_used_mb": mem_used_mb,
+        "ram_percent": mem_percent,
+        "disk_total_gb": disk_total_gb,
+        "disk_used_gb": disk_used_gb,
+        "disk_percent": disk_percent,
+        "tcp_established": _established_tcp_count(),
+    }
+
+
+def get_service_statuses():
+    result = []
+    for service in MANAGED_SERVICES:
+        unit = service["unit"]
+        state = _service_state(unit)
+        active_unit = unit
+        fallback = service.get("fallback")
+
+        if state == "OFF" and fallback:
+            fallback_state = _service_state(fallback)
+            if fallback_state == "ON":
+                state = fallback_state
+                active_unit = fallback
+
+        result.append(
+            {
+                "name": service["name"],
+                "unit": service["unit"],
+                "active_unit": active_unit,
+                "state": state,
+            }
+        )
+    return result
+
+
+def control_service(unit: str, action: str):
+    if action not in ALLOWED_ACTIONS:
+        raise ValueError("Aksi service tidak valid.")
+
+    service = next((item for item in MANAGED_SERVICES if item["unit"] == unit), None)
+    if service is None:
+        raise ValueError("Service tidak dikenali.")
+
+    candidates = [service["unit"]]
+    fallback = service.get("fallback")
+    if fallback:
+        candidates.append(fallback)
+
+    for candidate in candidates:
+        if _run_service_action(candidate, action):
+            return {
+                "name": service["name"],
+                "unit": candidate,
+                "action": action,
+                "state": _service_state(candidate),
+            }
+
+    raise RuntimeError(f"Gagal menjalankan aksi {action} untuk service {service['name']}.")
+PY
+
+cat > "${APP_ROOT}/templates/base.html" <<'HTML'
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page_title }} - VPNXRay Panel</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/material3.css') }}" />
+</head>
+<body data-page="{{ page_title|lower }}">
+  <div class="shape one"></div>
+  <div class="shape two"></div>
+  <header class="topbar">
+    <div class="brand">VPNXRay Web Panel</div>
+    {% if session.get('panel_user') %}
+    <nav>
+      <a href="{{ url_for('dashboard.home') }}">Dashboard</a>
+      <a href="{{ url_for('dashboard.accounts') }}">Akun</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </nav>
+    {% endif %}
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{{ url_for('static', filename='js/panel.js') }}"></script>
+</body>
+</html>
+HTML
+
+cat > "${APP_ROOT}/templates/login.html" <<'HTML'
+{% extends "base.html" %}
+{% block content %}
+<section class="card auth-card">
+<h1>Login Admin</h1>
+<p class="muted">Masuk ke panel manajemen VPNXRay.</p>
+<form method="post" class="form-grid">
+  <label>Username
+    <input type="text" name="username" required autocomplete="username" />
+  </label>
+  <label>Password
+    <input type="password" name="password" required autocomplete="current-password" />
+  </label>
+  <button type="submit">Masuk</button>
+</form>
+</section>
+{% endblock %}
+HTML
+
+cat > "${APP_ROOT}/templates/dashboard.html" <<'HTML'
+{% extends "base.html" %}
+{% block content %}
+<section class="grid-3">
+<article class="card">
+  <h3>System</h3>
+  <ul class="metric-list">
+    <li><span>Hostname</span><strong>{{ system_summary.hostname }}</strong></li>
+    <li><span>Domain</span><strong>{{ system_summary.domain }}</strong></li>
+    <li><span>IP</span><strong>{{ system_summary.ip }}</strong></li>
+    <li><span>Uptime</span><strong>{{ system_summary.uptime }}</strong></li>
+    <li><span>Waktu</span><strong>{{ system_summary.time }}</strong></li>
+  </ul>
+</article>
+
+<article class="card">
+  <h3>Akun VPN</h3>
+  <ul class="metric-list">
+    <li><span>Total</span><strong>{{ account_summary.TOTAL }}</strong></li>
+    <li><span>VMESS</span><strong>{{ account_summary.VMESS }}</strong></li>
+    <li><span>VLESS</span><strong>{{ account_summary.VLESS }}</strong></li>
+    <li><span>TROJAN</span><strong>{{ account_summary.TROJAN }}</strong></li>
+    <li><span>SHADOWSOCKS</span><strong>{{ account_summary.SHADOWSOCKS }}</strong></li>
+  </ul>
+</article>
+
+<article class="card">
+  <h3>Realtime</h3>
+  <ul class="metric-list realtime-list">
+    <li><span>Update</span><strong id="rt-time">{{ realtime_stats.time }}</strong></li>
+    <li><span>Load Avg</span><strong id="rt-load">{{ realtime_stats.loadavg }}</strong></li>
+    <li><span>RAM</span><strong id="rt-ram">{{ realtime_stats.ram_used_mb }}/{{ realtime_stats.ram_total_mb }} MB ({{ realtime_stats.ram_percent }}%)</strong></li>
+    <li><span>Disk /</span><strong id="rt-disk">{{ realtime_stats.disk_used_gb }}/{{ realtime_stats.disk_total_gb }} GB ({{ realtime_stats.disk_percent }}%)</strong></li>
+    <li><span>TCP Established</span><strong id="rt-tcp">{{ realtime_stats.tcp_established }}</strong></li>
+  </ul>
+  <p class="muted tiny">Data dashboard diperbarui otomatis setiap 10 detik.</p>
+</article>
+</section>
+
+<section class="card">
+<h3>Status Service dan Kontrol</h3>
+<ul class="metric-list service-list">
+  {% for item in service_statuses %}
+  <li class="service-item" data-service-unit="{{ item.unit }}">
+    <div class="service-info">
+      <span>{{ item.name }} ({{ item.active_unit }})</span>
+      <strong class="service-state state {{ 'on' if item.state == 'ON' else 'off' }}">{{ item.state }}</strong>
+    </div>
+    <div class="service-actions">
+      <form method="post" action="{{ url_for('dashboard.service_action', unit=item.unit, action='restart') }}">
+        <button type="submit">Restart</button>
+      </form>
+      <form method="post" action="{{ url_for('dashboard.service_action', unit=item.unit, action='start') }}">
+        <button type="submit" class="secondary">Start</button>
+      </form>
+      <form method="post" action="{{ url_for('dashboard.service_action', unit=item.unit, action='stop') }}">
+        <button type="submit" class="danger">Stop</button>
+      </form>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+</section>
+{% endblock %}
+HTML
+
+cat > "${APP_ROOT}/templates/accounts.html" <<'HTML'
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+<h2>Buat Akun Baru</h2>
+<form class="form-inline" method="post" action="{{ url_for('dashboard.create_account') }}">
+  <label>Protocol
+    <select name="protocol" required>
+      <option value="vmess">VMESS</option>
+      <option value="vless">VLESS</option>
+      <option value="trojan">TROJAN</option>
+      <option value="shadowsocks">SHADOWSOCKS</option>
+    </select>
+  </label>
+
+  <label>Username
+    <input type="text" name="username" pattern="[A-Za-z0-9_]+" required />
+  </label>
+
+  <label>Expired (hari)
+    <input type="number" name="expiry_days" min="1" max="3650" value="30" required />
+  </label>
+
+  <button type="submit">Create Account</button>
+</form>
+<p class="muted">Setiap create, update, atau delete otomatis membuat backup config sebelum write.</p>
+<p class="muted">Sinkronisasi sidecar DB juga otomatis ke /etc/vmess/.vmess.db, /etc/vless/.vless.db, /etc/trojan/.trojan.db, dan /etc/shadowsocks/.shadowsocks.db.</p>
+</section>
+
+<section class="card">
+<h2>Kelola Akun</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Protocol</th>
+        <th>Username</th>
+        <th>Expired</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for account in accounts %}
+      <tr>
+        <td>{{ account.protocol }}</td>
+        <td>{{ account.username }}</td>
+        <td>{{ account.expiry }}</td>
+        <td class="actions">
+          <form method="post" class="inline-actions" action="{{ url_for('dashboard.update_account', protocol=account.protocol_key, username=account.username) }}">
+            <input type="number" name="expiry_days" min="1" max="3650" placeholder="Hari baru" required />
+            <button type="submit">Update Exp</button>
+          </form>
+
+          <form method="post" action="{{ url_for('dashboard.delete_account', protocol=account.protocol_key, username=account.username) }}" onsubmit="return confirm('Hapus akun {{ account.username }}?');">
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4">Belum ada data akun.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</section>
+{% endblock %}
+HTML
+
+cat > "${APP_ROOT}/static/css/material3.css" <<'CSS'
+:root {
+--md-sys-color-primary: #325ca8;
+--md-sys-color-on-primary: #ffffff;
+--md-sys-color-secondary: #3f6f6a;
+--md-sys-color-surface: #f8f9ff;
+--md-sys-color-surface-container: #e9edff;
+--md-sys-color-on-surface: #1a1b23;
+--md-sys-color-outline: #787a89;
+--md-sys-color-error: #b3261e;
+--radius-xl: 28px;
+--radius-lg: 20px;
+--radius-md: 14px;
+--shadow: 0 20px 45px rgba(26, 34, 61, 0.15);
+}
+
+* {
+box-sizing: border-box;
+}
+
+body {
+margin: 0;
+min-height: 100vh;
+font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+color: var(--md-sys-color-on-surface);
+background:
+  radial-gradient(circle at 15% 10%, rgba(80, 123, 216, 0.2), transparent 32%),
+  radial-gradient(circle at 85% 0%, rgba(92, 188, 162, 0.22), transparent 28%),
+  var(--md-sys-color-surface);
+}
+
+.shape {
+position: fixed;
+border-radius: 50%;
+filter: blur(2px);
+z-index: -1;
+}
+
+.shape.one {
+width: 220px;
+height: 220px;
+background: rgba(84, 140, 255, 0.24);
+top: -60px;
+right: 8%;
+}
+
+.shape.two {
+width: 280px;
+height: 280px;
+background: rgba(85, 199, 164, 0.21);
+bottom: -120px;
+left: -40px;
+}
+
+.topbar {
+margin: 20px auto;
+width: min(1080px, calc(100% - 28px));
+border-radius: var(--radius-xl);
+background: rgba(255, 255, 255, 0.86);
+backdrop-filter: blur(8px);
+box-shadow: var(--shadow);
+padding: 14px 20px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+}
+
+.brand {
+font-weight: 700;
+letter-spacing: 0.2px;
+}
+
+nav {
+display: flex;
+gap: 10px;
+}
+
+nav a {
+text-decoration: none;
+color: var(--md-sys-color-on-surface);
+padding: 10px 14px;
+border-radius: 999px;
+background: var(--md-sys-color-surface-container);
+font-weight: 600;
+transition: transform 0.2s ease, background 0.2s ease;
+}
+
+nav a:hover {
+background: #d8e2ff;
+transform: translateY(-1px);
+}
+
+.container {
+width: min(1080px, calc(100% - 28px));
+margin: 14px auto 28px;
+}
+
+.grid-3 {
+display: grid;
+grid-template-columns: repeat(3, minmax(0, 1fr));
+gap: 16px;
+}
+
+.card {
+border-radius: var(--radius-lg);
+background: rgba(255, 255, 255, 0.87);
+box-shadow: var(--shadow);
+padding: 20px;
+animation: rise 0.35s ease both;
+}
+
+.card h1,
+.card h2,
+.card h3 {
+margin: 0 0 14px;
+}
+
+.muted {
+color: #5a5e71;
+}
+
+.metric-list {
+list-style: none;
+margin: 0;
+padding: 0;
+display: grid;
+gap: 10px;
+}
+
+.metric-list li {
+display: flex;
+justify-content: space-between;
+align-items: center;
+background: #f2f4ff;
+border-radius: var(--radius-md);
+padding: 10px 12px;
+}
+
+.state.on {
+color: #10693f;
+}
+
+.state.off {
+color: #b3261e;
+}
+
+.form-grid {
+display: grid;
+gap: 12px;
+}
+
+label {
+display: grid;
+gap: 7px;
+font-weight: 600;
+}
+
+input {
+width: 100%;
+border: 1px solid var(--md-sys-color-outline);
+border-radius: 12px;
+padding: 11px 12px;
+background: #fff;
+}
+
+button {
+margin-top: 6px;
+border: 0;
+border-radius: 999px;
+padding: 11px 16px;
+font-weight: 700;
+color: var(--md-sys-color-on-primary);
+background: linear-gradient(130deg, #325ca8, #4f8ac8);
+cursor: pointer;
+}
+
+.auth-card {
+max-width: 460px;
+margin: 48px auto;
+}
+
+.alert {
+margin-bottom: 14px;
+padding: 10px 12px;
+border-radius: 12px;
+font-weight: 600;
+}
+
+.alert.error {
+background: #ffd7d2;
+color: #7f150e;
+}
+
+.alert.success {
+background: #d8f2de;
+color: #0f5a2d;
+}
+
+select {
+width: 100%;
+border: 1px solid var(--md-sys-color-outline);
+border-radius: 12px;
+padding: 11px 12px;
+background: #fff;
+}
+
+.form-inline {
+display: flex;
+flex-wrap: wrap;
+gap: 12px;
+align-items: flex-end;
+}
+
+.form-inline label {
+min-width: 180px;
+flex: 1 1 200px;
+}
+
+.actions {
+min-width: 260px;
+display: grid;
+gap: 10px;
+}
+
+.inline-actions {
+display: flex;
+align-items: center;
+gap: 8px;
+}
+
+.inline-actions input {
+width: 120px;
+}
+
+.tiny {
+font-size: 0.84rem;
+}
+
+.service-list {
+gap: 14px;
+}
+
+.service-item {
+display: block;
+}
+
+.service-info {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 10px;
+}
+
+.service-actions {
+margin-top: 10px;
+display: flex;
+flex-wrap: wrap;
+gap: 8px;
+}
+
+.service-actions form {
+margin: 0;
+}
+
+.service-actions button {
+margin-top: 0;
+padding: 8px 12px;
+font-size: 0.82rem;
+}
+
+button.secondary {
+background: linear-gradient(130deg, #2a7b6f, #3f9f90);
+}
+
+button.danger {
+background: linear-gradient(130deg, #982f3e, #d64d56);
+}
+
+.table-wrap {
+overflow-x: auto;
+}
+
+table {
+width: 100%;
+border-collapse: collapse;
+}
+
+th,
+td {
+text-align: left;
+padding: 10px 12px;
+border-bottom: 1px solid #dde2f5;
+}
+
+th {
+color: #3c4662;
+}
+
+@keyframes rise {
+from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+to {
+  opacity: 1;
+  transform: translateY(0);
+}
+}
+
+@media (max-width: 980px) {
+.grid-3 {
+  grid-template-columns: 1fr;
+}
+
+.topbar {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+nav {
+  width: 100%;
+  overflow: auto;
+}
+}
+CSS
+
+cat > "${APP_ROOT}/static/js/panel.js" <<'JS'
+document.addEventListener("DOMContentLoaded", function () {
+var cards = document.querySelectorAll(".card");
+cards.forEach(function (card, index) {
+  card.style.animationDelay = (index * 60) + "ms";
+});
+
+function setText(id, value) {
+  var el = document.getElementById(id);
+  if (!el || value === undefined || value === null) {
+    return;
+  }
+  el.textContent = String(value);
+}
+
+function updateServiceStates(services) {
+  if (!Array.isArray(services)) {
+    return;
+  }
+
+  services.forEach(function (service) {
+    var row = document.querySelector('[data-service-unit="' + service.unit + '"]');
+    if (!row) {
+      return;
+    }
+
+    var stateEl = row.querySelector('.service-state');
+    var labelEl = row.querySelector('.service-info span');
+
+    if (stateEl) {
+      stateEl.textContent = service.state;
+      stateEl.classList.remove('on', 'off');
+      stateEl.classList.add(service.state === 'ON' ? 'on' : 'off');
+    }
+
+    if (labelEl && service.active_unit) {
+      var cleanName = labelEl.textContent.split(' (')[0];
+      labelEl.textContent = cleanName + ' (' + service.active_unit + ')';
+    }
+  });
+}
+
+function updateRealtime(payload) {
+  if (!payload || !payload.realtime_stats) {
+    return;
+  }
+
+  var stats = payload.realtime_stats;
+  setText('rt-time', stats.time);
+  setText('rt-load', stats.loadavg);
+  setText('rt-ram', stats.ram_used_mb + '/' + stats.ram_total_mb + ' MB (' + stats.ram_percent + '%)');
+  setText('rt-disk', stats.disk_used_gb + '/' + stats.disk_total_gb + ' GB (' + stats.disk_percent + '%)');
+  setText('rt-tcp', stats.tcp_established);
+
+  updateServiceStates(payload.service_statuses);
+}
+
+function refreshRealtime() {
+  fetch('/panel/api/stats', {
+    credentials: 'same-origin',
+    cache: 'no-store'
+  })
+    .then(function (response) {
+      if (!response.ok) {
+        throw new Error('stats fetch failed');
+      }
+      return response.json();
+    })
+    .then(function (payload) {
+      updateRealtime(payload);
+    })
+    .catch(function () {
+    });
+}
+
+var page = document.body.getAttribute('data-page') || '';
+if (page.indexOf('dashboard') !== -1) {
+  refreshRealtime();
+  setInterval(refreshRealtime, 10000);
+}
+});
+JS
+}
+
+setup_python_runtime() {
+msg_info "Membuat virtual environment dan install package Python."
+python3 -m venv "${APP_ROOT}/.venv"
+"${APP_ROOT}/.venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
+"${APP_ROOT}/.venv/bin/pip" install -r "${APP_ROOT}/requirements.txt" >/dev/null
+}
+
+generate_random_string() {
+if command -v openssl >/dev/null 2>&1; then
+  openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 24
+else
+  tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24
+fi
+}
+
+setup_panel_auth() {
+msg_info "Menyusun credential awal panel admin."
+mkdir -p "${PANEL_ETC_DIR}"
+
+local admin_user admin_pass secret_key admin_hash
+admin_user="$(cat /usr/bin/user 2>/dev/null | tr -d '[:space:]')"
+[[ -z "${admin_user}" ]] && admin_user="admin"
+
+if [[ -s "${PASS_FILE}" ]]; then
+  admin_pass="$(cat "${PASS_FILE}")"
+else
+  admin_pass="$(generate_random_string)"
+  echo "${admin_pass}" > "${PASS_FILE}"
+  chmod 600 "${PASS_FILE}"
+fi
+
+if [[ -s "${PANEL_ETC_DIR}/secret_key" ]]; then
+  secret_key="$(cat "${PANEL_ETC_DIR}/secret_key")"
+else
+  secret_key="$(generate_random_string)"
+  echo "${secret_key}" > "${PANEL_ETC_DIR}/secret_key"
+  chmod 600 "${PANEL_ETC_DIR}/secret_key"
+fi
+
+admin_hash="$("${APP_ROOT}/.venv/bin/python" -c "from werkzeug.security import generate_password_hash; import sys; print(generate_password_hash(sys.argv[1]))" "${admin_pass}")"
+
+PANEL_USER="${admin_user}" PANEL_HASH="${admin_hash}" PANEL_DB="${APP_ROOT}/data/panel.db" "${APP_ROOT}/.venv/bin/python" - <<'PY'
+import datetime
+import os
+import sqlite3
+
+db_path = os.environ["PANEL_DB"]
+username = os.environ["PANEL_USER"]
+password_hash = os.environ["PANEL_HASH"]
+
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+conn = sqlite3.connect(db_path)
+conn.execute(
+  """
+  CREATE TABLE IF NOT EXISTS admins (
+      username TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+  )
+  """
+)
+conn.execute(
+  """
+  INSERT INTO admins (username, password_hash, updated_at)
+  VALUES (?, ?, ?)
+  ON CONFLICT(username) DO UPDATE SET
+      password_hash=excluded.password_hash,
+      updated_at=excluded.updated_at
+  """,
+  (username, password_hash, datetime.datetime.utcnow().isoformat()),
+)
+conn.commit()
+conn.close()
+PY
+
+  cat > "${ENV_FILE}" <<EOF
+VPNXRAY_PANEL_SECRET=${secret_key}
+VPNXRAY_PANEL_DB=${APP_ROOT}/data/panel.db
+EOF
+  chmod 600 "${ENV_FILE}"
+
+  echo "${admin_user}" > "${PANEL_ETC_DIR}/admin_user"
+  chmod 600 "${PANEL_ETC_DIR}/admin_user"
+
+  msg_ok "Credential panel siap."
+}
+
+install_service() {
+  msg_info "Mendaftarkan service systemd ${APP_NAME}."
+  cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=VPNXRay MVC Web Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=${APP_ROOT}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${APP_ROOT}/.venv/bin/gunicorn --workers 2 --bind ${APP_HOST}:${APP_PORT} --timeout 60 app:app
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now "${APP_NAME}" >/dev/null 2>&1 || true
+
+  if systemctl is-active --quiet "${APP_NAME}"; then
+    msg_ok "Service ${APP_NAME} aktif."
+  else
+    msg_warn "Service ${APP_NAME} belum aktif, cek log: journalctl -u ${APP_NAME} -n 40"
+  fi
+}
+
+configure_nginx_route() {
+  if [[ ! -f "${NGINX_CONF}" ]]; then
+    msg_warn "File nginx conf tidak ditemukan: ${NGINX_CONF}."
+    return
+  fi
+
+  if grep -q "PANELXRAY-WEB-PANEL-START" "${NGINX_CONF}"; then
+    msg_info "Route /panel sudah ada di konfigurasi nginx."
+  else
+    msg_info "Menambahkan route /panel ke nginx."
+    local backup_file temp_file
+    backup_file="${NGINX_CONF}.bak.${APP_NAME}.$(date +%s)"
+    temp_file="${NGINX_CONF}.tmp"
+    cp -f "${NGINX_CONF}" "${backup_file}"
+
+    awk '
+      BEGIN { inserted = 0 }
+      {
+        if (!inserted && $0 ~ /location ~ \/vless/) {
+          print "    # PANELXRAY-WEB-PANEL-START"
+          print "    location = /panel {"
+          print "      return 301 /panel/;"
+          print "    }"
+          print "    location ^~ /panel/ {"
+          print "      proxy_http_version 1.1;"
+          print "      proxy_set_header Host \\$host;"
+          print "      proxy_set_header X-Real-IP \\$remote_addr;"
+          print "      proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;"
+          print "      proxy_set_header X-Forwarded-Proto \\$scheme;"
+          print "      proxy_pass http://127.0.0.1:9999;"
+          print "    }"
+          print "    # PANELXRAY-WEB-PANEL-END"
+          inserted = 1
+        }
+        print
+      }
+      END {
+        if (!inserted) {
+          exit 7
+        }
+      }
+    ' "${NGINX_CONF}" > "${temp_file}" || {
+      msg_warn "Gagal menyisipkan route /panel otomatis. Backup: ${backup_file}"
+      rm -f "${temp_file}"
+      return
+    }
+
+    mv "${temp_file}" "${NGINX_CONF}"
+  fi
+
+  if command -v nginx >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1; then
+      systemctl restart nginx >/dev/null 2>&1 || msg_warn "Nginx gagal restart."
+      msg_ok "Nginx siap melayani path /panel."
+    else
+      msg_warn "Validasi nginx gagal, cek konfigurasi secara manual."
+    fi
+  fi
+}
+
+set_permissions() {
+  chown -R root:root "${APP_ROOT}" "${PANEL_ETC_DIR}" >/dev/null 2>&1 || true
+  chmod -R go-rwx "${PANEL_ETC_DIR}" >/dev/null 2>&1 || true
+}
+
+show_summary() {
+  local admin_user admin_pass domain
+  admin_user="$(cat "${PANEL_ETC_DIR}/admin_user" 2>/dev/null || echo admin)"
+  admin_pass="$(cat "${PASS_FILE}" 2>/dev/null || echo '(tidak tersedia)')"
+  domain="$(cat /etc/xray/domain 2>/dev/null || echo '-')"
+
+  echo
+  msg_ok "Instalasi Web Panel MVC selesai."
+  echo "--------------------------------------------"
+  echo "URL Lokal   : http://${APP_HOST}:${APP_PORT}/panel/"
+  echo "URL Domain  : https://${domain}/panel/"
+  echo "Username    : ${admin_user}"
+  echo "Password    : ${admin_pass}"
+  echo "Service     : ${APP_NAME}"
+  echo "--------------------------------------------"
+  echo "Gunakan menu utility untuk menjalankan ulang installer jika ingin refresh app."
+}
+
+main() {
+  show_header
+  require_root
+  install_dependencies
+  write_app_files
+  setup_python_runtime
+  setup_panel_auth
+  install_service
+  configure_nginx_route
+  set_permissions
+  show_summary
+}
+
+main "$@"

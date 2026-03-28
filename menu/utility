@@ -46,6 +46,7 @@ if declare -F thm_title >/dev/null; then
    thm_menu_item 21 "Diagnosa Koneksi Protokol"
    thm_menu_item 22 "Tambah Sertifikat Custom SNI"
    thm_menu_item 23 "Mode Cepat SNI (Self-Signed)"
+   thm_menu_item 24 "Install Web Panel MVC (Material 3)"
    thm_section "NAVIGATION"
    thm_menu_item 0 "Kembali Ke Menu Utama"
    thm_footer
@@ -76,6 +77,7 @@ else
    echo -e "  ${Blue}[21] ${NC}${GREEN}Diagnosa Koneksi Protokol${NC}"
    echo -e "  ${Blue}[22] ${NC}${GREEN}Tambah Sertifikat Custom SNI${NC}"
    echo -e "  ${Blue}[23] ${NC}${GREEN}Mode Cepat SNI (Self-Signed)${NC}"
+   echo -e "  ${Blue}[24] ${NC}${GREEN}Install Web Panel MVC (Material 3)${NC}"
    echo -e " \033[36m══════════════════════════════════════════════════════════${NC}"
    echo -e ""
    echo -e "  ${Blue}[0] ${NC} ${GREEN}Kembali Ke Menu Utama${NC}"
@@ -83,10 +85,10 @@ else
    echo -e "${GREEN}PanelXray Service Menu${NC}"
 fi
 if declare -F thm_prompt >/dev/null; then
-   thm_prompt "Pilih Menu [ 1 - 23 atau 0 untuk kembali ] : "
+   thm_prompt "Pilih Menu [ 1 - 24 atau 0 untuk kembali ] : "
    read -r menu
 else
-   read -p "  Pilih Menu [ 1 - 23 atau 0 untuk kembali ] : " menu
+   read -p "  Pilih Menu [ 1 - 24 atau 0 untuk kembali ] : " menu
 fi
 case $menu in
 1) clear ;
@@ -157,6 +159,9 @@ case $menu in
    ;;
 23) clear ;
    quick-sni-insecure
+   ;;
+24) clear ;
+   install-web-panel-mvc
    ;;
 0) clear ;
    menu
