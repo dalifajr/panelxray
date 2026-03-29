@@ -153,16 +153,54 @@ EOF
   awk -v block_file="${block_file}" '
     BEGIN {
       inserted = 0
+      in_server = 0
+      depth = 0
+      server_has_ssl = 0
       while ((getline line < block_file) > 0) {
         block = block line ORS
       }
       close(block_file)
     }
-    /location ~ \/ \{/ && inserted == 0 {
-      printf "%s", block
-      inserted = 1
+
+    {
+      line = $0
+
+      if (!in_server && line ~ /^[[:space:]]*server[[:space:]]*\{[[:space:]]*$/) {
+        in_server = 1
+        depth = 1
+        server_has_ssl = 0
+        print line
+        next
+      }
+
+      if (in_server) {
+        if (line ~ /^[[:space:]]*listen[[:space:]].*ssl/) {
+          server_has_ssl = 1
+        }
+
+        if (!inserted && server_has_ssl && depth == 1 && line ~ /^[[:space:]]*}[[:space:]]*$/) {
+          printf "%s", block
+          print line
+          inserted = 1
+          in_server = 0
+          depth = 0
+          next
+        }
+
+        print line
+        open_count = gsub(/\{/, "{", line)
+        close_count = gsub(/\}/, "}", line)
+        depth += open_count - close_count
+        if (depth <= 0) {
+          in_server = 0
+          depth = 0
+        }
+        next
+      }
+
+      print line
     }
-    { print }
+
     END {
       if (inserted == 0) {
         printf "%s", block

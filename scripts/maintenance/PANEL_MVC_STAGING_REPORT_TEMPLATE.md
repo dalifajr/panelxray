@@ -54,7 +54,12 @@ echo "$?"
 systemctl is-active xray nginx haproxy ws ssh dropbear
 ```
 
-### 5.3 Verifikasi audit log
+### 5.3 Verifikasi route panel (SNI-aware)
+```bash
+curl -kI --resolve <domain>:443:127.0.0.1 https://<domain>/panel/login
+```
+
+### 5.4 Verifikasi audit log
 ```bash
 tail -n 80 /var/log/vpnxray-webpanel/audit.log
 ```

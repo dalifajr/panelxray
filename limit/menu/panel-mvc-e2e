@@ -31,9 +31,17 @@ check_service_active() {
 check_panel_route() {
   local domain
   domain="$(cat "$DOMAIN_FILE" 2>/dev/null || hostname -f 2>/dev/null || echo localhost)"
+  domain="$(echo "$domain" | tr -d '[:space:]')"
+  [[ -n "$domain" ]] || domain="localhost"
 
-  curl -kfsS "https://127.0.0.1${PANEL_PATH}login" -H "Host: ${domain}" >/dev/null || \
-    die "akses panel via reverse proxy gagal"
+  local panel_url
+  panel_url="https://${domain}${PANEL_PATH}login"
+
+  if ! curl -kfsS --resolve "${domain}:443:127.0.0.1" "${panel_url}" >/dev/null; then
+    local http_code
+    http_code="$(curl -ksS -o /dev/null -w "%{http_code}" --resolve "${domain}:443:127.0.0.1" "${panel_url}" || true)"
+    die "akses panel via reverse proxy gagal (HTTP ${http_code:-000})"
+  fi
   log "akses panel via https://<domain>${PANEL_PATH}login: OK"
 }
 

@@ -10,6 +10,8 @@
    - `panel-mvc-e2e`
 2. Verifikasi manual akses browser:
    - `https://<domain>/panel/login`
+   - Jika uji via CLI, gunakan SNI-aware resolve:
+     - `curl -kI --resolve <domain>:443:127.0.0.1 https://<domain>/panel/login`
 3. Login dengan kredensial panel server (`/usr/bin/user` dan `/usr/bin/password`).
 4. Buka dashboard dan cek status service.
 5. Uji mutasi web API:
@@ -32,3 +34,10 @@
    - `scripts/maintenance/PANEL_MVC_STAGING_REPORT_TEMPLATE.md`
 - Simpan hasil final dengan nama baru, contoh:
    - `PANEL_MVC_STAGING_REPORT_YYYYMMDD_HHMM.md`
+
+## Troubleshooting Cepat
+- Jika keluar error `akses panel via reverse proxy gagal (HTTP 404)`:
+   - pastikan patch panel ada di server SSL ingress:
+      - `nginx -T | sed -n '/BEGIN VPNXRAY WEB PANEL/,/END VPNXRAY WEB PANEL/p'`
+   - jalankan ulang installer terbaru:
+      - `install-panel-mvc`
