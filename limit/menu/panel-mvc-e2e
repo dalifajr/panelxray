@@ -36,26 +36,38 @@ check_panel_route() {
 
   local panel_base_url
   local panel_url
+  local curl_modes
   panel_base_url="https://${domain}/panel"
   panel_url="https://${domain}${PANEL_PATH}login"
 
-  local base_code
-  base_code="$(curl -ksS -o /dev/null -w "%{http_code}" --resolve "${domain}:443:127.0.0.1" "${panel_base_url}" || true)"
-  case "$base_code" in
-    301|302|307|308)
-      log "akses panel via https://<domain>/panel: redirect (${base_code})"
-      ;;
-    *)
-      die "akses /panel tidak redirect (HTTP ${base_code:-000})"
-      ;;
-  esac
-
-  if ! curl -kfsS --resolve "${domain}:443:127.0.0.1" "${panel_url}" >/dev/null; then
-    local http_code
-    http_code="$(curl -ksS -o /dev/null -w "%{http_code}" --resolve "${domain}:443:127.0.0.1" "${panel_url}" || true)"
-    die "akses panel via reverse proxy gagal (HTTP ${http_code:-000})"
+  curl_modes=("--http1.1")
+  if curl --version 2>/dev/null | grep -qi "http2"; then
+    curl_modes=("--http2" "--http1.1")
   fi
-  log "akses panel via https://<domain>${PANEL_PATH}login: OK"
+
+  local mode
+  for mode in "${curl_modes[@]}"; do
+    local mode_name
+    mode_name="${mode#--}"
+
+    local base_code
+    base_code="$(curl -ksS "${mode}" -o /dev/null -w "%{http_code}" --resolve "${domain}:443:127.0.0.1" "${panel_base_url}" || true)"
+    case "$base_code" in
+      301|302|307|308)
+        log "akses panel via https://<domain>/panel (${mode_name}): redirect (${base_code})"
+        ;;
+      *)
+        die "akses /panel tidak redirect pada ${mode_name} (HTTP ${base_code:-000})"
+        ;;
+    esac
+
+    if ! curl -kfsS "${mode}" --resolve "${domain}:443:127.0.0.1" "${panel_url}" >/dev/null; then
+      local http_code
+      http_code="$(curl -ksS "${mode}" -o /dev/null -w "%{http_code}" --resolve "${domain}:443:127.0.0.1" "${panel_url}" || true)"
+      die "akses panel via reverse proxy gagal pada ${mode_name} (HTTP ${http_code:-000})"
+    fi
+    log "akses panel via https://<domain>${PANEL_PATH}login (${mode_name}): OK"
+  done
 }
 
 check_panel_api_health() {

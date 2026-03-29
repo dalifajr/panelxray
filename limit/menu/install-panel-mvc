@@ -122,48 +122,13 @@ remove_old_panel_block() {
   sed -i "/${MARK_BEGIN}/,/${MARK_END}/d" "${file}"
 }
 
-detect_haproxy_ws_port() {
-  local haproxy_cfg="/etc/haproxy/haproxy.cfg"
-  local ws_port
-
-  if [[ -f "${haproxy_cfg}" ]]; then
-    ws_port="$(awk '
-      BEGIN {
-        in_ws_bridge = 0
-      }
-
-      /^[[:space:]]*backend[[:space:]]+ws_bridge([[:space:]]|$)/ {
-        in_ws_bridge = 1
-        next
-      }
-
-      in_ws_bridge && /^[[:space:]]*backend[[:space:]]+/ {
-        in_ws_bridge = 0
-      }
-
-      in_ws_bridge && /^[[:space:]]*server[[:space:]]+/ {
-        if (match($0, /127\.0\.0\.1:([0-9]+)/, m)) {
-          print m[1]
-          exit
-        }
-      }
-    ' "${haproxy_cfg}" 2>/dev/null || true)"
-  fi
-
-  [[ -n "${ws_port:-}" ]] || ws_port="1010"
-  echo "${ws_port}"
-}
-
-has_proxy_listen_port() {
+has_proxy_listen() {
   local file="$1"
-  local port="$2"
 
-  awk -v port="${port}" '
+  awk '
     /^[[:space:]]*listen[[:space:]]/ && /proxy_protocol/ {
-      if ($0 ~ ("(^|[^0-9])" port "([^0-9]|$)")) {
-        found = 1
-        exit 0
-      }
+      found = 1
+      exit 0
     }
 
     END {
@@ -174,8 +139,7 @@ has_proxy_listen_port() {
 
 insert_panel_block() {
   local file="$1"
-  local target_port="${2:-1010}"
-  local target_mode="${3:-port}"
+  local target_mode="${2:-proxy}"
   local tmp_file
   local block_file
 
@@ -202,12 +166,13 @@ insert_panel_block() {
     # END VPNXRAY WEB PANEL
 EOF
 
-  if ! awk -v block_file="${block_file}" -v target_port="${target_port}" -v target_mode="${target_mode}" '
+  if ! awk -v block_file="${block_file}" -v target_mode="${target_mode}" '
     BEGIN {
-      inserted = 0
+      inserted_total = 0
       in_server = 0
       depth = 0
       server_match = 0
+      server_inserted = 0
       while ((getline line < block_file) > 0) {
         block = block line ORS
       }
@@ -221,13 +186,14 @@ EOF
         in_server = 1
         depth = 1
         server_match = 0
+        server_inserted = 0
         print line
         next
       }
 
       if (in_server) {
-        if (target_mode == "port") {
-          if (line ~ /^[[:space:]]*listen[[:space:]]/ && line ~ /proxy_protocol/ && line ~ ("(^|[^0-9])" target_port "([^0-9]|$)")) {
+        if (target_mode == "proxy") {
+          if (line ~ /^[[:space:]]*listen[[:space:]]/ && line ~ /proxy_protocol/) {
             server_match = 1
           }
         } else if (target_mode == "ssl") {
@@ -236,15 +202,17 @@ EOF
           }
         }
 
-        if (!inserted && server_match && line ~ /^[[:space:]]*location[[:space:]]+~[[:space:]]*\/[[:space:]]*\{[[:space:]]*$/) {
+        if (!server_inserted && server_match && line ~ /^[[:space:]]*location[[:space:]]+~[[:space:]]*\/[[:space:]]*\{[[:space:]]*$/) {
           printf "%s", block
-          inserted = 1
+          inserted_total++
+          server_inserted = 1
         }
 
-        if (!inserted && server_match && depth == 1 && line ~ /^[[:space:]]*}[[:space:]]*$/) {
+        if (!server_inserted && server_match && depth == 1 && line ~ /^[[:space:]]*}[[:space:]]*$/) {
           printf "%s", block
+          inserted_total++
+          server_inserted = 1
           print line
-          inserted = 1
           in_server = 0
           depth = 0
           next
@@ -265,7 +233,7 @@ EOF
     }
 
     END {
-      if (inserted == 0) {
+      if (inserted_total == 0) {
         exit 42
       }
     }
@@ -285,22 +253,20 @@ patch_nginx() {
   }
 
   local backup_file
-  local ingress_port
   local insert_mode
   backup_file="${NGINX_CONF}.bak.webpanel.$(date +%s)"
   cp -f "${NGINX_CONF}" "${backup_file}"
 
-  ingress_port="$(detect_haproxy_ws_port)"
-  if has_proxy_listen_port "${NGINX_CONF}" "${ingress_port}"; then
-    insert_mode="port"
+  if has_proxy_listen "${NGINX_CONF}"; then
+    insert_mode="proxy"
   else
     insert_mode="ssl"
   fi
 
   remove_old_panel_block "${NGINX_CONF}"
-  if ! insert_panel_block "${NGINX_CONF}" "${ingress_port}" "${insert_mode}"; then
+  if ! insert_panel_block "${NGINX_CONF}" "${insert_mode}"; then
     cp -f "${backup_file}" "${NGINX_CONF}"
-    die "Gagal menentukan server block target untuk route panel (mode=${insert_mode}, port=${ingress_port})"
+    die "Gagal menentukan server block target untuk route panel (mode=${insert_mode})"
   fi
 
   if ! nginx -t >/dev/null 2>&1; then
