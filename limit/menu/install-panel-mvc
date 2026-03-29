@@ -1,0 +1,228 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_NAME="vpnxray-webpanel"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SOURCE_DIR="${SCRIPT_DIR}/webpanel-mvc"
+INSTALL_DIR="/opt/${APP_NAME}"
+VENV_DIR="${INSTALL_DIR}/.venv"
+ENV_FILE="/etc/kyt/webpanel.env"
+SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+NGINX_CONF="/etc/nginx/conf.d/xray.conf"
+MARK_BEGIN="# BEGIN VPNXRAY WEB PANEL"
+MARK_END="# END VPNXRAY WEB PANEL"
+
+log() {
+  echo "[INFO] $*"
+}
+
+warn() {
+  echo "[WARN] $*" >&2
+}
+
+die() {
+  echo "[ERROR] $*" >&2
+  exit 1
+}
+
+require_root() {
+  [[ "${EUID}" -eq 0 ]] || die "Jalankan script ini sebagai root."
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "Command tidak ditemukan: $1"
+}
+
+generate_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32 2>/dev/null || true
+  elif [[ -r /proc/sys/kernel/random/uuid ]]; then
+    tr -d '-' </proc/sys/kernel/random/uuid
+  else
+    date +%s%N
+  fi
+}
+
+install_python_deps() {
+  log "Memastikan dependency Python terpasang"
+  apt-get update -y >/dev/null 2>&1 || true
+  apt-get install -y python3 python3-venv python3-pip >/dev/null 2>&1
+}
+
+copy_assets() {
+  [[ -d "${SOURCE_DIR}" ]] || die "Asset webpanel tidak ditemukan di ${SOURCE_DIR}"
+  mkdir -p "${INSTALL_DIR}"
+  cp -rf "${SOURCE_DIR}/." "${INSTALL_DIR}/"
+}
+
+setup_venv() {
+  log "Menyiapkan virtual environment"
+  python3 -m venv "${VENV_DIR}"
+  "${VENV_DIR}/bin/pip" install --upgrade pip setuptools wheel >/dev/null 2>&1
+  "${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt" >/dev/null 2>&1
+}
+
+existing_secret() {
+  if [[ -f "${ENV_FILE}" ]]; then
+    grep -E '^WEB_PANEL_SECRET_KEY=' "${ENV_FILE}" | head -n 1 | cut -d '=' -f 2-
+  fi
+}
+
+write_env_file() {
+  mkdir -p /etc/kyt
+  mkdir -p /var/log/vpnxray-webpanel /var/lock/vpnxray-webpanel
+
+  local secret
+  secret="$(existing_secret || true)"
+  if [[ -z "${secret}" ]]; then
+    secret="$(generate_secret)"
+  fi
+  [[ -n "${secret}" ]] || secret="vpnxray-webpanel-secret"
+
+  cat >"${ENV_FILE}" <<EOF
+WEB_PANEL_HOST=127.0.0.1
+WEB_PANEL_PORT=3000
+WEB_PANEL_SECRET_KEY=${secret}
+PANEL_USER_FILE=/usr/bin/user
+PANEL_PASS_FILE=/usr/bin/password
+XRAY_CONFIG_PATH=/etc/xray/config.json
+CLI_SCRIPT_ROOT=/usr/local/sbin
+MUTATION_LOCK_FILE=/var/lock/vpnxray-webpanel/mutation.lock
+MUTATION_LOCK_TIMEOUT_SEC=30
+CLI_MUTATION_TIMEOUT_SEC=180
+AUDIT_LOG_PATH=/var/log/vpnxray-webpanel/audit.log
+EOF
+  chmod 600 "${ENV_FILE}"
+  chmod 700 /var/log/vpnxray-webpanel /var/lock/vpnxray-webpanel
+}
+
+write_service_file() {
+  cat >"${SERVICE_FILE}" <<EOF
+[Unit]
+Description=VPNXRay MVC Web Panel
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${VENV_DIR}/bin/python ${INSTALL_DIR}/run.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+remove_old_panel_block() {
+  local file="$1"
+  sed -i "/${MARK_BEGIN}/,/${MARK_END}/d" "${file}"
+}
+
+insert_panel_block() {
+  local file="$1"
+  local tmp_file
+  local block_file
+
+  tmp_file="$(mktemp)"
+  block_file="$(mktemp)"
+
+  cat >"${block_file}" <<'EOF'
+    # BEGIN VPNXRAY WEB PANEL
+    location = /panel {
+        return 302 /panel/;
+    }
+
+    location ^~ /panel/ {
+        proxy_pass http://127.0.0.1:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Script-Name /panel;
+        proxy_set_header X-Forwarded-Prefix /panel;
+        proxy_set_header X-Real-IP $http_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $http_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+    # END VPNXRAY WEB PANEL
+EOF
+
+  awk -v block_file="${block_file}" '
+    BEGIN {
+      inserted = 0
+      while ((getline line < block_file) > 0) {
+        block = block line ORS
+      }
+      close(block_file)
+    }
+    /location ~ \/ \{/ && inserted == 0 {
+      printf "%s", block
+      inserted = 1
+    }
+    { print }
+    END {
+      if (inserted == 0) {
+        printf "%s", block
+      }
+    }
+  ' "${file}" >"${tmp_file}"
+
+  mv "${tmp_file}" "${file}"
+  rm -f "${block_file}"
+}
+
+patch_nginx() {
+  [[ -f "${NGINX_CONF}" ]] || {
+    warn "Nginx config tidak ditemukan di ${NGINX_CONF}, skip patch panel route"
+    return 0
+  }
+
+  local backup_file
+  backup_file="${NGINX_CONF}.bak.webpanel.$(date +%s)"
+  cp -f "${NGINX_CONF}" "${backup_file}"
+
+  remove_old_panel_block "${NGINX_CONF}"
+  insert_panel_block "${NGINX_CONF}"
+
+  if ! nginx -t >/dev/null 2>&1; then
+    cp -f "${backup_file}" "${NGINX_CONF}"
+    die "Validasi nginx gagal, konfigurasi dipulihkan dari backup"
+  fi
+
+  if ! systemctl restart nginx >/dev/null 2>&1; then
+    cp -f "${backup_file}" "${NGINX_CONF}"
+    nginx -t >/dev/null 2>&1 || true
+    systemctl restart nginx >/dev/null 2>&1 || true
+    die "Restart nginx gagal, konfigurasi dipulihkan"
+  fi
+}
+
+start_service() {
+  systemctl daemon-reload
+  systemctl enable --now "${APP_NAME}.service"
+}
+
+main() {
+  require_root
+  require_cmd python3
+  require_cmd nginx
+  require_cmd systemctl
+
+  install_python_deps
+  copy_assets
+  setup_venv
+  write_env_file
+  write_service_file
+  patch_nginx
+  start_service
+
+  log "Instalasi selesai"
+  log "Panel bind internal: 127.0.0.1:3000"
+  log "Akses dari domain: https://<domain>/panel/"
+  log "Service name: ${APP_NAME}.service"
+}
+
+main "$@"

@@ -34,10 +34,13 @@ echo -e " \033[35m│$NC [04]${NC} \033[0;36m Installer UI B.Inggris${NC}"
 echo -e " \033[35m│$NC [05]${NC} \033[0;36m Installer PTERODACTYL${NC}"
 echo -e " \033[35m│$NC [06]${NC} \033[0;36m Installer CYBERPANEL${NC}"
 echo -e " \033[35m│$NC [07]${NC} \033[0;36m Installer WEBMIN${NC}"
+echo -e " \033[35m│$NC [08]${NC} \033[0;36m Installer VPNXRay MVC Web Panel${NC}"
+echo -e " \033[35m│$NC [09]${NC} \033[0;36m Uninstall VPNXRay MVC Web Panel${NC}"
+echo -e " \033[35m│$NC [10]${NC} \033[0;36m Uji E2E VPNXRay MVC (Staging)${NC}"
 echo -e " \033[36m╰══════════════════════════════════════════════════════════╯\e[0m"
 echo -e " \033[31m##########\033[33m##########\033[32m##########\033[34m##########\033[35m##########\033[36m##########\e[0m"
 echo -e ""
-read -p " Select From Options [ 1 - 5 ] : " menu
+read -p " Select From Options [ 1 - 10 ] : " menu
 case $menu in
 1) clear ; wget ${RDP}/foldder/ins-rdp.sh && chmod +x ins-rdp.sh && ./ins-rdp.sh ; exit ;;
 2) clear ; wget -N ${WEBU} && chmod 0755 install.sh && ./install.sh ; exit ;;
@@ -46,5 +49,8 @@ case $menu in
 5) clear ; bash ${PT} ; exit ;;
 6) clear ; wget -O installer.sh ${CB} && chmod +x install.sh && ./install.sh ; exit ;;
 7) clear ; webmin ; exit ;;
+8) clear ; install-panel-mvc ; exit ;;
+9) clear ; uninstall-panel-mvc ; exit ;;
+10) clear ; panel-mvc-e2e ; exit ;;
 *) clear ; menu ; exit ;;
 esac

@@ -1,0 +1,81 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_NAME="vpnxray-webpanel"
+INSTALL_DIR="/opt/${APP_NAME}"
+ENV_FILE="/etc/kyt/webpanel.env"
+SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+NGINX_CONF="/etc/nginx/conf.d/xray.conf"
+MARK_BEGIN="# BEGIN VPNXRAY WEB PANEL"
+MARK_END="# END VPNXRAY WEB PANEL"
+
+log() {
+  echo "[INFO] $*"
+}
+
+warn() {
+  echo "[WARN] $*" >&2
+}
+
+die() {
+  echo "[ERROR] $*" >&2
+  exit 1
+}
+
+require_root() {
+  [[ "${EUID}" -eq 0 ]] || die "Jalankan script ini sebagai root."
+}
+
+remove_panel_block() {
+  local file="$1"
+  sed -i "/${MARK_BEGIN}/,/${MARK_END}/d" "${file}"
+}
+
+cleanup_nginx() {
+  [[ -f "${NGINX_CONF}" ]] || return 0
+
+  local backup_file
+  backup_file="${NGINX_CONF}.bak.webpanel-uninstall.$(date +%s)"
+  cp -f "${NGINX_CONF}" "${backup_file}"
+
+  remove_panel_block "${NGINX_CONF}"
+
+  if ! nginx -t >/dev/null 2>&1; then
+    cp -f "${backup_file}" "${NGINX_CONF}"
+    die "Validasi nginx gagal, rollback dilakukan"
+  fi
+
+  systemctl restart nginx >/dev/null 2>&1 || {
+    cp -f "${backup_file}" "${NGINX_CONF}"
+    nginx -t >/dev/null 2>&1 || true
+    systemctl restart nginx >/dev/null 2>&1 || true
+    die "Restart nginx gagal, rollback dilakukan"
+  }
+}
+
+cleanup_service() {
+  if systemctl list-unit-files 2>/dev/null | grep -q "^${APP_NAME}\\.service"; then
+    systemctl disable --now "${APP_NAME}.service" >/dev/null 2>&1 || true
+  fi
+
+  rm -f "${SERVICE_FILE}"
+  systemctl daemon-reload
+}
+
+cleanup_files() {
+  rm -rf "${INSTALL_DIR}"
+  rm -f "${ENV_FILE}"
+  rm -rf /var/log/vpnxray-webpanel /var/lock/vpnxray-webpanel
+}
+
+main() {
+  require_root
+
+  cleanup_service
+  cleanup_nginx
+  cleanup_files
+
+  log "Uninstall panel selesai"
+}
+
+main "$@"

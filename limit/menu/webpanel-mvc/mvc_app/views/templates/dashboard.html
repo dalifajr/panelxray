@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="grid-metrics">
+  <article class="card metric">
+    <h3>Total Akun</h3>
+    <p>{{ summary.total }}</p>
+  </article>
+  <article class="card metric">
+    <h3>VLESS</h3>
+    <p>{{ summary.vless }}</p>
+  </article>
+  <article class="card metric">
+    <h3>VMESS</h3>
+    <p>{{ summary.vmess }}</p>
+  </article>
+  <article class="card metric">
+    <h3>TROJAN</h3>
+    <p>{{ summary.trojan }}</p>
+  </article>
+  <article class="card metric">
+    <h3>SHADOWSOCKS</h3>
+    <p>{{ summary.shadowsocks }}</p>
+  </article>
+</section>
+
+<section class="card">
+  <h2>Status Service</h2>
+  <div class="service-grid">
+    {% for service, state in services.items() %}
+    <div class="service-item">
+      <span>{{ service }}</span>
+      <strong class="state state-{{ state|lower }}">{{ state }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Mutasi Akun via CLI Adapter</h2>
+  <p class="caption">Semua mutasi menggunakan lock eksklusif dan audit log: {{ audit_log_path }}</p>
+
+  <div class="mutation-grid">
+    <form class="mutation-form" data-operation="create">
+      <h3>Create</h3>
+      <label>Protocol</label>
+      <select name="protocol" required>
+        <option value="vless">vless</option>
+        <option value="vmess">vmess</option>
+        <option value="trojan">trojan</option>
+        <option value="shadowsocks">shadowsocks</option>
+      </select>
+      <label>Username</label>
+      <input type="text" name="username" required>
+      <label>Expired (days)</label>
+      <input type="number" name="days" min="1" value="30" required>
+      <label>Quota (GB)</label>
+      <input type="number" name="quota_gb" min="0" value="0">
+      <label>IP Limit</label>
+      <input type="number" name="ip_limit" min="0" value="0">
+      <label>Profil SNI</label>
+      <select name="sni_profile">
+        <option value="3">default</option>
+        <option value="1">support.zoom.us</option>
+        <option value="2">live.iflix.com</option>
+      </select>
+      <button type="submit">Jalankan Create</button>
+    </form>
+
+    <form class="mutation-form" data-operation="renew">
+      <h3>Renew</h3>
+      <label>Protocol</label>
+      <select name="protocol" required>
+        <option value="vless">vless</option>
+        <option value="vmess">vmess</option>
+        <option value="trojan">trojan</option>
+        <option value="shadowsocks">shadowsocks</option>
+      </select>
+      <label>Username</label>
+      <input type="text" name="username" required>
+      <label>Tambah Hari</label>
+      <input type="number" name="days" min="1" value="30" required>
+      <label>Quota Baru (GB)</label>
+      <input type="number" name="quota_gb" min="0" value="0">
+      <label>IP Limit Baru</label>
+      <input type="number" name="ip_limit" min="0" value="0">
+      <button type="submit">Jalankan Renew</button>
+    </form>
+
+    <form class="mutation-form" data-operation="delete">
+      <h3>Delete</h3>
+      <label>Protocol</label>
+      <select name="protocol" required>
+        <option value="vless">vless</option>
+        <option value="vmess">vmess</option>
+        <option value="trojan">trojan</option>
+        <option value="shadowsocks">shadowsocks</option>
+      </select>
+      <label>Username</label>
+      <input type="text" name="username" required>
+      <button type="submit" class="danger-btn">Jalankan Delete</button>
+    </form>
+  </div>
+
+  <pre id="mutation-result" class="mutation-result">Menunggu eksekusi mutasi...</pre>
+</section>
+
+<section class="card">
+  <h2>Daftar Akun (Read-Only)</h2>
+  <p class="caption">Operator: {{ operator }}</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Protocol</th>
+          <th>Username</th>
+          <th>Expired</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for account in accounts %}
+        <tr>
+          <td>{{ account.protocol }}</td>
+          <td>{{ account.username }}</td>
+          <td>{{ account.expiry }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3">Belum ada data akun</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+(() => {
+  const forms = document.querySelectorAll('.mutation-form');
+  const resultBox = document.getElementById('mutation-result');
+
+  function asObject(formData, operation) {
+    const payload = Object.fromEntries(formData.entries());
+    payload.operation = operation;
+    return payload;
+  }
+
+  function showResult(payload) {
+    resultBox.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  forms.forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const operation = form.dataset.operation;
+      const payload = asObject(new FormData(form), operation);
+
+      showResult({ ok: false, message: 'Memproses...', request: payload });
+
+      try {
+        const response = await fetch('{{ url_for("api.mutate_accounts") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        showResult(data);
+      } catch (error) {
+        showResult({ ok: false, message: 'Request gagal', error: String(error) });
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card auth-card">
+  <h2>Login Admin</h2>
+  <p>Gunakan kredensial panel server.</p>
+
+  {% if error_message %}
+  <div class="alert">{{ error_message }}</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('auth.login_submit') }}">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" required>
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required>
+
+    <button type="submit">Masuk</button>
+  </form>
+</section>
+{% endblock %}
