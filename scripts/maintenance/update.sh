@@ -274,6 +274,37 @@ sync_kyt_bot_assets() {
     fi
 }
 
+auto_fix_webpanel_route() {
+    local installer fix_log has_webpanel
+    installer="${TARGET_SBIN}/install-panel-mvc"
+    fix_log="/tmp/panelxray-webpanel-fix.log"
+    has_webpanel=0
+
+    if systemctl list-unit-files 2>/dev/null | grep -q '^vpnxray-webpanel\.service'; then
+        has_webpanel=1
+    elif [[ -d /opt/vpnxray-webpanel || -f /etc/kyt/webpanel.env ]]; then
+        has_webpanel=1
+    elif [[ -f /etc/nginx/conf.d/xray.conf ]] && grep -q "BEGIN VPNXRAY WEB PANEL" /etc/nginx/conf.d/xray.conf 2>/dev/null; then
+        has_webpanel=1
+    fi
+
+    if [[ "$has_webpanel" -ne 1 ]]; then
+        return 0
+    fi
+
+    if [[ ! -x "$installer" ]]; then
+        echo -e "\033[1;31mAuto-fix /panel dilewati: installer $installer tidak ditemukan.\033[0m"
+        return 0
+    fi
+
+    echo -e "\033[1;33mWeb panel MVC terdeteksi, menjalankan auto-fix route /panel...\033[0m"
+    if "$installer" --repair-nginx >"$fix_log" 2>&1; then
+        echo -e "\033[0;32mAuto-fix /panel berhasil.\033[0m"
+    else
+        echo -e "\033[1;31mAuto-fix /panel gagal. Lihat log: $fix_log\033[0m"
+    fi
+}
+
 old_sha="unknown"
 [[ -f "$STATE_FILE" ]] && old_sha="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
 new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -283,6 +314,7 @@ cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
 sync_runtime_configs
 sync_kyt_bot_assets
+auto_fix_webpanel_route
 echo "$new_sha" > "$STATE_FILE"
 
 echo -e "\033[0;32mUpdate selesai.\033[0m"
@@ -291,3 +323,4 @@ echo -e "New revision : $new_sha"
 echo -e "Target path  : $TARGET_SBIN"
 echo -e "Runtime cfg  : nginx/haproxy/ws synced"
 echo -e "Bot assets   : /usr/bin/kyt + bot scripts synced"
+echo -e "Web panel    : auto-fix /panel dijalankan jika panel terdeteksi"

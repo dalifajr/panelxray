@@ -243,6 +243,17 @@ start_service() {
   systemctl enable --now "${APP_NAME}.service"
 }
 
+repair_nginx_only() {
+  require_root
+  require_cmd nginx
+  require_cmd systemctl
+
+  patch_nginx
+  systemctl restart "${APP_NAME}.service" >/dev/null 2>&1 || true
+
+  log "Perbaikan route /panel selesai"
+}
+
 main() {
   require_root
   require_cmd python3
@@ -263,4 +274,8 @@ main() {
   log "Service name: ${APP_NAME}.service"
 }
 
-main "$@"
+if [[ "${1:-}" == "--repair-nginx" ]]; then
+  repair_nginx_only
+else
+  main "$@"
+fi
