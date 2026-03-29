@@ -79,7 +79,7 @@ check_panel_api_health() {
 run_install() {
   command -v install-panel-mvc >/dev/null 2>&1 || die "install-panel-mvc tidak ditemukan"
   log "menjalankan install-panel-mvc"
-  install-panel-mvc
+  install-panel-mvc --non-interactive
 }
 
 validate_non_regression() {

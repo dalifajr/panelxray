@@ -11,6 +11,11 @@ SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 NGINX_CONF="/etc/nginx/conf.d/xray.conf"
 MARK_BEGIN="# BEGIN VPNXRAY WEB PANEL"
 MARK_END="# END VPNXRAY WEB PANEL"
+PANEL_USER_FILE="/usr/bin/user"
+PANEL_PASS_FILE="/usr/bin/password"
+
+RUN_REPAIR_ONLY=0
+NON_INTERACTIVE=0
 
 log() {
   echo "[INFO] $*"
@@ -31,6 +36,92 @@ require_root() {
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Command tidak ditemukan: $1"
+}
+
+read_first_line() {
+  local file="$1"
+  if [[ -s "$file" ]]; then
+    sed -n '1p' "$file" | tr -d '\r\n'
+  fi
+}
+
+write_panel_credentials() {
+  local username="$1"
+  local password="$2"
+
+  printf '%s\n' "$username" >"${PANEL_USER_FILE}"
+  printf '%s\n' "$password" >"${PANEL_PASS_FILE}"
+  chmod 600 "${PANEL_USER_FILE}" "${PANEL_PASS_FILE}" 2>/dev/null || true
+}
+
+setup_panel_credentials() {
+  local existing_user existing_pass username password confirm
+
+  existing_user="$(read_first_line "${PANEL_USER_FILE}")"
+  existing_pass="$(read_first_line "${PANEL_PASS_FILE}")"
+
+  if [[ -n "${WEB_PANEL_SETUP_USER:-}" || -n "${WEB_PANEL_SETUP_PASS:-}" ]]; then
+    username="${WEB_PANEL_SETUP_USER:-${existing_user:-admin}}"
+    password="${WEB_PANEL_SETUP_PASS:-}"
+    [[ -n "$password" ]] || die "WEB_PANEL_SETUP_PASS wajib diisi jika memakai WEB_PANEL_SETUP_USER/WEB_PANEL_SETUP_PASS"
+    [[ "$username" =~ [[:space:]] ]] && die "Username tidak boleh mengandung spasi"
+    write_panel_credentials "$username" "$password"
+    log "Kredensial panel di-set dari environment"
+    return
+  fi
+
+  if [[ "$NON_INTERACTIVE" -eq 1 || ! -t 0 ]]; then
+    username="${existing_user:-admin}"
+    password="${existing_pass:-$username}"
+    write_panel_credentials "$username" "$password"
+    log "Mode non-interaktif: memakai kredensial panel yang ada/default"
+    return
+  fi
+
+  echo
+  log "Setup username dan password login web panel"
+  while true; do
+    read -rp "Username web panel [${existing_user:-admin}]: " username
+    username="${username:-${existing_user:-admin}}"
+    if [[ -z "$username" ]]; then
+      warn "Username tidak boleh kosong"
+      continue
+    fi
+    if [[ "$username" =~ [[:space:]] ]]; then
+      warn "Username tidak boleh mengandung spasi"
+      continue
+    fi
+    break
+  done
+
+  while true; do
+    if [[ -n "$existing_pass" ]]; then
+      read -rsp "Password web panel [kosong = pakai password lama]: " password
+    else
+      read -rsp "Password web panel: " password
+    fi
+    echo
+
+    if [[ -z "$password" ]]; then
+      if [[ -n "$existing_pass" ]]; then
+        password="$existing_pass"
+        break
+      fi
+      warn "Password tidak boleh kosong"
+      continue
+    fi
+
+    read -rsp "Ulangi password web panel: " confirm
+    echo
+    if [[ "$password" != "$confirm" ]]; then
+      warn "Konfirmasi password tidak sama"
+      continue
+    fi
+    break
+  done
+
+  write_panel_credentials "$username" "$password"
+  log "Kredensial panel berhasil disimpan"
 }
 
 generate_secret() {
@@ -83,8 +174,8 @@ write_env_file() {
 WEB_PANEL_HOST=127.0.0.1
 WEB_PANEL_PORT=3000
 WEB_PANEL_SECRET_KEY=${secret}
-PANEL_USER_FILE=/usr/bin/user
-PANEL_PASS_FILE=/usr/bin/password
+PANEL_USER_FILE=${PANEL_USER_FILE}
+PANEL_PASS_FILE=${PANEL_PASS_FILE}
 XRAY_CONFIG_PATH=/etc/xray/config.json
 CLI_SCRIPT_ROOT=/usr/local/sbin
 MUTATION_LOCK_FILE=/var/lock/vpnxray-webpanel/mutation.lock
@@ -307,6 +398,7 @@ main() {
   install_python_deps
   copy_assets
   setup_venv
+  setup_panel_credentials
   write_env_file
   write_service_file
   patch_nginx
@@ -318,8 +410,27 @@ main() {
   log "Service name: ${APP_NAME}.service"
 }
 
-if [[ "${1:-}" == "--repair-nginx" ]]; then
+parse_args() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --repair-nginx)
+        RUN_REPAIR_ONLY=1
+        ;;
+      --non-interactive)
+        NON_INTERACTIVE=1
+        ;;
+      *)
+        die "Argumen tidak dikenal: $arg"
+        ;;
+    esac
+  done
+}
+
+parse_args "$@"
+
+if [[ "$RUN_REPAIR_ONLY" -eq 1 ]]; then
   repair_nginx_only
 else
-  main "$@"
+  main
 fi
