@@ -34,8 +34,21 @@ check_panel_route() {
   domain="$(echo "$domain" | tr -d '[:space:]')"
   [[ -n "$domain" ]] || domain="localhost"
 
+  local panel_base_url
   local panel_url
+  panel_base_url="https://${domain}/panel"
   panel_url="https://${domain}${PANEL_PATH}login"
+
+  local base_code
+  base_code="$(curl -ksS -o /dev/null -w "%{http_code}" --resolve "${domain}:443:127.0.0.1" "${panel_base_url}" || true)"
+  case "$base_code" in
+    301|302|307|308)
+      log "akses panel via https://<domain>/panel: redirect (${base_code})"
+      ;;
+    *)
+      die "akses /panel tidak redirect (HTTP ${base_code:-000})"
+      ;;
+  esac
 
   if ! curl -kfsS --resolve "${domain}:443:127.0.0.1" "${panel_url}" >/dev/null; then
     local http_code
