@@ -71,9 +71,14 @@ check_panel_route() {
 }
 
 check_panel_api_health() {
-  curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null || \
+  local health_json
+  health_json="$(curl -fsS "http://127.0.0.1:3000/api/health")" || \
     die "health API internal panel gagal"
-  log "health API internal panel: OK"
+
+  echo "$health_json" | grep -q '"asset_version"' || \
+    die "health API belum memuat asset_version (indikasi build lama masih aktif)"
+
+  log "health API internal panel: OK (asset_version terdeteksi)"
 }
 
 run_install() {

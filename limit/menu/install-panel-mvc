@@ -143,6 +143,7 @@ install_python_deps() {
 copy_assets() {
   [[ -d "${SOURCE_DIR}" ]] || die "Asset webpanel tidak ditemukan di ${SOURCE_DIR}"
   mkdir -p "${INSTALL_DIR}"
+  find "${INSTALL_DIR}" -mindepth 1 -maxdepth 1 ! -name ".venv" -exec rm -rf {} + 2>/dev/null || true
   cp -rf "${SOURCE_DIR}/." "${INSTALL_DIR}/"
 }
 
@@ -182,6 +183,7 @@ MUTATION_LOCK_FILE=/var/lock/vpnxray-webpanel/mutation.lock
 MUTATION_LOCK_TIMEOUT_SEC=30
 CLI_MUTATION_TIMEOUT_SEC=180
 AUDIT_LOG_PATH=/var/log/vpnxray-webpanel/audit.log
+WEB_PANEL_ASSET_VERSION=$(date +%s)
 EOF
   chmod 600 "${ENV_FILE}"
   chmod 700 /var/log/vpnxray-webpanel /var/lock/vpnxray-webpanel
@@ -375,7 +377,12 @@ patch_nginx() {
 
 start_service() {
   systemctl daemon-reload
-  systemctl enable --now "${APP_NAME}.service"
+  systemctl enable "${APP_NAME}.service" >/dev/null 2>&1 || true
+  if systemctl is-active --quiet "${APP_NAME}.service"; then
+    systemctl restart "${APP_NAME}.service"
+  else
+    systemctl start "${APP_NAME}.service"
+  fi
 }
 
 repair_nginx_only() {

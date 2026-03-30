@@ -37,6 +37,7 @@ class Settings:
     AUDIT_LOG_PATH = os.getenv(
         "AUDIT_LOG_PATH", "/var/log/vpnxray-webpanel/audit.log"
     )
+    WEB_PANEL_ASSET_VERSION = os.getenv("WEB_PANEL_ASSET_VERSION", "1")
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

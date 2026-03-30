@@ -98,6 +98,9 @@ def health():
             "status": state,
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "services": statuses,
+            "asset_version": str(
+                current_app.config.get("WEB_PANEL_ASSET_VERSION", "1")
+            ),
         }
     )
 
