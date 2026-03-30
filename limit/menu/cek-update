@@ -322,11 +322,16 @@ auto_fix_webpanel_route() {
     return 0
   fi
 
-  echo -e "${yellow}Web panel MVC terdeteksi, menjalankan auto-fix route /panel...${NC}"
-  if "$installer" --repair-nginx >"$fix_log" 2>&1; then
-    echo -e "${green}Auto-fix /panel berhasil.${NC}"
+  echo -e "${yellow}Web panel MVC terdeteksi, menjalankan sinkronisasi panel (assets + route)...${NC}"
+  if "$installer" --non-interactive >"$fix_log" 2>&1; then
+    echo -e "${green}Sinkronisasi web panel berhasil.${NC}"
   else
-    echo -e "${red}Auto-fix /panel gagal. Lihat log: ${fix_log}${NC}"
+    echo -e "${red}Sinkronisasi web panel gagal, mencoba fallback auto-fix route /panel...${NC}"
+    if "$installer" --repair-nginx >>"$fix_log" 2>&1; then
+      echo -e "${green}Fallback auto-fix /panel berhasil.${NC}"
+    else
+      echo -e "${red}Fallback auto-fix /panel gagal. Lihat log: ${fix_log}${NC}"
+    fi
   fi
 }
 
@@ -348,5 +353,5 @@ echo -e "${green}New revision:${NC} $new_sha"
 echo -e "${green}Target path :${NC} $TARGET_SBIN"
 echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced"
 echo -e "${green}Bot assets  :${NC} /usr/bin/kyt + bot scripts synced"
-echo -e "${green}Web panel   :${NC} auto-fix /panel dijalankan jika panel terdeteksi"
+echo -e "${green}Web panel   :${NC} sinkronisasi panel + auto-fix /panel dijalankan jika panel terdeteksi"
 back_to_menu
