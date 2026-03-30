@@ -7,6 +7,10 @@
     <p>{{ summary.total }}</p>
   </article>
   <article class="card metric">
+    <h3>SSH</h3>
+    <p>{{ summary.ssh }}</p>
+  </article>
+  <article class="card metric">
     <h3>VLESS</h3>
     <p>{{ summary.vless }}</p>
   </article>
@@ -22,6 +26,26 @@
     <h3>SHADOWSOCKS</h3>
     <p>{{ summary.shadowsocks }}</p>
   </article>
+  <article class="card metric">
+    <h3>SUSPENDED</h3>
+    <p>{{ summary.suspended }}</p>
+  </article>
+</section>
+
+<section class="card service-switch-card">
+  <h2>Service Menu</h2>
+  <p class="caption">Pilih workspace per layanan seperti alur bot Telegram.</p>
+  <div class="service-tabs">
+    {% for service in service_catalog %}
+    <a
+      class="service-tab {% if service.key == active_service_key %}active{% endif %}"
+      href="{{ url_for('dashboard.service_dashboard', service=service.key) }}"
+    >
+      <span>{{ service.label }}</span>
+      <small>{{ service.operation_count }} actions</small>
+    </a>
+    {% endfor %}
+  </div>
 </section>
 
 <section class="card">
@@ -37,96 +61,95 @@
 </section>
 
 <section class="card">
-  <h2>Mutasi Akun via CLI Adapter</h2>
-  <p class="caption">Semua mutasi menggunakan lock eksklusif dan audit log: {{ audit_log_path }}</p>
+  <h2>{{ active_service.label }} Actions</h2>
+  <p class="caption">
+    {{ active_service.description }}
+    Semua mutasi menggunakan lock eksklusif dan audit log: {{ audit_log_path }}
+  </p>
 
   <div class="mutation-grid">
-    <form class="mutation-form" data-operation="create">
-      <h3>Create</h3>
-      <label>Protocol</label>
-      <select name="protocol" required>
-        <option value="vless">vless</option>
-        <option value="vmess">vmess</option>
-        <option value="trojan">trojan</option>
-        <option value="shadowsocks">shadowsocks</option>
-      </select>
-      <label>Username</label>
-      <input type="text" name="username" required>
-      <label>Expired (days)</label>
-      <input type="number" name="days" min="1" value="30" required>
-      <label>Quota (GB)</label>
-      <input type="number" name="quota_gb" min="0" value="0">
-      <label>IP Limit</label>
-      <input type="number" name="ip_limit" min="0" value="0">
-      <label>Profil SNI</label>
-      <select name="sni_profile">
-        <option value="3">default</option>
-        <option value="1">support.zoom.us</option>
-        <option value="2">live.iflix.com</option>
-      </select>
-      <button type="submit">Jalankan Create</button>
-    </form>
+    {% for operation in active_service.operations %}
+    <form
+      class="mutation-form tone-{{ operation.tone }}"
+      data-operation="{{ operation.name }}"
+      action="{{ url_for('api.service_action', service=active_service_key, operation=operation.name) }}"
+    >
+      <h3>{{ operation.label }}</h3>
 
-    <form class="mutation-form" data-operation="renew">
-      <h3>Renew</h3>
-      <label>Protocol</label>
-      <select name="protocol" required>
-        <option value="vless">vless</option>
-        <option value="vmess">vmess</option>
-        <option value="trojan">trojan</option>
-        <option value="shadowsocks">shadowsocks</option>
-      </select>
-      <label>Username</label>
-      <input type="text" name="username" required>
-      <label>Tambah Hari</label>
-      <input type="number" name="days" min="1" value="30" required>
-      <label>Quota Baru (GB)</label>
-      <input type="number" name="quota_gb" min="0" value="0">
-      <label>IP Limit Baru</label>
-      <input type="number" name="ip_limit" min="0" value="0">
-      <button type="submit">Jalankan Renew</button>
-    </form>
+      {% for field in operation.fields %}
+      <label for="{{ operation.name }}-{{ field.name }}">{{ field.label }}</label>
 
-    <form class="mutation-form" data-operation="delete">
-      <h3>Delete</h3>
-      <label>Protocol</label>
-      <select name="protocol" required>
-        <option value="vless">vless</option>
-        <option value="vmess">vmess</option>
-        <option value="trojan">trojan</option>
-        <option value="shadowsocks">shadowsocks</option>
+      {% if field.type == 'select' %}
+      <select
+        id="{{ operation.name }}-{{ field.name }}"
+        name="{{ field.name }}"
+        {% if field.required %}required{% endif %}
+      >
+        {% for option in field.options %}
+        <option
+          value="{{ option.value }}"
+          {% if field.value is defined and field.value|string == option.value|string %}selected{% endif %}
+        >
+          {{ option.label }}
+        </option>
+        {% endfor %}
       </select>
-      <label>Username</label>
-      <input type="text" name="username" required>
-      <button type="submit" class="danger-btn">Jalankan Delete</button>
+      {% else %}
+      <input
+        id="{{ operation.name }}-{{ field.name }}"
+        name="{{ field.name }}"
+        type="{{ field.type }}"
+        {% if field.placeholder is defined %}placeholder="{{ field.placeholder }}"{% endif %}
+        {% if field.value is defined %}value="{{ field.value }}"{% endif %}
+        {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+        {% if field.required %}required{% endif %}
+      >
+      {% endif %}
+      {% endfor %}
+
+      <button type="submit" class="btn-tone-{{ operation.tone }}">{{ operation.label }}</button>
     </form>
+    {% endfor %}
   </div>
 
-  <pre id="mutation-result" class="mutation-result">Menunggu eksekusi mutasi...</pre>
+  <div class="result-layout">
+    <pre id="mutation-result" class="mutation-result">Menunggu eksekusi mutasi...</pre>
+
+    <div id="mutation-detail" class="detail-panel hidden">
+      <h3>Detail Akun</h3>
+      <div id="detail-fields" class="detail-fields"></div>
+      <div id="detail-links" class="detail-links"></div>
+      <div id="detail-artifacts" class="detail-artifacts"></div>
+    </div>
+  </div>
 </section>
 
 <section class="card">
-  <h2>Daftar Akun (Read-Only)</h2>
+  <h2>Daftar Akun {{ active_service.label }}</h2>
   <p class="caption">Operator: {{ operator }}</p>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>Protocol</th>
           <th>Username</th>
           <th>Expired</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for account in accounts %}
         <tr>
-          <td>{{ account.protocol }}</td>
           <td>{{ account.username }}</td>
           <td>{{ account.expiry }}</td>
+          <td>
+            <span class="pill pill-{{ account.status|default('active')|lower }}">
+              {{ account.status|default('active') }}
+            </span>
+          </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="3">Belum ada data akun</td>
+          <td colspan="3">Belum ada data akun untuk service ini</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -138,10 +161,32 @@
 (() => {
   const forms = document.querySelectorAll('.mutation-form');
   const resultBox = document.getElementById('mutation-result');
+  const detailPanel = document.getElementById('mutation-detail');
+  const detailFields = document.getElementById('detail-fields');
+  const detailLinks = document.getElementById('detail-links');
+  const detailArtifacts = document.getElementById('detail-artifacts');
 
-  function asObject(formData, operation) {
-    const payload = Object.fromEntries(formData.entries());
-    payload.operation = operation;
+  function escapeHtml(text) {
+    return String(text || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function normalizePayload(form) {
+    const payload = Object.fromEntries(new FormData(form).entries());
+
+    form.querySelectorAll('input[type="number"]').forEach((input) => {
+      if (!input.name || payload[input.name] === '') {
+        return;
+      }
+      payload[input.name] = Number(payload[input.name]);
+    });
+
+    payload.protocol = '{{ active_service_key }}';
+    payload.operation = form.dataset.operation;
     return payload;
   }
 
@@ -149,24 +194,78 @@
     resultBox.textContent = JSON.stringify(payload, null, 2);
   }
 
+  function hideDetail() {
+    detailPanel.classList.add('hidden');
+    detailFields.innerHTML = '';
+    detailLinks.innerHTML = '';
+    detailArtifacts.innerHTML = '';
+  }
+
+  function renderDetail(data) {
+    const detail = data?.result?.details;
+    if (!detail) {
+      hideDetail();
+      return;
+    }
+
+    const fields = Array.isArray(detail.fields) ? detail.fields : [];
+    const links = Array.isArray(detail.links) ? detail.links : [];
+    const artifacts = Array.isArray(detail.artifacts) ? detail.artifacts : [];
+
+    if (!fields.length && !links.length && !artifacts.length) {
+      hideDetail();
+      return;
+    }
+
+    detailPanel.classList.remove('hidden');
+
+    detailFields.innerHTML = fields
+      .map((field) => {
+        return `<div class="detail-item"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.value)}</strong></div>`;
+      })
+      .join('');
+
+    if (links.length) {
+      detailLinks.innerHTML = `<h4>Links</h4>${links
+        .map((link) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a>`)
+        .join('')}`;
+    } else {
+      detailLinks.innerHTML = '';
+    }
+
+    if (artifacts.length) {
+      detailArtifacts.innerHTML = `<h4>Artifacts</h4>${artifacts
+        .map((artifact) => {
+          const url = artifact.url ? `<a href="${escapeHtml(artifact.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(artifact.url)}</a>` : '';
+          const path = artifact.path ? `<small>${escapeHtml(artifact.path)}</small>` : '';
+          return `<div class="artifact-item"><strong>${escapeHtml(artifact.filename || 'artifact')}</strong>${url}${path}</div>`;
+        })
+        .join('')}`;
+    } else {
+      detailArtifacts.innerHTML = '';
+    }
+  }
+
   forms.forEach((form) => {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const operation = form.dataset.operation;
-      const payload = asObject(new FormData(form), operation);
+      const payload = normalizePayload(form);
 
       showResult({ ok: false, message: 'Memproses...', request: payload });
+      hideDetail();
 
       try {
-        const response = await fetch('{{ url_for("api.mutate_accounts") }}', {
+        const response = await fetch(form.action, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         const data = await response.json();
         showResult(data);
+        renderDetail(data);
       } catch (error) {
         showResult({ ok: false, message: 'Request gagal', error: String(error) });
+        hideDetail();
       }
     });
   });

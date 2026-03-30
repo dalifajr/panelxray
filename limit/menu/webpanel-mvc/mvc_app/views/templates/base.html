@@ -3,14 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VPNXRay Web Panel</title>
+  <title>VPNXRay Control Panel</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-left">
-      <h1>VPNXRay Web Panel</h1>
-      <p class="subtitle">Dashboard dan mutasi akun via adapter CLI</p>
+      <p class="eyebrow">VPNXRay</p>
+      <h1>Control Panel</h1>
+      <p class="subtitle">
+        {% if active_service %}
+        {{ active_service.label }} workspace - CRUD via legacy adapter
+        {% else %}
+        Dashboard dan mutasi akun via adapter CLI
+        {% endif %}
+      </p>
     </div>
     <nav class="topbar-right">
       {% if session.get('authenticated') %}
