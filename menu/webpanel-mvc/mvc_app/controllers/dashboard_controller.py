@@ -4,6 +4,7 @@ from flask import (
     current_app,
     redirect,
     render_template,
+    request,
     session,
     url_for,
 )
@@ -20,6 +21,47 @@ from ..models.service_model import (
 )
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+
+def _build_protocol_operation_catalog(service_key: str) -> dict[str, list[dict[str, object]]]:
+    catalog: dict[str, list[dict[str, object]]] = {}
+    for protocol_key in get_service_protocols(service_key):
+        profile = get_service_definition(protocol_key)
+        if not profile:
+            continue
+        catalog[protocol_key] = profile.get("operations", [])
+
+    if service_key not in catalog:
+        active_profile = get_service_definition(service_key)
+        if active_profile:
+            catalog[service_key] = active_profile.get("operations", [])
+
+    return catalog
+
+
+def _build_service_context(service_key: str) -> dict[str, object]:
+    accounts = load_accounts(current_app.config["XRAY_CONFIG_PATH"])
+    summary = summarize_accounts(accounts)
+    services = get_service_status()
+    service_catalog = get_service_catalog()
+    active_service = get_service_definition(service_key)
+
+    service_protocols = set(get_service_protocols(service_key))
+    filtered_accounts = [
+        row for row in accounts if row.get("protocol") in service_protocols
+    ]
+
+    return {
+        "operator": session.get("operator", "admin"),
+        "audit_log_path": current_app.config["AUDIT_LOG_PATH"],
+        "summary": summary,
+        "services": services,
+        "accounts": filtered_accounts,
+        "active_service_key": service_key,
+        "active_service": active_service,
+        "service_catalog": service_catalog,
+        "protocol_operation_catalog": _build_protocol_operation_catalog(service_key),
+    }
 
 
 @dashboard_bp.get("/")
@@ -52,25 +94,54 @@ def service_dashboard(service: str):
     if not service_key:
         abort(404)
 
-    accounts = load_accounts(current_app.config["XRAY_CONFIG_PATH"])
-    summary = summarize_accounts(accounts)
-    services = get_service_status()
-    service_catalog = get_service_catalog()
-    active_service = get_service_definition(service_key)
-
-    service_protocols = set(get_service_protocols(service_key))
-    filtered_accounts = [
-        row for row in accounts if row.get("protocol") in service_protocols
-    ]
-
     return render_template(
         "dashboard.html",
-        operator=session.get("operator", "admin"),
-        audit_log_path=current_app.config["AUDIT_LOG_PATH"],
-        summary=summary,
-        services=services,
-        accounts=filtered_accounts,
-        active_service_key=service_key,
-        active_service=active_service,
-        service_catalog=service_catalog,
+        page_title="VPNXRay Dashboard",
+        page_subtitle="Ringkasan service dan shortcut manajemen akun.",
+        current_view="dashboard",
+        **_build_service_context(service_key),
+    )
+
+
+@dashboard_bp.get("/dashboard/<service>/accounts")
+@login_required
+def manage_accounts(service: str):
+    service_key = normalize_service_key(service)
+    if not service_key:
+        abort(404)
+
+    return render_template(
+        "accounts_manage.html",
+        page_title="Manajemen Akun",
+        page_subtitle="Cari akun, buka detail konfigurasi, lalu jalankan aksi dari popup.",
+        current_view="accounts",
+        **_build_service_context(service_key),
+    )
+
+
+@dashboard_bp.get("/dashboard/<service>/result")
+@login_required
+def service_result_page(service: str):
+    service_key = normalize_service_key(service)
+    if not service_key:
+        abort(404)
+
+    expected_operation = str(request.args.get("operation", "")).strip().lower()
+    expected_username = str(request.args.get("username", "")).strip()
+    expected_protocol = normalize_service_key(request.args.get("protocol", "")) or ""
+
+    if service_key != "xray":
+        expected_protocol = service_key
+    elif expected_protocol not in set(get_service_protocols(service_key)):
+        expected_protocol = ""
+
+    return render_template(
+        "mutation_result.html",
+        page_title="Hasil Mutasi Akun",
+        page_subtitle="Status pembuatan akun dan detail konfigurasi ditampilkan di halaman ini.",
+        current_view="result",
+        expected_operation=expected_operation,
+        expected_username=expected_username,
+        expected_protocol=expected_protocol,
+        **_build_service_context(service_key),
     )

@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block body_class %}panel-body{% endblock %}
+
+{% block content %}
+<div class="panel-shell" id="panel-shell">
+  <aside class="card panel-sidebar" id="panel-sidebar">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">||</button>
+
+    <div class="sidebar-head">
+      <strong>Service</strong>
+      <small>{{ active_service.label }}</small>
+    </div>
+
+    <nav class="service-nav">
+      {% for service in service_catalog %}
+      <a
+        class="service-nav-item {% if service.key == active_service_key %}active{% endif %}"
+        href="{{ url_for('dashboard.service_result_page', service=service.key) }}"
+        title="{{ service.label }}"
+      >
+        <span class="service-icon">{{ service.key[:2]|upper }}</span>
+        <span class="service-meta">
+          <strong>{{ service.label }}</strong>
+          <small>{{ service.operation_count }} aksi</small>
+        </span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-links">
+      <a class="sidebar-link" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Dashboard</a>
+      <a class="sidebar-link" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Manajemen Akun</a>
+      <a class="sidebar-link active" href="{{ url_for('dashboard.service_result_page', service=active_service_key) }}">Hasil Mutasi</a>
+    </div>
+  </aside>
+
+  <section class="panel-main">
+    <section class="card success-card">
+      <h2 id="result-title">Mutasi akun berhasil</h2>
+      <p id="result-caption" class="caption">Detail akun dan konfigurasi ditampilkan di halaman ini.</p>
+
+      <div class="inline-actions">
+        <a class="primary-link-btn" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Kembali ke Dashboard</a>
+        <a class="primary-link-btn" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Ke Manajemen Akun</a>
+      </div>
+    </section>
+
+    <section class="card card-plain">
+      <h2>Detail Akun</h2>
+      <div id="result-fields" class="detail-fields"></div>
+
+      <div class="inline-actions">
+        <button type="button" id="share-qr-btn" class="btn-tone-accent">Bagikan QR</button>
+        <button type="button" id="share-tls-btn" class="btn-tone-accent">Bagikan TLS</button>
+        <button type="button" id="share-ntls-btn" class="btn-tone-accent">Bagikan N-TLS</button>
+        <button type="button" id="copy-tls-btn">Copy TLS</button>
+        <button type="button" id="copy-ntls-btn">Copy N-TLS</button>
+      </div>
+
+      <div id="result-links" class="link-section"></div>
+      <div id="result-qr" class="qr-grid"></div>
+      <div id="result-files" class="config-files"></div>
+    </section>
+  </section>
+</div>
+
+<div class="loading-overlay hidden" id="loading-overlay">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <p id="loading-text">Memuat detail akun...</p>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<script id="result-page-data" type="application/json">
+{{ {
+  "activeServiceKey": active_service_key,
+  "expectedOperation": expected_operation,
+  "expectedUsername": expected_username,
+  "expectedProtocol": expected_protocol,
+}|tojson }}
+</script>
+<script>
+(() => {
+  const pageDataNode = document.getElementById('result-page-data');
+  const pageData = pageDataNode ? JSON.parse(pageDataNode.textContent || '{}') : {};
+
+  const activeServiceKey = pageData.activeServiceKey || '';
+  const expectedOperation = pageData.expectedOperation || '';
+  const expectedUsername = pageData.expectedUsername || '';
+  const expectedProtocol = pageData.expectedProtocol || '';
+
+  const shell = document.getElementById('panel-shell');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const resultTitle = document.getElementById('result-title');
+  const resultCaption = document.getElementById('result-caption');
+  const resultFields = document.getElementById('result-fields');
+  const resultLinks = document.getElementById('result-links');
+  const resultQr = document.getElementById('result-qr');
+  const resultFiles = document.getElementById('result-files');
+
+  const shareQrBtn = document.getElementById('share-qr-btn');
+  const shareTlsBtn = document.getElementById('share-tls-btn');
+  const shareNtlsBtn = document.getElementById('share-ntls-btn');
+  const copyTlsBtn = document.getElementById('copy-tls-btn');
+  const copyNtlsBtn = document.getElementById('copy-ntls-btn');
+
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
+  const toastStack = document.getElementById('toast-stack');
+
+  let state = {
+    operation: expectedOperation,
+    protocol: expectedProtocol,
+    username: expectedUsername,
+    tls: [],
+    ntls: [],
+    others: [],
+    qrPayloads: [],
+    qrImages: [],
+    files: [],
+  };
+
+  function setupSidebarToggle() {
+    const storageKey = 'vpnxray.sidebar.collapsed';
+    const collapsed = window.localStorage.getItem(storageKey) === '1';
+    if (collapsed) {
+      shell.classList.add('sidebar-collapsed');
+    }
+
+    sidebarToggle.addEventListener('click', () => {
+      shell.classList.toggle('sidebar-collapsed');
+      const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
+      window.localStorage.setItem(storageKey, value);
+    });
+  }
+
+  function escapeHtml(text) {
+    return String(text || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function showToast(message, tone = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${tone}`;
+    toast.textContent = message;
+    toastStack.appendChild(toast);
+
+    window.setTimeout(() => {
+      toast.classList.add('toast-hide');
+      window.setTimeout(() => toast.remove(), 220);
+    }, 2200);
+  }
+
+  function showLoading(message) {
+    loadingText.textContent = message || 'Memuat detail akun...';
+    loadingOverlay.classList.remove('hidden');
+  }
+
+  function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+  }
+
+  async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const bodyText = await response.text();
+    let payload = null;
+
+    try {
+      payload = bodyText ? JSON.parse(bodyText) : {};
+    } catch (_error) {
+      throw new Error('Server mengembalikan response non-JSON. Silakan refresh halaman dan login ulang.');
+    }
+
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.message || `HTTP ${response.status}`);
+    }
+
+    return payload;
+  }
+
+  function dedupe(list) {
+    return [...new Set((list || []).filter(Boolean))];
+  }
+
+  function splitLinks(rawLinks) {
+    const tls = [];
+    const ntls = [];
+    const others = [];
+
+    for (const link of rawLinks || []) {
+      const lower = String(link || '').toLowerCase();
+      if (!lower) {
+        continue;
+      }
+
+      if (lower.includes('security=tls') || lower.includes('type=grpc')) {
+        tls.push(link);
+      } else if (lower.includes('security=none') || lower.includes('ntls') || lower.startsWith('ss://')) {
+        ntls.push(link);
+      } else {
+        others.push(link);
+      }
+    }
+
+    return { tls, ntls, others };
+  }
+
+  async function copyText(value, successMessage) {
+    const text = String(value || '').trim();
+    if (!text) {
+      showToast('Data belum tersedia.', 'error');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(successMessage || 'Berhasil disalin.', 'success');
+    } catch (_error) {
+      showToast('Gagal menyalin ke clipboard.', 'error');
+    }
+  }
+
+  async function shareText(value, title) {
+    const text = String(value || '').trim();
+    if (!text) {
+      showToast('Data untuk dibagikan belum tersedia.', 'error');
+      return;
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: title || 'Konfigurasi VPN', text });
+        showToast('Berhasil dibagikan.', 'success');
+        return;
+      } catch (_error) {
+        // fall through
+      }
+    }
+
+    await copyText(text, 'Share tidak didukung browser ini, link disalin ke clipboard.');
+  }
+
+  function renderFieldRows(fields) {
+    resultFields.innerHTML = (fields || [])
+      .map((field) => `<div class="detail-item"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.value)}</strong></div>`)
+      .join('');
+  }
+
+  function renderLinkSection(linkGroups) {
+    const blocks = [];
+
+    const renderRows = (rows) => rows
+      .map((link) => `<a class="config-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a>`)
+      .join('');
+
+    if (linkGroups.tls.length) {
+      blocks.push(`<div class="link-group"><h4>TLS</h4>${renderRows(linkGroups.tls)}</div>`);
+    }
+    if (linkGroups.ntls.length) {
+      blocks.push(`<div class="link-group"><h4>N-TLS</h4>${renderRows(linkGroups.ntls)}</div>`);
+    }
+    if (linkGroups.others.length) {
+      blocks.push(`<div class="link-group"><h4>Lainnya</h4>${renderRows(linkGroups.others)}</div>`);
+    }
+
+    resultLinks.innerHTML = blocks.length ? blocks.join('') : '<p class="caption">Link konfigurasi belum tersedia.</p>';
+  }
+
+  async function renderQrGrid(qrPayloads, qrImages) {
+    const cards = [];
+
+    for (const imageItem of qrImages || []) {
+      if (!imageItem?.image) {
+        continue;
+      }
+      cards.push(`
+        <article class="qr-card">
+          <img src="${escapeHtml(imageItem.image)}" alt="${escapeHtml(imageItem.label || 'QR')}" loading="lazy">
+          <small>${escapeHtml(imageItem.label || 'QR image')}</small>
+        </article>
+      `);
+    }
+
+    if (window.QRCode && typeof window.QRCode.toDataURL === 'function') {
+      for (const payload of (qrPayloads || []).slice(0, 4)) {
+        try {
+          const dataUrl = await window.QRCode.toDataURL(payload, {
+            width: 220,
+            margin: 1,
+            color: { dark: '#101625', light: '#ffffff' },
+          });
+          cards.push(`
+            <article class="qr-card">
+              <img src="${escapeHtml(dataUrl)}" alt="QR ${escapeHtml(payload)}" loading="lazy">
+              <small>${escapeHtml(payload)}</small>
+            </article>
+          `);
+        } catch (_error) {
+          // ignore single item failure
+        }
+      }
+    }
+
+    resultQr.innerHTML = cards.join('');
+  }
+
+  function renderFiles(files) {
+    resultFiles.innerHTML = (files || [])
+      .map((file) => {
+        const note = file.truncated ? '<small>Konten dipotong untuk menjaga performa panel.</small>' : '';
+        return `
+          <article class="config-file">
+            <header>
+              <strong>${escapeHtml(file.filename)}</strong>
+              <small>${escapeHtml(file.path)}</small>
+            </header>
+            ${note}
+            <pre>${escapeHtml(file.content)}</pre>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
+  function mergeLinks(allLinks) {
+    const deduped = dedupe(allLinks);
+    const grouped = splitLinks(deduped);
+    state.tls = grouped.tls;
+    state.ntls = grouped.ntls;
+    state.others = grouped.others;
+  }
+
+  function applyHeroText() {
+    const op = String(state.operation || '').toLowerCase();
+    if (op === 'create' || op === 'trial') {
+      resultTitle.textContent = 'Pembuatan akun berhasil';
+      resultCaption.textContent = 'Akun sudah diproses oleh VPS. Detail konfigurasi ditampilkan di bawah.';
+    } else {
+      resultTitle.textContent = 'Mutasi akun berhasil';
+      resultCaption.textContent = 'Detail akun hasil proses mutasi ditampilkan di bawah.';
+    }
+  }
+
+  function hydrateFromSessionStorage() {
+    const raw = window.sessionStorage.getItem('vpnxray.lastMutation');
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(raw);
+      const result = payload?.result || {};
+      const details = result.details || {};
+
+      state.operation = state.operation || result.operation || '';
+      state.protocol = state.protocol || result.protocol || '';
+      state.username = state.username || result.username || details.username || '';
+      state.qrPayloads = dedupe(details.qr_payloads || []);
+      state.qrImages = details.qr_images || [];
+      mergeLinks(details.links || []);
+      renderFieldRows(details.fields || []);
+    } catch (_error) {
+      // ignore invalid cache
+    }
+  }
+
+  async function fetchConfigDetails() {
+    if (!state.username) {
+      return;
+    }
+
+    const scopeService = activeServiceKey;
+    const query = scopeService === 'xray' ? `?protocol=${encodeURIComponent(state.protocol || '')}` : '';
+    const endpoint = `/api/services/${encodeURIComponent(scopeService)}/accounts/${encodeURIComponent(state.username)}/config${query}`;
+
+    showLoading('Memuat detail konfigurasi akun...');
+
+    try {
+      const payload = await fetchJson(endpoint, { method: 'GET' });
+      const result = payload.result || {};
+
+      const configLinks = result.links || [];
+      state.qrPayloads = dedupe([...(state.qrPayloads || []), ...(result.qr_payloads || [])]);
+      state.qrImages = [...(state.qrImages || []), ...(result.qr_images || [])];
+      state.files = result.files || [];
+      mergeLinks([...(state.tls || []), ...(state.ntls || []), ...(state.others || []), ...configLinks]);
+      renderFiles(state.files);
+    } catch (error) {
+      showToast(`Gagal memuat konfigurasi akun: ${String(error)}`, 'error');
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function renderPage() {
+    hydrateFromSessionStorage();
+    applyHeroText();
+    renderLinkSection({ tls: state.tls, ntls: state.ntls, others: state.others });
+    await renderQrGrid(state.qrPayloads, state.qrImages);
+
+    await fetchConfigDetails();
+
+    renderLinkSection({ tls: state.tls, ntls: state.ntls, others: state.others });
+    await renderQrGrid(state.qrPayloads, state.qrImages);
+  }
+
+  shareQrBtn.addEventListener('click', () => shareText(state.qrPayloads[0] || state.tls[0] || '', 'QR Konfigurasi'));
+  shareTlsBtn.addEventListener('click', () => shareText(state.tls[0] || '', 'Konfigurasi TLS'));
+  shareNtlsBtn.addEventListener('click', () => shareText(state.ntls[0] || '', 'Konfigurasi N-TLS'));
+  copyTlsBtn.addEventListener('click', () => copyText(state.tls[0] || '', 'Link TLS disalin.'));
+  copyNtlsBtn.addEventListener('click', () => copyText(state.ntls[0] || '', 'Link N-TLS disalin.'));
+
+  setupSidebarToggle();
+  renderPage();
+})();
+</script>
+{% endblock %}

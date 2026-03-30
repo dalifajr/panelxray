@@ -3,16 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VPNXRay Control Panel</title>
+  <title>{{ page_title or 'VPNXRay Control Panel' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css', v=asset_version) }}">
+  {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="topbar">
     <div class="topbar-left">
       <p class="eyebrow">VPNXRay</p>
       <h1>Control Panel</h1>
       <p class="subtitle">
-        {% if active_service %}
+        {% if page_subtitle %}
+        {{ page_subtitle }}
+        {% elif active_service %}
         {{ active_service.label }} workspace - CRUD via legacy adapter
         {% else %}
         Dashboard dan mutasi akun via adapter CLI
@@ -30,5 +33,6 @@
   <main class="container">
     {% block content %}{% endblock %}
   </main>
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>

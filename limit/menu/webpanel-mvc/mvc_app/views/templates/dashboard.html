@@ -1,38 +1,40 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="workspace-layout">
-  <aside class="card sidebar-card">
-    <h2>Service Navigator</h2>
-    <p class="caption">Pilih service, lalu lanjut ke CRUD, konfigurasi akun, dan management detail.</p>
+{% block body_class %}panel-body{% endblock %}
 
-    <div class="service-stack">
-      {% for service in service_catalog %}
-      <a
-        class="service-menu-btn {% if service.key == active_service_key %}active{% endif %}"
-        href="{{ url_for('dashboard.service_dashboard', service=service.key) }}"
-      >
-        <strong>{{ service.label }}</strong>
-        <small>{{ service.operation_count }} aksi</small>
-      </a>
-      {% endfor %}
+{% block content %}
+<div class="panel-shell" id="panel-shell">
+  <aside class="card panel-sidebar" id="panel-sidebar">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">||</button>
+
+    <div class="sidebar-head">
+      <strong>Service</strong>
+      <small>{{ active_service.label }}</small>
     </div>
 
-    <div class="management-links">
-      <h3>Menu {{ active_service.label }}</h3>
-      <a href="#crud-section">CRUD & Action</a>
-      <a href="#accounts-section">Daftar Akun</a>
-      <a href="#config-section">Lihat Konfigurasi Akun</a>
-      {% if active_service_key == 'xray' and active_service.workspace_links %}
-      <p class="caption">Quick jump workspace Xray:</p>
-      {% for item in active_service.workspace_links %}
-      <a href="{{ url_for('dashboard.service_dashboard', service=item.service) }}">{{ item.label }}</a>
+    <nav class="service-nav">
+      {% for service in service_catalog %}
+      <a
+        class="service-nav-item {% if service.key == active_service_key %}active{% endif %}"
+        href="{{ url_for('dashboard.service_dashboard', service=service.key) }}"
+        title="{{ service.label }}"
+      >
+        <span class="service-icon">{{ service.key[:2]|upper }}</span>
+        <span class="service-meta">
+          <strong>{{ service.label }}</strong>
+          <small>{{ service.operation_count }} aksi</small>
+        </span>
+      </a>
       {% endfor %}
-      {% endif %}
+    </nav>
+
+    <div class="sidebar-links">
+      <a class="sidebar-link active" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Dashboard</a>
+      <a class="sidebar-link" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Manajemen Akun</a>
     </div>
   </aside>
 
-  <div class="workspace-main">
+  <section class="panel-main">
     <section class="grid-metrics">
       <article class="card metric">
         <h3>Total Akun</h3>
@@ -64,7 +66,7 @@
       </article>
     </section>
 
-    <section class="card">
+    <section class="card service-status-card">
       <h2>Status Service</h2>
       <div class="service-grid compact-service-grid">
         {% for service, state in services.items() %}
@@ -76,56 +78,20 @@
       </div>
     </section>
 
-    <section id="crud-section" class="card">
-      <h2>{{ active_service.label }} - CRUD & Account Management</h2>
-      <p class="caption">
-        {{ active_service.description }}
-        Semua mutasi memakai lock eksklusif. Audit log: {{ audit_log_path }}
-      </p>
+    <section class="card action-card" id="crud-section">
+      <h2>{{ active_service.label }} Aksi Cepat</h2>
+      <p class="caption">Tampilan dibuat clean: klik tombol aksi, lalu form muncul sebagai popup modal.</p>
 
       {% if active_service.operations %}
-      <div class="mutation-grid">
+      <div class="action-button-grid">
         {% for operation in active_service.operations %}
-        <form
-          class="mutation-form tone-{{ operation.tone }}"
+        <button
+          type="button"
+          class="action-trigger btn-tone-{{ operation.tone }}"
           data-operation="{{ operation.name }}"
-          action="{{ url_for('api.service_action', service=active_service_key, operation=operation.name) }}"
         >
-          <h3>{{ operation.label }}</h3>
-
-          {% for field in operation.fields %}
-          <label for="{{ operation.name }}-{{ field.name }}">{{ field.label }}</label>
-
-          {% if field.type == 'select' %}
-          <select
-            id="{{ operation.name }}-{{ field.name }}"
-            name="{{ field.name }}"
-            {% if field.required %}required{% endif %}
-          >
-            {% for option in field.options %}
-            <option
-              value="{{ option.value }}"
-              {% if field.value is defined and field.value|string == option.value|string %}selected{% endif %}
-            >
-              {{ option.label }}
-            </option>
-            {% endfor %}
-          </select>
-          {% else %}
-          <input
-            id="{{ operation.name }}-{{ field.name }}"
-            name="{{ field.name }}"
-            type="{{ field.type }}"
-            {% if field.placeholder is defined %}placeholder="{{ field.placeholder }}"{% endif %}
-            {% if field.value is defined %}value="{{ field.value }}"{% endif %}
-            {% if field.min is defined %}min="{{ field.min }}"{% endif %}
-            {% if field.required %}required{% endif %}
-          >
-          {% endif %}
-          {% endfor %}
-
-          <button type="submit" class="btn-tone-{{ operation.tone }}">{{ operation.label }}</button>
-        </form>
+          {{ operation.label }}
+        </button>
         {% endfor %}
       </div>
       {% else %}
@@ -138,103 +104,88 @@
         {% endfor %}
       </div>
       {% endif %}
-
-      <div class="result-layout">
-        <pre id="mutation-result" class="mutation-result">Menunggu eksekusi mutasi...</pre>
-
-        <div id="mutation-detail" class="detail-panel hidden">
-          <h3>Detail Akun Hasil Mutasi</h3>
-          <div id="detail-fields" class="detail-fields"></div>
-          <div id="detail-links" class="detail-links"></div>
-          <div id="detail-artifacts" class="detail-artifacts"></div>
-          <div id="detail-qr" class="qr-grid"></div>
-        </div>
-      </div>
     </section>
 
-    <section id="accounts-section" class="card">
-      <h2>Daftar Akun {{ active_service.label }}</h2>
-      <p class="caption">Operator aktif: {{ operator }}</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Protocol</th>
-              <th>Username</th>
-              <th>Expired</th>
-              <th>Status</th>
-              <th>Management</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for account in accounts %}
-            <tr>
-              <td>{{ account.protocol }}</td>
-              <td>{{ account.username }}</td>
-              <td>{{ account.expiry }}</td>
-              <td>
-                <span class="pill pill-{{ account.status|default('active')|lower }}">
-                  {{ account.status|default('active') }}
-                </span>
-              </td>
-              <td>
-                <button
-                  type="button"
-                  class="mini-btn open-config-btn"
-                  data-username="{{ account.username }}"
-                  data-protocol="{{ account.protocol }}"
-                >
-                  Lihat Config
-                </button>
-              </td>
-            </tr>
-            {% else %}
-            <tr>
-              <td colspan="5">Belum ada data akun untuk service ini.</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    <section class="card card-plain" id="accounts-section">
+      <h2>Manajemen Akun</h2>
+      <p class="caption">Daftar akun, pencarian, detail konfigurasi, dan aksi lanjutan tersedia di halaman terpisah.</p>
+      <div class="cta-row">
+        <a class="primary-link-btn" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">
+          Buka Halaman Manajemen Akun
+        </a>
       </div>
     </section>
+  </section>
+</div>
 
-    <section id="config-section" class="card">
-      <h2>Konfigurasi Akun</h2>
-      <p class="caption">Klik tombol "Lihat Config" pada tabel akun untuk menampilkan detail konfigurasi, links, dan QR image.</p>
-
-      <div id="config-empty" class="empty-note">
-        Pilih akun dulu dari tabel management untuk memuat konfigurasi.
+<div class="modal hidden" id="action-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-modal-close="action-modal"></div>
+  <div class="modal-card">
+    <header class="modal-header">
+      <h3 id="action-modal-title">Aksi</h3>
+      <button type="button" class="icon-btn" data-modal-close="action-modal">X</button>
+    </header>
+    <p id="action-modal-caption" class="caption"></p>
+    <form id="action-modal-form" class="modal-form">
+      <div id="action-modal-fields" class="modal-fields"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-tone-secondary" data-modal-close="action-modal">Batal</button>
+        <button type="submit" id="action-modal-submit">Proses</button>
       </div>
-
-      <div id="config-content" class="hidden">
-        <div id="config-meta" class="config-meta"></div>
-        <div id="config-links" class="detail-links"></div>
-        <div id="config-qr" class="qr-grid"></div>
-        <div id="config-files" class="config-files"></div>
-      </div>
-    </section>
+    </form>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<div class="loading-overlay hidden" id="loading-overlay">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <p id="loading-text">VPS sedang memproses pembuatan akun...</p>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
 (() => {
-  const activeServiceKey = '{{ active_service_key }}';
-  const forms = document.querySelectorAll('.mutation-form');
-  const resultBox = document.getElementById('mutation-result');
-  const detailPanel = document.getElementById('mutation-detail');
-  const detailFields = document.getElementById('detail-fields');
-  const detailLinks = document.getElementById('detail-links');
-  const detailArtifacts = document.getElementById('detail-artifacts');
-  const detailQr = document.getElementById('detail-qr');
+  const activeServiceKey = {{ active_service_key|tojson }};
+  const operationCatalog = {{ active_service.operations|tojson }};
+  const resultPageUrl = {{ url_for('dashboard.service_result_page', service=active_service_key)|tojson }};
 
-  const configButtons = document.querySelectorAll('.open-config-btn');
-  const configEmpty = document.getElementById('config-empty');
-  const configContent = document.getElementById('config-content');
-  const configMeta = document.getElementById('config-meta');
-  const configLinks = document.getElementById('config-links');
-  const configQr = document.getElementById('config-qr');
-  const configFiles = document.getElementById('config-files');
+  const shell = document.getElementById('panel-shell');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const actionButtons = document.querySelectorAll('.action-trigger');
+  const actionModal = document.getElementById('action-modal');
+  const actionModalTitle = document.getElementById('action-modal-title');
+  const actionModalCaption = document.getElementById('action-modal-caption');
+  const actionModalForm = document.getElementById('action-modal-form');
+  const actionModalFields = document.getElementById('action-modal-fields');
+  const actionModalSubmit = document.getElementById('action-modal-submit');
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
+  const toastStack = document.getElementById('toast-stack');
+
+  const operationMap = new Map(operationCatalog.map((item) => [item.name, item]));
+  let activeOperation = null;
+
+  function setupSidebarToggle() {
+    const storageKey = 'vpnxray.sidebar.collapsed';
+    const collapsed = window.localStorage.getItem(storageKey) === '1';
+    if (collapsed) {
+      shell.classList.add('sidebar-collapsed');
+    }
+
+    if (!sidebarToggle) {
+      return;
+    }
+
+    sidebarToggle.addEventListener('click', () => {
+      shell.classList.toggle('sidebar-collapsed');
+      const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
+      window.localStorage.setItem(storageKey, value);
+    });
+  }
 
   function escapeHtml(text) {
     return String(text || '')
@@ -245,230 +196,204 @@
       .replaceAll("'", '&#039;');
   }
 
-  function normalizePayload(form) {
-    const payload = Object.fromEntries(new FormData(form).entries());
+  function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) {
+      return;
+    }
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
 
-    form.querySelectorAll('input[type="number"]').forEach((input) => {
-      if (!input.name || payload[input.name] === '') {
-        return;
-      }
-      payload[input.name] = Number(payload[input.name]);
-    });
+  function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
 
-    payload.protocol = activeServiceKey;
-    payload.operation = form.dataset.operation;
+  function showLoading(message) {
+    loadingText.textContent = message || 'VPS sedang memproses permintaan...';
+    loadingOverlay.classList.remove('hidden');
+  }
+
+  function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+  }
+
+  function showToast(message, tone = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${tone}`;
+    toast.textContent = message;
+    toastStack.appendChild(toast);
+
+    window.setTimeout(() => {
+      toast.classList.add('toast-hide');
+      window.setTimeout(() => toast.remove(), 220);
+    }, 2200);
+  }
+
+  async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const bodyText = await response.text();
+    let payload = null;
+
+    try {
+      payload = bodyText ? JSON.parse(bodyText) : {};
+    } catch (_error) {
+      throw new Error('Server mengembalikan response non-JSON. Silakan refresh halaman dan login ulang.');
+    }
+
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.message || `HTTP ${response.status}`);
+    }
+
     return payload;
   }
 
-  function showResult(payload) {
-    resultBox.textContent = JSON.stringify(payload, null, 2);
-  }
+  function buildFieldInput(field, defaults = {}) {
+    const fieldId = `action-${field.name}`;
+    const value = defaults[field.name] ?? field.value ?? '';
+    const required = field.required ? 'required' : '';
+    const min = field.min !== undefined ? `min="${field.min}"` : '';
 
-  function hideDetail() {
-    detailPanel.classList.add('hidden');
-    detailFields.innerHTML = '';
-    detailLinks.innerHTML = '';
-    detailArtifacts.innerHTML = '';
-    detailQr.innerHTML = '';
-  }
-
-  async function qrDataUrlFromPayload(payload) {
-    if (!payload || !window.QRCode || typeof window.QRCode.toDataURL !== 'function') {
-      return '';
-    }
-
-    try {
-      return await window.QRCode.toDataURL(payload, {
-        width: 240,
-        margin: 1,
-        color: {
-          dark: '#101625',
-          light: '#ffffff',
-        },
-      });
-    } catch (_error) {
-      return '';
-    }
-  }
-
-  async function renderQrGrid(container, qrPayloads, qrImages) {
-    const payloads = Array.isArray(qrPayloads) ? qrPayloads.slice(0, 4) : [];
-    const images = Array.isArray(qrImages) ? qrImages : [];
-
-    const cards = [];
-
-    for (const imageItem of images) {
-      if (!imageItem?.image) {
-        continue;
-      }
-      cards.push(`
-        <article class="qr-card">
-          <img src="${escapeHtml(imageItem.image)}" alt="${escapeHtml(imageItem.label || 'QR')}" loading="lazy">
-          <small>${escapeHtml(imageItem.label || 'QR image')}</small>
-        </article>
-      `);
-    }
-
-    for (const payload of payloads) {
-      const dataUrl = await qrDataUrlFromPayload(payload);
-      if (!dataUrl) {
-        continue;
-      }
-      cards.push(`
-        <article class="qr-card">
-          <img src="${escapeHtml(dataUrl)}" alt="QR ${escapeHtml(payload)}" loading="lazy">
-          <small>${escapeHtml(payload)}</small>
-        </article>
-      `);
-    }
-
-    container.innerHTML = cards.join('');
-  }
-
-  async function renderDetail(data) {
-    const detail = data?.result?.details;
-    if (!detail) {
-      hideDetail();
-      return;
-    }
-
-    const fields = Array.isArray(detail.fields) ? detail.fields : [];
-    const links = Array.isArray(detail.links) ? detail.links : [];
-    const artifacts = Array.isArray(detail.artifacts) ? detail.artifacts : [];
-    const qrPayloads = Array.isArray(detail.qr_payloads) ? detail.qr_payloads : [];
-    const qrImages = Array.isArray(detail.qr_images) ? detail.qr_images : [];
-
-    if (!fields.length && !links.length && !artifacts.length && !qrPayloads.length && !qrImages.length) {
-      hideDetail();
-      return;
-    }
-
-    detailPanel.classList.remove('hidden');
-
-    detailFields.innerHTML = fields
-      .map((field) => {
-        return `<div class="detail-item"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.value)}</strong></div>`;
-      })
-      .join('');
-
-    if (links.length) {
-      detailLinks.innerHTML = `<h4>Links</h4>${links
-        .map((link) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a>`)
-        .join('')}`;
-    } else {
-      detailLinks.innerHTML = '';
-    }
-
-    if (artifacts.length) {
-      detailArtifacts.innerHTML = `<h4>Artifacts</h4>${artifacts
-        .map((artifact) => {
-          const url = artifact.url ? `<a href="${escapeHtml(artifact.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(artifact.url)}</a>` : '';
-          const path = artifact.path ? `<small>${escapeHtml(artifact.path)}</small>` : '';
-          return `<div class="artifact-item"><strong>${escapeHtml(artifact.filename || 'artifact')}</strong>${url}${path}</div>`;
-        })
-        .join('')}`;
-    } else {
-      detailArtifacts.innerHTML = '';
-    }
-
-    await renderQrGrid(detailQr, qrPayloads, qrImages);
-  }
-
-  async function loadAccountConfig(protocol, username) {
-    const scopeService = activeServiceKey;
-    const query = scopeService === 'xray' ? `?protocol=${encodeURIComponent(protocol)}` : '';
-    const endpoint = `/api/services/${encodeURIComponent(scopeService)}/accounts/${encodeURIComponent(username)}/config${query}`;
-
-    configEmpty.textContent = 'Memuat konfigurasi akun...';
-    configEmpty.classList.remove('hidden');
-    configContent.classList.add('hidden');
-
-    try {
-      const response = await fetch(endpoint, { method: 'GET' });
-      const payload = await response.json();
-
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.message || 'Gagal mengambil konfigurasi akun.');
-      }
-
-      const result = payload.result || {};
-      const files = Array.isArray(result.files) ? result.files : [];
-      const links = Array.isArray(result.links) ? result.links : [];
-      const qrPayloads = Array.isArray(result.qr_payloads) ? result.qr_payloads : [];
-      const qrImages = Array.isArray(result.qr_images) ? result.qr_images : [];
-
-      configMeta.innerHTML = `
-        <div class="detail-item"><span>Protocol</span><strong>${escapeHtml(result.protocol || protocol)}</strong></div>
-        <div class="detail-item"><span>Username</span><strong>${escapeHtml(result.username || username)}</strong></div>
-        <div class="detail-item"><span>Jumlah File</span><strong>${files.length}</strong></div>
-      `;
-
-      if (links.length) {
-        configLinks.innerHTML = `<h4>Links Konfigurasi</h4>${links
-          .map((link) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a>`)
-          .join('')}`;
-      } else {
-        configLinks.innerHTML = '<h4>Links Konfigurasi</h4><small>Tidak ada link yang terdeteksi.</small>';
-      }
-
-      configFiles.innerHTML = files
-        .map((file) => {
-          const note = file.truncated ? '<small>Konten dipotong untuk menjaga performa panel.</small>' : '';
-          return `
-            <article class="config-file">
-              <header>
-                <strong>${escapeHtml(file.filename)}</strong>
-                <small>${escapeHtml(file.path)}</small>
-              </header>
-              ${note}
-              <pre>${escapeHtml(file.content)}</pre>
-            </article>
-          `;
+    if (field.type === 'select') {
+      const options = Array.isArray(field.options) ? field.options : [];
+      const renderedOptions = options
+        .map((option) => {
+          const selected = String(option.value) === String(value) ? 'selected' : '';
+          return `<option value="${escapeHtml(option.value)}" ${selected}>${escapeHtml(option.label)}</option>`;
         })
         .join('');
 
-      await renderQrGrid(configQr, qrPayloads, qrImages);
+      return `
+        <div class="field-wrap">
+          <label for="${fieldId}">${escapeHtml(field.label)}</label>
+          <select id="${fieldId}" name="${escapeHtml(field.name)}" ${required}>
+            ${renderedOptions}
+          </select>
+        </div>
+      `;
+    }
 
-      configEmpty.classList.add('hidden');
-      configContent.classList.remove('hidden');
+    return `
+      <div class="field-wrap">
+        <label for="${fieldId}">${escapeHtml(field.label)}</label>
+        <input
+          id="${fieldId}"
+          name="${escapeHtml(field.name)}"
+          type="${escapeHtml(field.type || 'text')}"
+          value="${escapeHtml(value)}"
+          placeholder="${escapeHtml(field.placeholder || '')}"
+          ${min}
+          ${required}
+        >
+      </div>
+    `;
+  }
+
+  function openActionModal(operationName, defaults = {}) {
+    const operation = operationMap.get(operationName);
+    if (!operation) {
+      showToast('Aksi tidak ditemukan untuk service ini.', 'error');
+      return;
+    }
+
+    activeOperation = operation;
+    actionModalTitle.textContent = operation.label || operation.name;
+    actionModalCaption.textContent = 'Isi form di bawah ini, lalu klik Proses.';
+
+    const fields = Array.isArray(operation.fields) ? operation.fields : [];
+    actionModalFields.innerHTML = fields.map((field) => buildFieldInput(field, defaults)).join('');
+
+    actionModalSubmit.className = `btn-tone-${operation.tone || 'primary'}`;
+    actionModalSubmit.textContent = operation.label || 'Proses';
+    openModal('action-modal');
+  }
+
+  function normalizePayload(form, operation) {
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const fields = Array.isArray(operation.fields) ? operation.fields : [];
+
+    for (const field of fields) {
+      if (field.type !== 'number') {
+        continue;
+      }
+      const key = field.name;
+      if (payload[key] === undefined || payload[key] === '') {
+        continue;
+      }
+      payload[key] = Number(payload[key]);
+    }
+
+    payload.protocol = activeServiceKey;
+    payload.operation = operation.name;
+    return payload;
+  }
+
+  async function submitAction(event) {
+    event.preventDefault();
+    if (!activeOperation) {
+      return;
+    }
+
+    const payload = normalizePayload(actionModalForm, activeOperation);
+    const endpoint = `/api/services/${encodeURIComponent(activeServiceKey)}/actions/${encodeURIComponent(activeOperation.name)}`;
+    const processingLabel = activeOperation.name === 'create'
+      ? 'VPS sedang memproses pembuatan akun...'
+      : 'VPS sedang memproses aksi akun...';
+
+    showLoading(processingLabel);
+
+    try {
+      const response = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      closeModal('action-modal');
+
+      if (activeOperation.name === 'create' || activeOperation.name === 'trial') {
+        const result = response.result || {};
+        const username = result.username || payload.username || '';
+        const protocol = result.protocol || activeServiceKey;
+
+        window.sessionStorage.setItem('vpnxray.lastMutation', JSON.stringify(response));
+        const params = new URLSearchParams({
+          operation: String(activeOperation.name || ''),
+          username: String(username || ''),
+          protocol: String(protocol || ''),
+        });
+        window.location.href = `${resultPageUrl}?${params.toString()}`;
+        return;
+      }
+
+      showToast(response.message || 'Aksi berhasil diproses.', 'success');
     } catch (error) {
-      configEmpty.textContent = `Gagal memuat konfigurasi akun: ${String(error)}`;
-      configEmpty.classList.remove('hidden');
-      configContent.classList.add('hidden');
+      showToast(`Aksi gagal: ${String(error)}`, 'error');
+    } finally {
+      hideLoading();
     }
   }
 
-  forms.forEach((form) => {
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const payload = normalizePayload(form);
-
-      showResult({ ok: false, message: 'Memproses...', request: payload });
-      hideDetail();
-
-      try {
-        const response = await fetch(form.action, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        showResult(data);
-        await renderDetail(data);
-      } catch (error) {
-        showResult({ ok: false, message: 'Request gagal', error: String(error) });
-        hideDetail();
-      }
-    });
-  });
-
-  configButtons.forEach((button) => {
+  actionButtons.forEach((button) => {
     button.addEventListener('click', () => {
-      const username = button.dataset.username || '';
-      const protocol = button.dataset.protocol || activeServiceKey;
-      loadAccountConfig(protocol, username);
+      openActionModal(button.dataset.operation || '');
     });
   });
+
+  actionModalForm.addEventListener('submit', submitAction);
+
+  document.querySelectorAll('[data-modal-close]').forEach((button) => {
+    button.addEventListener('click', () => {
+      closeModal(button.dataset.modalClose || '');
+    });
+  });
+
+  setupSidebarToggle();
 })();
 </script>
 {% endblock %}

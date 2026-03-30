@@ -1,0 +1,702 @@
+{% extends "base.html" %}
+
+{% block body_class %}panel-body{% endblock %}
+
+{% block content %}
+<div class="panel-shell" id="panel-shell">
+  <aside class="card panel-sidebar" id="panel-sidebar">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">||</button>
+
+    <div class="sidebar-head">
+      <strong>Service</strong>
+      <small>{{ active_service.label }}</small>
+    </div>
+
+    <nav class="service-nav">
+      {% for service in service_catalog %}
+      <a
+        class="service-nav-item {% if service.key == active_service_key %}active{% endif %}"
+        href="{{ url_for('dashboard.manage_accounts', service=service.key) }}"
+        title="{{ service.label }}"
+      >
+        <span class="service-icon">{{ service.key[:2]|upper }}</span>
+        <span class="service-meta">
+          <strong>{{ service.label }}</strong>
+          <small>{{ service.operation_count }} aksi</small>
+        </span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-links">
+      <a class="sidebar-link" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Dashboard</a>
+      <a class="sidebar-link active" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Manajemen Akun</a>
+    </div>
+  </aside>
+
+  <section class="panel-main">
+    <section class="card card-plain">
+      <h2>Daftar Akun {{ active_service.label }}</h2>
+      <p class="caption">Klik salah satu baris akun untuk membuka popup detail konfigurasi dan aksi lanjutan.</p>
+
+      <div class="toolbar-line">
+        <input id="account-search" type="text" placeholder="Cari username atau protocol...">
+        <span class="caption">Operator: {{ operator }}</span>
+      </div>
+
+      <div class="table-wrap">
+        <table id="accounts-table">
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>Username</th>
+              <th>Expired</th>
+              <th>Status</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for account in accounts %}
+            <tr
+              class="account-row"
+              data-username="{{ account.username }}"
+              data-protocol="{{ account.protocol }}"
+              data-expiry="{{ account.expiry }}"
+              data-status="{{ account.status|default('active') }}"
+            >
+              <td>{{ account.protocol }}</td>
+              <td>{{ account.username }}</td>
+              <td>{{ account.expiry }}</td>
+              <td>
+                <span class="pill pill-{{ account.status|default('active')|lower }}">
+                  {{ account.status|default('active') }}
+                </span>
+              </td>
+              <td>
+                <button type="button" class="mini-btn row-open-btn">Kelola</button>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5">Belum ada data akun untuk service ini.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+</div>
+
+<div class="modal hidden" id="account-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-modal-close="account-modal"></div>
+  <div class="modal-card modal-wide">
+    <header class="modal-header">
+      <h3 id="account-modal-title">Detail Akun</h3>
+      <button type="button" class="icon-btn" data-modal-close="account-modal">X</button>
+    </header>
+
+    <div id="account-meta" class="config-meta"></div>
+
+    <div class="inline-actions">
+      <button type="button" class="btn-tone-secondary" id="action-renew-btn">Renew</button>
+      <button type="button" class="btn-tone-warning" id="action-suspend-btn">Suspend</button>
+      <button type="button" class="btn-tone-secondary" id="action-unsuspend-btn">Unsuspend</button>
+      <button type="button" class="btn-tone-danger" id="action-delete-btn">Delete</button>
+      <button type="button" class="btn-tone-accent" id="share-qr-btn">Bagikan QR</button>
+      <button type="button" class="btn-tone-accent" id="share-tls-btn">Bagikan TLS</button>
+      <button type="button" class="btn-tone-accent" id="share-ntls-btn">Bagikan N-TLS</button>
+      <button type="button" id="copy-tls-btn">Copy TLS</button>
+      <button type="button" id="copy-ntls-btn">Copy N-TLS</button>
+    </div>
+
+    <div id="account-links" class="link-section"></div>
+    <div id="account-qr" class="qr-grid"></div>
+    <div id="account-files" class="config-files"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="action-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-modal-close="action-modal"></div>
+  <div class="modal-card">
+    <header class="modal-header">
+      <h3 id="action-modal-title">Aksi Akun</h3>
+      <button type="button" class="icon-btn" data-modal-close="action-modal">X</button>
+    </header>
+    <p id="action-modal-caption" class="caption"></p>
+    <form id="action-modal-form" class="modal-form">
+      <div id="action-modal-fields" class="modal-fields"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-tone-secondary" data-modal-close="action-modal">Batal</button>
+        <button type="submit" id="action-modal-submit">Proses</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="loading-overlay hidden" id="loading-overlay">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <p id="loading-text">VPS sedang memproses permintaan...</p>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<script id="accounts-page-data" type="application/json">
+{{ {
+  "activeServiceKey": active_service_key,
+  "operationCatalogByProtocol": protocol_operation_catalog,
+}|tojson }}
+</script>
+<script>
+(() => {
+  const pageDataNode = document.getElementById('accounts-page-data');
+  const pageData = pageDataNode ? JSON.parse(pageDataNode.textContent || '{}') : {};
+  const activeServiceKey = pageData.activeServiceKey || '';
+  const operationCatalogByProtocol = pageData.operationCatalogByProtocol || {};
+
+  const shell = document.getElementById('panel-shell');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const searchInput = document.getElementById('account-search');
+  const tableBody = document.querySelector('#accounts-table tbody');
+
+  const accountModal = document.getElementById('account-modal');
+  const accountModalTitle = document.getElementById('account-modal-title');
+  const accountMeta = document.getElementById('account-meta');
+  const accountLinks = document.getElementById('account-links');
+  const accountQr = document.getElementById('account-qr');
+  const accountFiles = document.getElementById('account-files');
+
+  const actionModal = document.getElementById('action-modal');
+  const actionModalTitle = document.getElementById('action-modal-title');
+  const actionModalCaption = document.getElementById('action-modal-caption');
+  const actionModalForm = document.getElementById('action-modal-form');
+  const actionModalFields = document.getElementById('action-modal-fields');
+  const actionModalSubmit = document.getElementById('action-modal-submit');
+
+  const renewBtn = document.getElementById('action-renew-btn');
+  const suspendBtn = document.getElementById('action-suspend-btn');
+  const unsuspendBtn = document.getElementById('action-unsuspend-btn');
+  const deleteBtn = document.getElementById('action-delete-btn');
+  const shareQrBtn = document.getElementById('share-qr-btn');
+  const shareTlsBtn = document.getElementById('share-tls-btn');
+  const shareNtlsBtn = document.getElementById('share-ntls-btn');
+  const copyTlsBtn = document.getElementById('copy-tls-btn');
+  const copyNtlsBtn = document.getElementById('copy-ntls-btn');
+
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
+  const toastStack = document.getElementById('toast-stack');
+
+  let activeAccount = null;
+  let activeOperation = null;
+  let activeConfig = {
+    tls: [],
+    ntls: [],
+    others: [],
+    qrPayloads: [],
+    qrImages: [],
+  };
+
+  function setupSidebarToggle() {
+    const storageKey = 'vpnxray.sidebar.collapsed';
+    const collapsed = window.localStorage.getItem(storageKey) === '1';
+    if (collapsed) {
+      shell.classList.add('sidebar-collapsed');
+    }
+
+    sidebarToggle.addEventListener('click', () => {
+      shell.classList.toggle('sidebar-collapsed');
+      const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
+      window.localStorage.setItem(storageKey, value);
+    });
+  }
+
+  function escapeHtml(text) {
+    return String(text || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function showToast(message, tone = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${tone}`;
+    toast.textContent = message;
+    toastStack.appendChild(toast);
+
+    window.setTimeout(() => {
+      toast.classList.add('toast-hide');
+      window.setTimeout(() => toast.remove(), 220);
+    }, 2200);
+  }
+
+  function showLoading(message) {
+    loadingText.textContent = message || 'VPS sedang memproses permintaan...';
+    loadingOverlay.classList.remove('hidden');
+  }
+
+  function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+  }
+
+  function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) {
+      return;
+    }
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const bodyText = await response.text();
+    let payload = null;
+
+    try {
+      payload = bodyText ? JSON.parse(bodyText) : {};
+    } catch (_error) {
+      throw new Error('Server mengembalikan response non-JSON. Silakan login ulang lalu coba lagi.');
+    }
+
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.message || `HTTP ${response.status}`);
+    }
+
+    return payload;
+  }
+
+  function splitLinks(rawLinks) {
+    const tls = [];
+    const ntls = [];
+    const others = [];
+
+    for (const link of rawLinks || []) {
+      const lower = String(link || '').toLowerCase();
+      if (!lower) {
+        continue;
+      }
+
+      if (lower.includes('security=tls') || lower.includes('type=grpc')) {
+        tls.push(link);
+      } else if (lower.includes('security=none') || lower.includes('ntls') || lower.startsWith('ss://')) {
+        ntls.push(link);
+      } else {
+        others.push(link);
+      }
+    }
+
+    return { tls, ntls, others };
+  }
+
+  async function copyText(value, successMessage) {
+    const text = String(value || '').trim();
+    if (!text) {
+      showToast('Data belum tersedia.', 'error');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(successMessage || 'Berhasil disalin.', 'success');
+    } catch (_error) {
+      showToast('Gagal menyalin ke clipboard.', 'error');
+    }
+  }
+
+  async function shareText(value, title) {
+    const text = String(value || '').trim();
+    if (!text) {
+      showToast('Data untuk dibagikan belum tersedia.', 'error');
+      return;
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: title || 'Konfigurasi VPN', text });
+        showToast('Berhasil dibagikan.', 'success');
+        return;
+      } catch (_error) {
+        // fall through
+      }
+    }
+
+    await copyText(text, 'Share tidak didukung browser ini, link disalin ke clipboard.');
+  }
+
+  function operationListForProtocol(protocol) {
+    return operationCatalogByProtocol[protocol] || operationCatalogByProtocol[activeServiceKey] || [];
+  }
+
+  function operationForProtocol(protocol, operationName) {
+    const operationList = operationListForProtocol(protocol);
+    return operationList.find((item) => item.name === operationName) || null;
+  }
+
+  function resolveActionService(protocol) {
+    return activeServiceKey === 'xray' ? protocol : activeServiceKey;
+  }
+
+  function buildFieldInput(field, defaults = {}) {
+    const fieldId = `action-${field.name}`;
+    const value = defaults[field.name] ?? field.value ?? '';
+    const required = field.required ? 'required' : '';
+    const min = field.min !== undefined ? `min="${field.min}"` : '';
+
+    if (field.type === 'select') {
+      const options = Array.isArray(field.options) ? field.options : [];
+      const renderedOptions = options
+        .map((option) => {
+          const selected = String(option.value) === String(value) ? 'selected' : '';
+          return `<option value="${escapeHtml(option.value)}" ${selected}>${escapeHtml(option.label)}</option>`;
+        })
+        .join('');
+
+      return `
+        <div class="field-wrap">
+          <label for="${fieldId}">${escapeHtml(field.label)}</label>
+          <select id="${fieldId}" name="${escapeHtml(field.name)}" ${required}>
+            ${renderedOptions}
+          </select>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="field-wrap">
+        <label for="${fieldId}">${escapeHtml(field.label)}</label>
+        <input
+          id="${fieldId}"
+          name="${escapeHtml(field.name)}"
+          type="${escapeHtml(field.type || 'text')}"
+          value="${escapeHtml(value)}"
+          placeholder="${escapeHtml(field.placeholder || '')}"
+          ${min}
+          ${required}
+        >
+      </div>
+    `;
+  }
+
+  function openActionModal(operationName) {
+    if (!activeAccount) {
+      return;
+    }
+
+    const operation = operationForProtocol(activeAccount.protocol, operationName);
+    if (!operation) {
+      showToast(`Aksi ${operationName} tidak tersedia untuk protocol ini.`, 'error');
+      return;
+    }
+
+    activeOperation = operation;
+    actionModalTitle.textContent = `${operation.label} - ${activeAccount.username}`;
+    actionModalCaption.textContent = 'Isi form berikut untuk melanjutkan aksi akun.';
+
+    const defaults = { username: activeAccount.username };
+    const fields = Array.isArray(operation.fields) ? operation.fields : [];
+    actionModalFields.innerHTML = fields.map((field) => buildFieldInput(field, defaults)).join('');
+
+    actionModalSubmit.textContent = operation.label || 'Proses';
+    actionModalSubmit.className = `btn-tone-${operation.tone || 'primary'}`;
+    openModal('action-modal');
+  }
+
+  function normalizePayload(form, operation) {
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const fields = Array.isArray(operation.fields) ? operation.fields : [];
+
+    for (const field of fields) {
+      if (field.type !== 'number') {
+        continue;
+      }
+      const key = field.name;
+      if (payload[key] === undefined || payload[key] === '') {
+        continue;
+      }
+      payload[key] = Number(payload[key]);
+    }
+
+    if (!payload.username && activeAccount) {
+      payload.username = activeAccount.username;
+    }
+
+    payload.protocol = activeAccount ? activeAccount.protocol : activeServiceKey;
+    payload.operation = operation.name;
+    return payload;
+  }
+
+  function applySearchFilter() {
+    const keyword = (searchInput.value || '').trim().toLowerCase();
+    tableBody.querySelectorAll('.account-row').forEach((row) => {
+      const username = (row.dataset.username || '').toLowerCase();
+      const protocol = (row.dataset.protocol || '').toLowerCase();
+      const visible = !keyword || username.includes(keyword) || protocol.includes(keyword);
+      row.style.display = visible ? '' : 'none';
+    });
+  }
+
+  function renderAccountMeta(account) {
+    accountMeta.innerHTML = `
+      <div class="detail-item"><span>Protocol</span><strong>${escapeHtml(account.protocol)}</strong></div>
+      <div class="detail-item"><span>Username</span><strong>${escapeHtml(account.username)}</strong></div>
+      <div class="detail-item"><span>Status</span><strong>${escapeHtml(account.status)}</strong></div>
+      <div class="detail-item"><span>Expired</span><strong>${escapeHtml(account.expiry)}</strong></div>
+    `;
+  }
+
+  function renderLinkSection(linkGroups) {
+    const sections = [];
+
+    const buildRows = (rows) => {
+      return rows
+        .map((link) => `<a class="config-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a>`)
+        .join('');
+    };
+
+    if (linkGroups.tls.length) {
+      sections.push(`<div class="link-group"><h4>TLS</h4>${buildRows(linkGroups.tls)}</div>`);
+    }
+
+    if (linkGroups.ntls.length) {
+      sections.push(`<div class="link-group"><h4>N-TLS</h4>${buildRows(linkGroups.ntls)}</div>`);
+    }
+
+    if (linkGroups.others.length) {
+      sections.push(`<div class="link-group"><h4>Lainnya</h4>${buildRows(linkGroups.others)}</div>`);
+    }
+
+    accountLinks.innerHTML = sections.length ? sections.join('') : '<p class="caption">Link konfigurasi belum tersedia.</p>';
+  }
+
+  async function renderQrGrid(qrPayloads, qrImages) {
+    const cards = [];
+
+    for (const imageItem of qrImages || []) {
+      if (!imageItem?.image) {
+        continue;
+      }
+      cards.push(`
+        <article class="qr-card">
+          <img src="${escapeHtml(imageItem.image)}" alt="${escapeHtml(imageItem.label || 'QR')}" loading="lazy">
+          <small>${escapeHtml(imageItem.label || 'QR image')}</small>
+        </article>
+      `);
+    }
+
+    if (window.QRCode && typeof window.QRCode.toDataURL === 'function') {
+      for (const payload of (qrPayloads || []).slice(0, 4)) {
+        try {
+          const dataUrl = await window.QRCode.toDataURL(payload, {
+            width: 220,
+            margin: 1,
+            color: { dark: '#101625', light: '#ffffff' },
+          });
+          cards.push(`
+            <article class="qr-card">
+              <img src="${escapeHtml(dataUrl)}" alt="QR ${escapeHtml(payload)}" loading="lazy">
+              <small>${escapeHtml(payload)}</small>
+            </article>
+          `);
+        } catch (_error) {
+          // ignore single item failure
+        }
+      }
+    }
+
+    accountQr.innerHTML = cards.join('');
+  }
+
+  function renderConfigFiles(files) {
+    accountFiles.innerHTML = (files || [])
+      .map((file) => {
+        const note = file.truncated ? '<small>Konten dipotong untuk menjaga performa panel.</small>' : '';
+        return `
+          <article class="config-file">
+            <header>
+              <strong>${escapeHtml(file.filename)}</strong>
+              <small>${escapeHtml(file.path)}</small>
+            </header>
+            ${note}
+            <pre>${escapeHtml(file.content)}</pre>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadAccountConfig(account) {
+    const serviceScope = activeServiceKey;
+    const query = serviceScope === 'xray' ? `?protocol=${encodeURIComponent(account.protocol)}` : '';
+    const endpoint = `/api/services/${encodeURIComponent(serviceScope)}/accounts/${encodeURIComponent(account.username)}/config${query}`;
+
+    showLoading('Memuat konfigurasi akun...');
+
+    try {
+      const payload = await fetchJson(endpoint, { method: 'GET' });
+      const result = payload.result || {};
+
+      const links = Array.isArray(result.links) ? result.links : [];
+      const linkGroups = splitLinks(links);
+      const qrPayloads = Array.isArray(result.qr_payloads) ? result.qr_payloads : [];
+      const qrImages = Array.isArray(result.qr_images) ? result.qr_images : [];
+      const files = Array.isArray(result.files) ? result.files : [];
+
+      activeConfig = {
+        tls: linkGroups.tls,
+        ntls: linkGroups.ntls,
+        others: linkGroups.others,
+        qrPayloads,
+        qrImages,
+      };
+
+      renderLinkSection(linkGroups);
+      await renderQrGrid(qrPayloads, qrImages);
+      renderConfigFiles(files);
+    } catch (error) {
+      accountLinks.innerHTML = `<p class="caption">Gagal memuat konfigurasi akun: ${escapeHtml(String(error))}</p>`;
+      accountQr.innerHTML = '';
+      accountFiles.innerHTML = '';
+      activeConfig = { tls: [], ntls: [], others: [], qrPayloads: [], qrImages: [] };
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function openAccountModalFromRow(row) {
+    activeAccount = {
+      protocol: row.dataset.protocol || '',
+      username: row.dataset.username || '',
+      expiry: row.dataset.expiry || '',
+      status: row.dataset.status || 'active',
+    };
+
+    accountModalTitle.textContent = `Detail Akun ${activeAccount.username}`;
+    renderAccountMeta(activeAccount);
+
+    const isSuspended = String(activeAccount.status).toLowerCase() === 'suspended';
+    const hasRenew = Boolean(operationForProtocol(activeAccount.protocol, 'renew'));
+    const hasDelete = Boolean(operationForProtocol(activeAccount.protocol, 'delete'));
+    const hasSuspend = Boolean(operationForProtocol(activeAccount.protocol, 'suspend'));
+    const hasUnsuspend = Boolean(operationForProtocol(activeAccount.protocol, 'unsuspend'));
+
+    renewBtn.classList.toggle('hidden', !hasRenew);
+    deleteBtn.classList.toggle('hidden', !hasDelete);
+    suspendBtn.classList.toggle('hidden', !hasSuspend || isSuspended);
+    unsuspendBtn.classList.toggle('hidden', !hasUnsuspend || !isSuspended);
+
+    openModal('account-modal');
+    await loadAccountConfig(activeAccount);
+  }
+
+  async function submitAccountAction(event) {
+    event.preventDefault();
+    if (!activeOperation || !activeAccount) {
+      return;
+    }
+
+    const payload = normalizePayload(actionModalForm, activeOperation);
+    const serviceKey = resolveActionService(activeAccount.protocol);
+    const endpoint = `/api/services/${encodeURIComponent(serviceKey)}/actions/${encodeURIComponent(activeOperation.name)}`;
+
+    showLoading('VPS sedang memproses aksi akun...');
+
+    try {
+      await fetchJson(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      closeModal('action-modal');
+      showToast('Aksi akun berhasil diproses.', 'success');
+
+      const row = tableBody.querySelector(`.account-row[data-username="${CSS.escape(activeAccount.username)}"][data-protocol="${CSS.escape(activeAccount.protocol)}"]`);
+      if (row) {
+        if (activeOperation.name === 'suspend') {
+          row.dataset.status = 'suspended';
+          const badge = row.querySelector('.pill');
+          if (badge) {
+            badge.textContent = 'suspended';
+            badge.className = 'pill pill-suspended';
+          }
+        }
+        if (activeOperation.name === 'unsuspend') {
+          row.dataset.status = 'active';
+          const badge = row.querySelector('.pill');
+          if (badge) {
+            badge.textContent = 'active';
+            badge.className = 'pill pill-active';
+          }
+        }
+        if (activeOperation.name === 'delete') {
+          row.remove();
+          closeModal('account-modal');
+          return;
+        }
+      }
+
+      await loadAccountConfig(activeAccount);
+    } catch (error) {
+      showToast(`Aksi gagal: ${String(error)}`, 'error');
+    } finally {
+      hideLoading();
+    }
+  }
+
+  renewBtn.addEventListener('click', () => openActionModal('renew'));
+  suspendBtn.addEventListener('click', () => openActionModal('suspend'));
+  unsuspendBtn.addEventListener('click', () => openActionModal('unsuspend'));
+  deleteBtn.addEventListener('click', () => openActionModal('delete'));
+
+  copyTlsBtn.addEventListener('click', () => copyText(activeConfig.tls[0] || '', 'Link TLS disalin.'));
+  copyNtlsBtn.addEventListener('click', () => copyText(activeConfig.ntls[0] || '', 'Link N-TLS disalin.'));
+  shareTlsBtn.addEventListener('click', () => shareText(activeConfig.tls[0] || '', 'Konfigurasi TLS'));
+  shareNtlsBtn.addEventListener('click', () => shareText(activeConfig.ntls[0] || '', 'Konfigurasi N-TLS'));
+  shareQrBtn.addEventListener('click', () => shareText(activeConfig.qrPayloads[0] || activeConfig.tls[0] || '', 'QR Konfigurasi'));
+
+  actionModalForm.addEventListener('submit', submitAccountAction);
+
+  tableBody.querySelectorAll('.account-row').forEach((row) => {
+    row.addEventListener('click', (event) => {
+      const clickedButton = event.target.closest('.row-open-btn');
+      if (!clickedButton && event.target.tagName === 'BUTTON') {
+        return;
+      }
+      openAccountModalFromRow(row);
+    });
+
+    const openButton = row.querySelector('.row-open-btn');
+    if (openButton) {
+      openButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openAccountModalFromRow(row);
+      });
+    }
+  });
+
+  document.querySelectorAll('[data-modal-close]').forEach((button) => {
+    button.addEventListener('click', () => closeModal(button.dataset.modalClose || ''));
+  });
+
+  searchInput.addEventListener('input', applySearchFilter);
+  setupSidebarToggle();
+})();
+</script>
+{% endblock %}
