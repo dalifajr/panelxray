@@ -1,170 +1,240 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="grid-metrics">
-  <article class="card metric">
-    <h3>Total Akun</h3>
-    <p>{{ summary.total }}</p>
-  </article>
-  <article class="card metric">
-    <h3>SSH</h3>
-    <p>{{ summary.ssh }}</p>
-  </article>
-  <article class="card metric">
-    <h3>VLESS</h3>
-    <p>{{ summary.vless }}</p>
-  </article>
-  <article class="card metric">
-    <h3>VMESS</h3>
-    <p>{{ summary.vmess }}</p>
-  </article>
-  <article class="card metric">
-    <h3>TROJAN</h3>
-    <p>{{ summary.trojan }}</p>
-  </article>
-  <article class="card metric">
-    <h3>SHADOWSOCKS</h3>
-    <p>{{ summary.shadowsocks }}</p>
-  </article>
-  <article class="card metric">
-    <h3>SUSPENDED</h3>
-    <p>{{ summary.suspended }}</p>
-  </article>
-</section>
+<div class="workspace-layout">
+  <aside class="card sidebar-card">
+    <h2>Service Navigator</h2>
+    <p class="caption">Pilih service, lalu lanjut ke CRUD, konfigurasi akun, dan management detail.</p>
 
-<section class="card service-switch-card">
-  <h2>Service Menu</h2>
-  <p class="caption">Pilih workspace per layanan seperti alur bot Telegram.</p>
-  <div class="service-tabs">
-    {% for service in service_catalog %}
-    <a
-      class="service-tab {% if service.key == active_service_key %}active{% endif %}"
-      href="{{ url_for('dashboard.service_dashboard', service=service.key) }}"
-    >
-      <span>{{ service.label }}</span>
-      <small>{{ service.operation_count }} actions</small>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="card">
-  <h2>Status Service</h2>
-  <div class="service-grid">
-    {% for service, state in services.items() %}
-    <div class="service-item">
-      <span>{{ service }}</span>
-      <strong class="state state-{{ state|lower }}">{{ state }}</strong>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="card">
-  <h2>{{ active_service.label }} Actions</h2>
-  <p class="caption">
-    {{ active_service.description }}
-    Semua mutasi menggunakan lock eksklusif dan audit log: {{ audit_log_path }}
-  </p>
-
-  <div class="mutation-grid">
-    {% for operation in active_service.operations %}
-    <form
-      class="mutation-form tone-{{ operation.tone }}"
-      data-operation="{{ operation.name }}"
-      action="{{ url_for('api.service_action', service=active_service_key, operation=operation.name) }}"
-    >
-      <h3>{{ operation.label }}</h3>
-
-      {% for field in operation.fields %}
-      <label for="{{ operation.name }}-{{ field.name }}">{{ field.label }}</label>
-
-      {% if field.type == 'select' %}
-      <select
-        id="{{ operation.name }}-{{ field.name }}"
-        name="{{ field.name }}"
-        {% if field.required %}required{% endif %}
+    <div class="service-stack">
+      {% for service in service_catalog %}
+      <a
+        class="service-menu-btn {% if service.key == active_service_key %}active{% endif %}"
+        href="{{ url_for('dashboard.service_dashboard', service=service.key) }}"
       >
-        {% for option in field.options %}
-        <option
-          value="{{ option.value }}"
-          {% if field.value is defined and field.value|string == option.value|string %}selected{% endif %}
-        >
-          {{ option.label }}
-        </option>
-        {% endfor %}
-      </select>
-      {% else %}
-      <input
-        id="{{ operation.name }}-{{ field.name }}"
-        name="{{ field.name }}"
-        type="{{ field.type }}"
-        {% if field.placeholder is defined %}placeholder="{{ field.placeholder }}"{% endif %}
-        {% if field.value is defined %}value="{{ field.value }}"{% endif %}
-        {% if field.min is defined %}min="{{ field.min }}"{% endif %}
-        {% if field.required %}required{% endif %}
-      >
-      {% endif %}
+        <strong>{{ service.label }}</strong>
+        <small>{{ service.operation_count }} aksi</small>
+      </a>
       {% endfor %}
-
-      <button type="submit" class="btn-tone-{{ operation.tone }}">{{ operation.label }}</button>
-    </form>
-    {% endfor %}
-  </div>
-
-  <div class="result-layout">
-    <pre id="mutation-result" class="mutation-result">Menunggu eksekusi mutasi...</pre>
-
-    <div id="mutation-detail" class="detail-panel hidden">
-      <h3>Detail Akun</h3>
-      <div id="detail-fields" class="detail-fields"></div>
-      <div id="detail-links" class="detail-links"></div>
-      <div id="detail-artifacts" class="detail-artifacts"></div>
     </div>
-  </div>
-</section>
 
-<section class="card">
-  <h2>Daftar Akun {{ active_service.label }}</h2>
-  <p class="caption">Operator: {{ operator }}</p>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Username</th>
-          <th>Expired</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for account in accounts %}
-        <tr>
-          <td>{{ account.username }}</td>
-          <td>{{ account.expiry }}</td>
-          <td>
-            <span class="pill pill-{{ account.status|default('active')|lower }}">
-              {{ account.status|default('active') }}
-            </span>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="3">Belum ada data akun untuk service ini</td>
-        </tr>
+    <div class="management-links">
+      <h3>Menu {{ active_service.label }}</h3>
+      <a href="#crud-section">CRUD & Action</a>
+      <a href="#accounts-section">Daftar Akun</a>
+      <a href="#config-section">Lihat Konfigurasi Akun</a>
+      {% if active_service_key == 'xray' and active_service.workspace_links %}
+      <p class="caption">Quick jump workspace Xray:</p>
+      {% for item in active_service.workspace_links %}
+      <a href="{{ url_for('dashboard.service_dashboard', service=item.service) }}">{{ item.label }}</a>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </aside>
+
+  <div class="workspace-main">
+    <section class="grid-metrics">
+      <article class="card metric">
+        <h3>Total Akun</h3>
+        <p>{{ summary.total }}</p>
+      </article>
+      <article class="card metric">
+        <h3>SSH</h3>
+        <p>{{ summary.ssh }}</p>
+      </article>
+      <article class="card metric">
+        <h3>VLESS</h3>
+        <p>{{ summary.vless }}</p>
+      </article>
+      <article class="card metric">
+        <h3>VMESS</h3>
+        <p>{{ summary.vmess }}</p>
+      </article>
+      <article class="card metric">
+        <h3>TROJAN</h3>
+        <p>{{ summary.trojan }}</p>
+      </article>
+      <article class="card metric">
+        <h3>SHADOWSOCKS</h3>
+        <p>{{ summary.shadowsocks }}</p>
+      </article>
+      <article class="card metric">
+        <h3>SUSPENDED</h3>
+        <p>{{ summary.suspended }}</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Status Service</h2>
+      <div class="service-grid compact-service-grid">
+        {% for service, state in services.items() %}
+        <div class="service-item">
+          <span>{{ service }}</span>
+          <strong class="state state-{{ state|lower }}">{{ state }}</strong>
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
+      </div>
+    </section>
 
+    <section id="crud-section" class="card">
+      <h2>{{ active_service.label }} - CRUD & Account Management</h2>
+      <p class="caption">
+        {{ active_service.description }}
+        Semua mutasi memakai lock eksklusif. Audit log: {{ audit_log_path }}
+      </p>
+
+      {% if active_service.operations %}
+      <div class="mutation-grid">
+        {% for operation in active_service.operations %}
+        <form
+          class="mutation-form tone-{{ operation.tone }}"
+          data-operation="{{ operation.name }}"
+          action="{{ url_for('api.service_action', service=active_service_key, operation=operation.name) }}"
+        >
+          <h3>{{ operation.label }}</h3>
+
+          {% for field in operation.fields %}
+          <label for="{{ operation.name }}-{{ field.name }}">{{ field.label }}</label>
+
+          {% if field.type == 'select' %}
+          <select
+            id="{{ operation.name }}-{{ field.name }}"
+            name="{{ field.name }}"
+            {% if field.required %}required{% endif %}
+          >
+            {% for option in field.options %}
+            <option
+              value="{{ option.value }}"
+              {% if field.value is defined and field.value|string == option.value|string %}selected{% endif %}
+            >
+              {{ option.label }}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input
+            id="{{ operation.name }}-{{ field.name }}"
+            name="{{ field.name }}"
+            type="{{ field.type }}"
+            {% if field.placeholder is defined %}placeholder="{{ field.placeholder }}"{% endif %}
+            {% if field.value is defined %}value="{{ field.value }}"{% endif %}
+            {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+            {% if field.required %}required{% endif %}
+          >
+          {% endif %}
+          {% endfor %}
+
+          <button type="submit" class="btn-tone-{{ operation.tone }}">{{ operation.label }}</button>
+        </form>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="xray-hub-grid">
+        {% for item in active_service.workspace_links %}
+        <a class="xray-hub-item" href="{{ url_for('dashboard.service_dashboard', service=item.service) }}">
+          <strong>{{ item.label }}</strong>
+          <small>{{ item.description }}</small>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="result-layout">
+        <pre id="mutation-result" class="mutation-result">Menunggu eksekusi mutasi...</pre>
+
+        <div id="mutation-detail" class="detail-panel hidden">
+          <h3>Detail Akun Hasil Mutasi</h3>
+          <div id="detail-fields" class="detail-fields"></div>
+          <div id="detail-links" class="detail-links"></div>
+          <div id="detail-artifacts" class="detail-artifacts"></div>
+          <div id="detail-qr" class="qr-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="accounts-section" class="card">
+      <h2>Daftar Akun {{ active_service.label }}</h2>
+      <p class="caption">Operator aktif: {{ operator }}</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>Username</th>
+              <th>Expired</th>
+              <th>Status</th>
+              <th>Management</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for account in accounts %}
+            <tr>
+              <td>{{ account.protocol }}</td>
+              <td>{{ account.username }}</td>
+              <td>{{ account.expiry }}</td>
+              <td>
+                <span class="pill pill-{{ account.status|default('active')|lower }}">
+                  {{ account.status|default('active') }}
+                </span>
+              </td>
+              <td>
+                <button
+                  type="button"
+                  class="mini-btn open-config-btn"
+                  data-username="{{ account.username }}"
+                  data-protocol="{{ account.protocol }}"
+                >
+                  Lihat Config
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5">Belum ada data akun untuk service ini.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="config-section" class="card">
+      <h2>Konfigurasi Akun</h2>
+      <p class="caption">Klik tombol "Lihat Config" pada tabel akun untuk menampilkan detail konfigurasi, links, dan QR image.</p>
+
+      <div id="config-empty" class="empty-note">
+        Pilih akun dulu dari tabel management untuk memuat konfigurasi.
+      </div>
+
+      <div id="config-content" class="hidden">
+        <div id="config-meta" class="config-meta"></div>
+        <div id="config-links" class="detail-links"></div>
+        <div id="config-qr" class="qr-grid"></div>
+        <div id="config-files" class="config-files"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script>
 (() => {
+  const activeServiceKey = '{{ active_service_key }}';
   const forms = document.querySelectorAll('.mutation-form');
   const resultBox = document.getElementById('mutation-result');
   const detailPanel = document.getElementById('mutation-detail');
   const detailFields = document.getElementById('detail-fields');
   const detailLinks = document.getElementById('detail-links');
   const detailArtifacts = document.getElementById('detail-artifacts');
+  const detailQr = document.getElementById('detail-qr');
+
+  const configButtons = document.querySelectorAll('.open-config-btn');
+  const configEmpty = document.getElementById('config-empty');
+  const configContent = document.getElementById('config-content');
+  const configMeta = document.getElementById('config-meta');
+  const configLinks = document.getElementById('config-links');
+  const configQr = document.getElementById('config-qr');
+  const configFiles = document.getElementById('config-files');
 
   function escapeHtml(text) {
     return String(text || '')
@@ -185,7 +255,7 @@
       payload[input.name] = Number(payload[input.name]);
     });
 
-    payload.protocol = '{{ active_service_key }}';
+    payload.protocol = activeServiceKey;
     payload.operation = form.dataset.operation;
     return payload;
   }
@@ -199,9 +269,63 @@
     detailFields.innerHTML = '';
     detailLinks.innerHTML = '';
     detailArtifacts.innerHTML = '';
+    detailQr.innerHTML = '';
   }
 
-  function renderDetail(data) {
+  async function qrDataUrlFromPayload(payload) {
+    if (!payload || !window.QRCode || typeof window.QRCode.toDataURL !== 'function') {
+      return '';
+    }
+
+    try {
+      return await window.QRCode.toDataURL(payload, {
+        width: 240,
+        margin: 1,
+        color: {
+          dark: '#101625',
+          light: '#ffffff',
+        },
+      });
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  async function renderQrGrid(container, qrPayloads, qrImages) {
+    const payloads = Array.isArray(qrPayloads) ? qrPayloads.slice(0, 4) : [];
+    const images = Array.isArray(qrImages) ? qrImages : [];
+
+    const cards = [];
+
+    for (const imageItem of images) {
+      if (!imageItem?.image) {
+        continue;
+      }
+      cards.push(`
+        <article class="qr-card">
+          <img src="${escapeHtml(imageItem.image)}" alt="${escapeHtml(imageItem.label || 'QR')}" loading="lazy">
+          <small>${escapeHtml(imageItem.label || 'QR image')}</small>
+        </article>
+      `);
+    }
+
+    for (const payload of payloads) {
+      const dataUrl = await qrDataUrlFromPayload(payload);
+      if (!dataUrl) {
+        continue;
+      }
+      cards.push(`
+        <article class="qr-card">
+          <img src="${escapeHtml(dataUrl)}" alt="QR ${escapeHtml(payload)}" loading="lazy">
+          <small>${escapeHtml(payload)}</small>
+        </article>
+      `);
+    }
+
+    container.innerHTML = cards.join('');
+  }
+
+  async function renderDetail(data) {
     const detail = data?.result?.details;
     if (!detail) {
       hideDetail();
@@ -211,8 +335,10 @@
     const fields = Array.isArray(detail.fields) ? detail.fields : [];
     const links = Array.isArray(detail.links) ? detail.links : [];
     const artifacts = Array.isArray(detail.artifacts) ? detail.artifacts : [];
+    const qrPayloads = Array.isArray(detail.qr_payloads) ? detail.qr_payloads : [];
+    const qrImages = Array.isArray(detail.qr_images) ? detail.qr_images : [];
 
-    if (!fields.length && !links.length && !artifacts.length) {
+    if (!fields.length && !links.length && !artifacts.length && !qrPayloads.length && !qrImages.length) {
       hideDetail();
       return;
     }
@@ -244,6 +370,72 @@
     } else {
       detailArtifacts.innerHTML = '';
     }
+
+    await renderQrGrid(detailQr, qrPayloads, qrImages);
+  }
+
+  async function loadAccountConfig(protocol, username) {
+    const scopeService = activeServiceKey;
+    const query = scopeService === 'xray' ? `?protocol=${encodeURIComponent(protocol)}` : '';
+    const endpoint = `/api/services/${encodeURIComponent(scopeService)}/accounts/${encodeURIComponent(username)}/config${query}`;
+
+    configEmpty.textContent = 'Memuat konfigurasi akun...';
+    configEmpty.classList.remove('hidden');
+    configContent.classList.add('hidden');
+
+    try {
+      const response = await fetch(endpoint, { method: 'GET' });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.message || 'Gagal mengambil konfigurasi akun.');
+      }
+
+      const result = payload.result || {};
+      const files = Array.isArray(result.files) ? result.files : [];
+      const links = Array.isArray(result.links) ? result.links : [];
+      const qrPayloads = Array.isArray(result.qr_payloads) ? result.qr_payloads : [];
+      const qrImages = Array.isArray(result.qr_images) ? result.qr_images : [];
+
+      configMeta.innerHTML = `
+        <div class="detail-item"><span>Protocol</span><strong>${escapeHtml(result.protocol || protocol)}</strong></div>
+        <div class="detail-item"><span>Username</span><strong>${escapeHtml(result.username || username)}</strong></div>
+        <div class="detail-item"><span>Jumlah File</span><strong>${files.length}</strong></div>
+      `;
+
+      if (links.length) {
+        configLinks.innerHTML = `<h4>Links Konfigurasi</h4>${links
+          .map((link) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a>`)
+          .join('')}`;
+      } else {
+        configLinks.innerHTML = '<h4>Links Konfigurasi</h4><small>Tidak ada link yang terdeteksi.</small>';
+      }
+
+      configFiles.innerHTML = files
+        .map((file) => {
+          const note = file.truncated ? '<small>Konten dipotong untuk menjaga performa panel.</small>' : '';
+          return `
+            <article class="config-file">
+              <header>
+                <strong>${escapeHtml(file.filename)}</strong>
+                <small>${escapeHtml(file.path)}</small>
+              </header>
+              ${note}
+              <pre>${escapeHtml(file.content)}</pre>
+            </article>
+          `;
+        })
+        .join('');
+
+      await renderQrGrid(configQr, qrPayloads, qrImages);
+
+      configEmpty.classList.add('hidden');
+      configContent.classList.remove('hidden');
+    } catch (error) {
+      configEmpty.textContent = `Gagal memuat konfigurasi akun: ${String(error)}`;
+      configEmpty.classList.remove('hidden');
+      configContent.classList.add('hidden');
+    }
   }
 
   forms.forEach((form) => {
@@ -262,11 +454,19 @@
         });
         const data = await response.json();
         showResult(data);
-        renderDetail(data);
+        await renderDetail(data);
       } catch (error) {
         showResult({ ok: false, message: 'Request gagal', error: String(error) });
         hideDetail();
       }
+    });
+  });
+
+  configButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const username = button.dataset.username || '';
+      const protocol = button.dataset.protocol || activeServiceKey;
+      loadAccountConfig(protocol, username);
     });
   });
 })();

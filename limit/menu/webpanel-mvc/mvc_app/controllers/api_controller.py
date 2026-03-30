@@ -7,10 +7,11 @@ from ..models.account_model import load_accounts, summarize_accounts
 from ..models.service_model import (
     get_service_catalog,
     get_service_definition,
+    get_service_protocols,
     get_service_status,
     normalize_service_key,
 )
-from ..services import MutationError, run_cli_mutation
+from ..services import MutationError, get_account_config_details, run_cli_mutation
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -22,7 +23,8 @@ def _load_all_accounts() -> list[dict[str, str]]:
 def _filter_accounts_by_service(
     rows: list[dict[str, str]], service_key: str
 ) -> list[dict[str, str]]:
-    return [row for row in rows if row.get("protocol") == service_key]
+    protocols = set(get_service_protocols(service_key))
+    return [row for row in rows if row.get("protocol") in protocols]
 
 
 def _allowed_operations(service_key: str) -> set[str]:
@@ -138,6 +140,39 @@ def service_accounts(service: str):
 
     rows = _load_all_accounts()
     return jsonify(_filter_accounts_by_service(rows, service_key))
+
+
+@api_bp.get("/services/<service>/accounts/<username>/config")
+@login_required
+def service_account_config(service: str, username: str):
+    service_key = normalize_service_key(service)
+    if not service_key:
+        return _build_error_response("Service tidak ditemukan.", 404)
+
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        return _build_error_response("Username tidak valid.")
+
+    protocol = service_key
+    if service_key == "xray":
+        protocol = normalize_service_key(request.args.get("protocol", "")) or ""
+        if protocol not in {"vmess", "vless", "trojan", "shadowsocks"}:
+            return _build_error_response(
+                "Protocol wajib dipilih untuk workspace Xray."
+            )
+
+    try:
+        snapshot = get_account_config_details(protocol, normalized_username)
+    except MutationError as exc:
+        return _build_error_response(str(exc), 404)
+
+    return jsonify(
+        {
+            "ok": True,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "result": snapshot,
+        }
+    )
 
 
 @api_bp.post("/services/<service>/actions/<operation>")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
@@ -86,6 +87,15 @@ ARTIFACT_PATTERNS = {
         "/var/www/html/sodosokgrpc-{username}.txt",
     ],
 }
+
+STDERR_NOISE_PATTERNS = [
+    re.compile(r"^job-working-directory: error retrieving current directory", re.IGNORECASE),
+    re.compile(r"^shell-init: error retrieving current directory", re.IGNORECASE),
+    re.compile(r"getcwd: cannot access parent directories", re.IGNORECASE),
+    re.compile(r"^/root/\.profile: line \d+: mesg: command not found", re.IGNORECASE),
+]
+
+QR_CHARS = {" ", "█", "▀", "▄"}
 
 
 @contextmanager
@@ -255,6 +265,127 @@ def _strip_ansi(text: str) -> str:
     return ANSI_ESCAPE_RE.sub("", text or "").replace("\r", "")
 
 
+def _filter_stderr_noise(text: str) -> str:
+    rows: list[str] = []
+    for raw_line in _strip_ansi(text).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if any(pattern.search(line) for pattern in STDERR_NOISE_PATTERNS):
+            continue
+        rows.append(raw_line)
+    return "\n".join(rows).strip()
+
+
+def _is_qr_ascii_line(line: str) -> bool:
+    if not line:
+        return False
+    chars = set(line)
+    if not chars.issubset(QR_CHARS):
+        return False
+    return any(char in {"█", "▀", "▄"} for char in chars)
+
+
+def _extract_ascii_qr_lines(text: str) -> list[str]:
+    best: list[str] = []
+    current: list[str] = []
+
+    for raw_line in _strip_ansi(text).splitlines():
+        line = raw_line.rstrip()
+        if _is_qr_ascii_line(line):
+            current.append(line)
+            continue
+
+        if len(current) > len(best):
+            best = current.copy()
+        current = []
+
+    if len(current) > len(best):
+        best = current.copy()
+
+    if len(best) < 12:
+        return []
+
+    width = max(len(line) for line in best)
+    return [line.ljust(width, " ") for line in best]
+
+
+def _trim_qr_matrix(matrix: list[list[int]]) -> list[list[int]]:
+    if not matrix or not matrix[0]:
+        return matrix
+
+    top = 0
+    bottom = len(matrix)
+    left = 0
+    right = len(matrix[0])
+
+    while top < bottom and not any(matrix[top]):
+        top += 1
+    while bottom > top and not any(matrix[bottom - 1]):
+        bottom -= 1
+
+    while left < right and not any(row[left] for row in matrix[top:bottom]):
+        left += 1
+    while right > left and not any(row[right - 1] for row in matrix[top:bottom]):
+        right -= 1
+
+    return [row[left:right] for row in matrix[top:bottom]]
+
+
+def _ascii_qr_to_svg_data_uri(lines: list[str]) -> str:
+    if not lines:
+        return ""
+
+    matrix: list[list[int]] = []
+    for line in lines:
+        upper_row: list[int] = []
+        lower_row: list[int] = []
+        for char in line:
+            if char == "█":
+                upper_row.append(1)
+                lower_row.append(1)
+            elif char == "▀":
+                upper_row.append(1)
+                lower_row.append(0)
+            elif char == "▄":
+                upper_row.append(0)
+                lower_row.append(1)
+            else:
+                upper_row.append(0)
+                lower_row.append(0)
+        matrix.append(upper_row)
+        matrix.append(lower_row)
+
+    matrix = _trim_qr_matrix(matrix)
+    if not matrix or not matrix[0]:
+        return ""
+
+    module = 6
+    margin = 3
+    height = len(matrix)
+    width = len(matrix[0])
+    svg_width = (width + (margin * 2)) * module
+    svg_height = (height + (margin * 2)) * module
+
+    rects: list[str] = []
+    for y, row in enumerate(matrix):
+        for x, value in enumerate(row):
+            if value:
+                rects.append(
+                    f'<rect x="{(x + margin) * module}" y="{(y + margin) * module}" width="{module}" height="{module}" />'
+                )
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_width}" height="{svg_height}" '
+        f'viewBox="0 0 {svg_width} {svg_height}">'
+        f'<rect width="{svg_width}" height="{svg_height}" fill="#ffffff" />'
+        f'<g fill="#111111">{"".join(rects)}</g>'
+        "</svg>"
+    )
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
 def _is_separator(text: str) -> bool:
     if not text:
         return True
@@ -389,17 +520,99 @@ def _build_result_details(
 ) -> dict[str, Any]:
     fields, links = _extract_fields_and_links(stdout)
     username = _extract_username(payload, fields, stdout)
+    normalized_links = _dedupe_strings(links)
 
     artifacts: list[dict[str, str]] = []
     if username and operation in {"create", "trial"}:
         artifacts = _resolve_artifacts(protocol, username)
-        links.extend(item.get("url", "") for item in artifacts)
+        normalized_links.extend(item.get("url", "") for item in artifacts)
+
+    qr_lines = _extract_ascii_qr_lines(stdout)
+    qr_images: list[dict[str, str]] = []
+    qr_inline_svg = _ascii_qr_to_svg_data_uri(qr_lines)
+    if qr_inline_svg:
+        qr_images.append(
+            {
+                "label": "QR dari output script",
+                "source": "stdout_ascii",
+                "image": qr_inline_svg,
+            }
+        )
+
+    normalized_links = _dedupe_strings(normalized_links)
 
     return {
         "username": username,
         "fields": fields[:60],
-        "links": _dedupe_strings(links)[:20],
+        "links": normalized_links[:20],
         "artifacts": artifacts,
+        "qr_payloads": normalized_links[:8],
+        "qr_images": qr_images,
+    }
+
+
+def get_account_config_details(protocol: str, username: str) -> dict[str, Any]:
+    normalized_protocol = str(protocol or "").strip().lower()
+    if normalized_protocol not in SUPPORTED_PROTOCOLS:
+        raise MutationError("Protocol tidak valid.")
+
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        raise MutationError("Username tidak valid.")
+
+    artifacts = _resolve_artifacts(normalized_protocol, normalized_username)
+    if not artifacts:
+        raise MutationError("File konfigurasi akun belum ditemukan.")
+
+    files: list[dict[str, Any]] = []
+    links: list[str] = []
+    qr_images: list[dict[str, str]] = []
+
+    for artifact in artifacts:
+        path = Path(artifact.get("path", ""))
+        if not path.exists() or not path.is_file():
+            continue
+
+        content = path.read_text(encoding="utf-8", errors="ignore")
+        cleaned_content = _strip_ansi(content)
+        file_links = LINK_RE.findall(cleaned_content)
+        links.extend(file_links)
+
+        qr_lines = _extract_ascii_qr_lines(cleaned_content)
+        qr_inline_svg = _ascii_qr_to_svg_data_uri(qr_lines)
+        if qr_inline_svg:
+            qr_images.append(
+                {
+                    "label": f"QR {artifact.get('filename', 'config')}",
+                    "source": "artifact_ascii",
+                    "image": qr_inline_svg,
+                }
+            )
+
+        clipped = cleaned_content
+        truncated = False
+        if len(clipped) > 20000:
+            clipped = clipped[:20000] + "\n\n... [truncated by web panel]"
+            truncated = True
+
+        files.append(
+            {
+                "filename": artifact.get("filename", path.name),
+                "path": str(path),
+                "content": clipped,
+                "truncated": truncated,
+            }
+        )
+
+    normalized_links = _dedupe_strings(links)
+    return {
+        "protocol": normalized_protocol,
+        "username": normalized_username,
+        "artifacts": artifacts,
+        "files": files,
+        "links": normalized_links,
+        "qr_payloads": normalized_links[:8],
+        "qr_images": qr_images,
     }
 
 
@@ -476,10 +689,14 @@ def run_cli_mutation(
             with _shim_bin_dir() as shim_dir:
                 base_env = os.environ.copy()
                 default_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-                base_env["PATH"] = (
-                    f"{shim_dir}:{script_root}:{base_env.get('PATH', default_path)}"
-                )
+                inherited_path = base_env.get("PATH", "").strip()
+                effective_path = inherited_path or default_path
+                if "/usr/bin" not in effective_path:
+                    effective_path = f"{effective_path}:{default_path}"
+                base_env["PATH"] = f"{shim_dir}:{script_root}:{effective_path}"
                 base_env.setdefault("TERM", "dumb")
+
+                run_cwd = script_root if Path(script_root).is_dir() else "/"
 
                 completed = subprocess.run(
                     ["bash", str(script_path), *script_args],
@@ -489,6 +706,7 @@ def run_cli_mutation(
                     timeout=command_timeout_seconds,
                     check=False,
                     env=base_env,
+                    cwd=run_cwd,
                 )
     except LockTimeoutError as exc:
         append_audit_log(
@@ -536,7 +754,7 @@ def run_cli_mutation(
         username=resolved_username,
         returncode=completed.returncode,
         stdout_tail=_tail_lines(completed.stdout or ""),
-        stderr_tail=_tail_lines(completed.stderr or ""),
+        stderr_tail=_tail_lines(_filter_stderr_noise(completed.stderr or "")),
         details=details,
     )
 

@@ -4,10 +4,39 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List
 
 DEFAULT_SERVICES = ["xray", "nginx", "haproxy", "ws", "ssh", "dropbear"]
-DEFAULT_SERVICE_KEY = "vmess"
-SERVICE_ORDER = ["ssh", "vmess", "vless", "trojan", "shadowsocks"]
+DEFAULT_SERVICE_KEY = "xray"
+SERVICE_ORDER = ["xray", "vless", "vmess", "trojan", "shadowsocks", "ssh"]
+XRAY_MEMBER_PROTOCOLS = ["vmess", "vless", "trojan", "shadowsocks"]
 
 SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
+    "xray": {
+        "key": "xray",
+        "label": "XRAY CORE",
+        "description": "Workspace gabungan untuk manajemen akun seluruh protokol Xray.",
+        "workspace_links": [
+            {
+                "label": "Kelola VMESS",
+                "service": "vmess",
+                "description": "CRUD, trial, suspend, dan unsuspend akun VMESS.",
+            },
+            {
+                "label": "Kelola VLESS",
+                "service": "vless",
+                "description": "CRUD, trial, suspend, dan unsuspend akun VLESS.",
+            },
+            {
+                "label": "Kelola TROJAN",
+                "service": "trojan",
+                "description": "CRUD, trial, suspend, dan unsuspend akun TROJAN.",
+            },
+            {
+                "label": "Kelola SHADOWSOCKS",
+                "service": "shadowsocks",
+                "description": "CRUD, trial, dan konfigurasi akun Shadowsocks.",
+            },
+        ],
+        "operations": [],
+    },
     "ssh": {
         "key": "ssh",
         "label": "SSH OVPN",
@@ -729,3 +758,12 @@ def get_service_operation_names(service: str | None) -> List[str]:
     if not profile:
         return []
     return [item.get("name", "") for item in profile.get("operations", [])]
+
+
+def get_service_protocols(service: str | None) -> List[str]:
+    key = normalize_service_key(service)
+    if not key:
+        return []
+    if key == "xray":
+        return XRAY_MEMBER_PROTOCOLS.copy()
+    return [key]

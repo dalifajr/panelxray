@@ -14,6 +14,7 @@ from ..models.service_model import (
     get_default_service_key,
     get_service_catalog,
     get_service_definition,
+    get_service_protocols,
     get_service_status,
     normalize_service_key,
 )
@@ -57,8 +58,9 @@ def service_dashboard(service: str):
     service_catalog = get_service_catalog()
     active_service = get_service_definition(service_key)
 
+    service_protocols = set(get_service_protocols(service_key))
     filtered_accounts = [
-        row for row in accounts if row.get("protocol") == service_key
+        row for row in accounts if row.get("protocol") in service_protocols
     ]
 
     return render_template(
