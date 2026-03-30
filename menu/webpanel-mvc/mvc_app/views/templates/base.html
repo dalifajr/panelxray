@@ -23,10 +23,7 @@
       </p>
     </div>
     <nav class="topbar-right">
-      {% if session.get('authenticated') %}
-      <a href="{{ url_for('dashboard.dashboard') }}">Dashboard</a>
-      <a href="{{ url_for('auth.logout') }}">Logout</a>
-      {% endif %}
+      {% block topbar_actions %}{% endblock %}
     </nav>
   </header>
 

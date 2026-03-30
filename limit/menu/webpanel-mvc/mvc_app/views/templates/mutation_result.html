@@ -2,6 +2,10 @@
 
 {% block body_class %}panel-body{% endblock %}
 
+{% block topbar_actions %}
+<button type="button" class="topbar-menu-btn" id="mobile-nav-toggle" aria-label="Buka menu">Menu</button>
+{% endblock %}
+
 {% block content %}
 <div class="panel-shell" id="panel-shell">
   <aside class="card panel-sidebar" id="panel-sidebar">
@@ -32,8 +36,11 @@
       <a class="sidebar-link" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Dashboard</a>
       <a class="sidebar-link" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Manajemen Akun</a>
       <a class="sidebar-link active" href="{{ url_for('dashboard.service_result_page', service=active_service_key) }}">Hasil Mutasi</a>
+      <a class="sidebar-link sidebar-link-danger" href="{{ url_for('auth.logout') }}">Logout</a>
     </div>
   </aside>
+
+  <div class="sidebar-scrim" id="sidebar-scrim" aria-hidden="true"></div>
 
   <section class="panel-main">
     <section class="card success-card">
@@ -83,6 +90,7 @@
   "expectedOperation": expected_operation,
   "expectedUsername": expected_username,
   "expectedProtocol": expected_protocol,
+  "apiHealthUrl": url_for('api.health'),
 }|tojson }}
 </script>
 <script>
@@ -94,9 +102,13 @@
   const expectedOperation = pageData.expectedOperation || '';
   const expectedUsername = pageData.expectedUsername || '';
   const expectedProtocol = pageData.expectedProtocol || '';
+  const apiRoot = String(pageData.apiHealthUrl || '').replace(/\/health\/?$/, '');
 
   const shell = document.getElementById('panel-shell');
   const sidebarToggle = document.getElementById('sidebar-toggle');
+  const mobileToggle = document.getElementById('mobile-nav-toggle');
+  const sidebarScrim = document.getElementById('sidebar-scrim');
+  const mobileMedia = window.matchMedia('(max-width: 1120px)');
   const resultTitle = document.getElementById('result-title');
   const resultCaption = document.getElementById('result-caption');
   const resultFields = document.getElementById('result-fields');
@@ -126,17 +138,60 @@
     files: [],
   };
 
-  function setupSidebarToggle() {
-    const storageKey = 'vpnxray.sidebar.collapsed';
-    const collapsed = window.localStorage.getItem(storageKey) === '1';
-    if (collapsed) {
-      shell.classList.add('sidebar-collapsed');
+  function closeMobileSidebar() {
+    shell.classList.remove('sidebar-open');
+  }
+
+  function syncSidebarMode() {
+    if (mobileMedia.matches) {
+      shell.classList.remove('sidebar-collapsed');
+      closeMobileSidebar();
+      return;
     }
 
-    sidebarToggle.addEventListener('click', () => {
-      shell.classList.toggle('sidebar-collapsed');
-      const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
-      window.localStorage.setItem(storageKey, value);
+    const storageKey = 'vpnxray.sidebar.collapsed';
+    const collapsed = window.localStorage.getItem(storageKey) === '1';
+    shell.classList.toggle('sidebar-collapsed', collapsed);
+  }
+
+  function setupSidebarToggle() {
+    const storageKey = 'vpnxray.sidebar.collapsed';
+    const mediaHandler = () => syncSidebarMode();
+
+    syncSidebarMode();
+    if (mobileMedia.addEventListener) {
+      mobileMedia.addEventListener('change', mediaHandler);
+    } else {
+      mobileMedia.addListener(mediaHandler);
+    }
+
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', () => {
+        if (mobileMedia.matches) {
+          closeMobileSidebar();
+          return;
+        }
+
+        shell.classList.toggle('sidebar-collapsed');
+        const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
+        window.localStorage.setItem(storageKey, value);
+      });
+    }
+
+    if (mobileToggle) {
+      mobileToggle.addEventListener('click', () => {
+        shell.classList.toggle('sidebar-open');
+      });
+    }
+
+    if (sidebarScrim) {
+      sidebarScrim.addEventListener('click', closeMobileSidebar);
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeMobileSidebar();
+      }
     });
   }
 
@@ -178,7 +233,8 @@
     try {
       payload = bodyText ? JSON.parse(bodyText) : {};
     } catch (_error) {
-      throw new Error('Server mengembalikan response non-JSON. Silakan refresh halaman dan login ulang.');
+      const excerpt = String(bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+      throw new Error(`Server mengembalikan response non-JSON (${response.status}). ${excerpt || 'Empty response.'}`);
     }
 
     if (!response.ok || payload?.ok === false) {
@@ -381,7 +437,7 @@
 
     const scopeService = activeServiceKey;
     const query = scopeService === 'xray' ? `?protocol=${encodeURIComponent(state.protocol || '')}` : '';
-    const endpoint = `/api/services/${encodeURIComponent(scopeService)}/accounts/${encodeURIComponent(state.username)}/config${query}`;
+    const endpoint = `${apiRoot}/services/${encodeURIComponent(scopeService)}/accounts/${encodeURIComponent(state.username)}/config${query}`;
 
     showLoading('Memuat detail konfigurasi akun...');
 

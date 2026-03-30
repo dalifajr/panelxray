@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request, session
+from werkzeug.exceptions import HTTPException
 
 from . import login_required
 from ..models.account_model import load_accounts, summarize_accounts
@@ -45,6 +46,32 @@ def _build_error_response(message: str, status_code: int = 400):
         ),
         status_code,
     )
+
+
+@api_bp.errorhandler(404)
+def _api_not_found(_error):
+    return _build_error_response("Endpoint API tidak ditemukan.", 404)
+
+
+@api_bp.errorhandler(405)
+def _api_method_not_allowed(_error):
+    return _build_error_response("Metode HTTP tidak didukung untuk endpoint ini.", 405)
+
+
+@api_bp.errorhandler(Exception)
+def _api_unhandled_error(error):
+    if isinstance(error, HTTPException):
+        return _build_error_response(
+            error.description or "Terjadi error pada API.",
+            error.code or 500,
+        )
+
+    current_app.logger.exception(
+        "Unhandled API error on %s %s",
+        request.method,
+        request.path,
+    )
+    return _build_error_response("Terjadi error internal saat memproses API.", 500)
 
 
 def _run_mutation(
@@ -168,6 +195,16 @@ def service_account_config(service: str, username: str):
         snapshot = get_account_config_details(protocol, normalized_username)
     except MutationError as exc:
         return _build_error_response(str(exc), 404)
+    except Exception:
+        current_app.logger.exception(
+            "Failed to load account config for protocol=%s username=%s",
+            protocol,
+            normalized_username,
+        )
+        return _build_error_response(
+            "Gagal memuat konfigurasi akun karena error internal.",
+            500,
+        )
 
     return jsonify(
         {
@@ -202,6 +239,16 @@ def service_action(service: str, operation: str):
         )
     except MutationError as exc:
         return _build_error_response(str(exc))
+    except Exception:
+        current_app.logger.exception(
+            "Unhandled mutation error for service=%s operation=%s",
+            service_key,
+            normalized_operation,
+        )
+        return _build_error_response(
+            "Terjadi error internal saat menjalankan mutasi.",
+            500,
+        )
 
     return _build_mutation_success_response(result)
 
@@ -228,5 +275,15 @@ def mutate_accounts():
         )
     except MutationError as exc:
         return _build_error_response(str(exc))
+    except Exception:
+        current_app.logger.exception(
+            "Unhandled mutation error for protocol=%s operation=%s",
+            protocol,
+            operation,
+        )
+        return _build_error_response(
+            "Terjadi error internal saat menjalankan mutasi.",
+            500,
+        )
 
     return _build_mutation_success_response(result)

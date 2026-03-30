@@ -8,7 +8,12 @@ def login_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
         if not session.get("authenticated"):
-            if request.path.startswith("/api/"):
+            is_api_request = (
+                request.blueprint == "api"
+                or request.path.startswith("/api")
+                or "/api/" in request.path
+            )
+            if is_api_request:
                 return (
                     jsonify(
                         {

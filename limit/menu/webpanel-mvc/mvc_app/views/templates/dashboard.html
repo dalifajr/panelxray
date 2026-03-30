@@ -2,6 +2,10 @@
 
 {% block body_class %}panel-body{% endblock %}
 
+{% block topbar_actions %}
+<button type="button" class="topbar-menu-btn" id="mobile-nav-toggle" aria-label="Buka menu">Menu</button>
+{% endblock %}
+
 {% block content %}
 <div class="panel-shell" id="panel-shell">
   <aside class="card panel-sidebar" id="panel-sidebar">
@@ -31,8 +35,11 @@
     <div class="sidebar-links">
       <a class="sidebar-link active" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Dashboard</a>
       <a class="sidebar-link" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Manajemen Akun</a>
+      <a class="sidebar-link sidebar-link-danger" href="{{ url_for('auth.logout') }}">Logout</a>
     </div>
   </aside>
+
+  <div class="sidebar-scrim" id="sidebar-scrim" aria-hidden="true"></div>
 
   <section class="panel-main">
     <section class="grid-metrics">
@@ -77,321 +84,75 @@
         {% endfor %}
       </div>
     </section>
-
-    <section class="card action-card" id="crud-section">
-      <h2>{{ active_service.label }} Aksi Cepat</h2>
-      <p class="caption">Tampilan dibuat clean: klik tombol aksi, lalu form muncul sebagai popup modal.</p>
-
-      {% if active_service.operations %}
-      <div class="action-button-grid">
-        {% for operation in active_service.operations %}
-        <button
-          type="button"
-          class="action-trigger btn-tone-{{ operation.tone }}"
-          data-operation="{{ operation.name }}"
-        >
-          {{ operation.label }}
-        </button>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="xray-hub-grid">
-        {% for item in active_service.workspace_links %}
-        <a class="xray-hub-item" href="{{ url_for('dashboard.service_dashboard', service=item.service) }}">
-          <strong>{{ item.label }}</strong>
-          <small>{{ item.description }}</small>
-        </a>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </section>
-
-    <section class="card card-plain" id="accounts-section">
-      <h2>Manajemen Akun</h2>
-      <p class="caption">Daftar akun, pencarian, detail konfigurasi, dan aksi lanjutan tersedia di halaman terpisah.</p>
-      <div class="cta-row">
-        <a class="primary-link-btn" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">
-          Buka Halaman Manajemen Akun
-        </a>
-      </div>
-    </section>
   </section>
 </div>
-
-<div class="modal hidden" id="action-modal" aria-hidden="true">
-  <div class="modal-backdrop" data-modal-close="action-modal"></div>
-  <div class="modal-card">
-    <header class="modal-header">
-      <h3 id="action-modal-title">Aksi</h3>
-      <button type="button" class="icon-btn" data-modal-close="action-modal">X</button>
-    </header>
-    <p id="action-modal-caption" class="caption"></p>
-    <form id="action-modal-form" class="modal-form">
-      <div id="action-modal-fields" class="modal-fields"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn-tone-secondary" data-modal-close="action-modal">Batal</button>
-        <button type="submit" id="action-modal-submit">Proses</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div class="loading-overlay hidden" id="loading-overlay">
-  <div class="loading-card">
-    <div class="spinner"></div>
-    <p id="loading-text">VPS sedang memproses pembuatan akun...</p>
-  </div>
-</div>
-
-<div class="toast-stack" id="toast-stack"></div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
 (() => {
-  const activeServiceKey = {{ active_service_key|tojson }};
-  const operationCatalog = {{ active_service.operations|tojson }};
-  const resultPageUrl = {{ url_for('dashboard.service_result_page', service=active_service_key)|tojson }};
-
   const shell = document.getElementById('panel-shell');
   const sidebarToggle = document.getElementById('sidebar-toggle');
-  const actionButtons = document.querySelectorAll('.action-trigger');
-  const actionModal = document.getElementById('action-modal');
-  const actionModalTitle = document.getElementById('action-modal-title');
-  const actionModalCaption = document.getElementById('action-modal-caption');
-  const actionModalForm = document.getElementById('action-modal-form');
-  const actionModalFields = document.getElementById('action-modal-fields');
-  const actionModalSubmit = document.getElementById('action-modal-submit');
-  const loadingOverlay = document.getElementById('loading-overlay');
-  const loadingText = document.getElementById('loading-text');
-  const toastStack = document.getElementById('toast-stack');
+  const mobileToggle = document.getElementById('mobile-nav-toggle');
+  const sidebarScrim = document.getElementById('sidebar-scrim');
+  const mobileMedia = window.matchMedia('(max-width: 1120px)');
 
-  const operationMap = new Map(operationCatalog.map((item) => [item.name, item]));
-  let activeOperation = null;
+  function closeMobileSidebar() {
+    shell.classList.remove('sidebar-open');
+  }
+
+  function syncSidebarMode() {
+    if (mobileMedia.matches) {
+      shell.classList.remove('sidebar-collapsed');
+      closeMobileSidebar();
+      return;
+    }
+
+    const storageKey = 'vpnxray.sidebar.collapsed';
+    const collapsed = window.localStorage.getItem(storageKey) === '1';
+    shell.classList.toggle('sidebar-collapsed', collapsed);
+  }
 
   function setupSidebarToggle() {
     const storageKey = 'vpnxray.sidebar.collapsed';
-    const collapsed = window.localStorage.getItem(storageKey) === '1';
-    if (collapsed) {
-      shell.classList.add('sidebar-collapsed');
+    const mediaHandler = () => syncSidebarMode();
+
+    syncSidebarMode();
+    if (mobileMedia.addEventListener) {
+      mobileMedia.addEventListener('change', mediaHandler);
+    } else {
+      mobileMedia.addListener(mediaHandler);
     }
 
-    if (!sidebarToggle) {
-      return;
-    }
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', () => {
+        if (mobileMedia.matches) {
+          closeMobileSidebar();
+          return;
+        }
 
-    sidebarToggle.addEventListener('click', () => {
-      shell.classList.toggle('sidebar-collapsed');
-      const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
-      window.localStorage.setItem(storageKey, value);
-    });
-  }
-
-  function escapeHtml(text) {
-    return String(text || '')
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#039;');
-  }
-
-  function closeModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (!modal) {
-      return;
-    }
-    modal.classList.add('hidden');
-    modal.setAttribute('aria-hidden', 'true');
-  }
-
-  function openModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (!modal) {
-      return;
-    }
-    modal.classList.remove('hidden');
-    modal.setAttribute('aria-hidden', 'false');
-  }
-
-  function showLoading(message) {
-    loadingText.textContent = message || 'VPS sedang memproses permintaan...';
-    loadingOverlay.classList.remove('hidden');
-  }
-
-  function hideLoading() {
-    loadingOverlay.classList.add('hidden');
-  }
-
-  function showToast(message, tone = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${tone}`;
-    toast.textContent = message;
-    toastStack.appendChild(toast);
-
-    window.setTimeout(() => {
-      toast.classList.add('toast-hide');
-      window.setTimeout(() => toast.remove(), 220);
-    }, 2200);
-  }
-
-  async function fetchJson(url, options = {}) {
-    const response = await fetch(url, options);
-    const bodyText = await response.text();
-    let payload = null;
-
-    try {
-      payload = bodyText ? JSON.parse(bodyText) : {};
-    } catch (_error) {
-      throw new Error('Server mengembalikan response non-JSON. Silakan refresh halaman dan login ulang.');
-    }
-
-    if (!response.ok || !payload?.ok) {
-      throw new Error(payload?.message || `HTTP ${response.status}`);
-    }
-
-    return payload;
-  }
-
-  function buildFieldInput(field, defaults = {}) {
-    const fieldId = `action-${field.name}`;
-    const value = defaults[field.name] ?? field.value ?? '';
-    const required = field.required ? 'required' : '';
-    const min = field.min !== undefined ? `min="${field.min}"` : '';
-
-    if (field.type === 'select') {
-      const options = Array.isArray(field.options) ? field.options : [];
-      const renderedOptions = options
-        .map((option) => {
-          const selected = String(option.value) === String(value) ? 'selected' : '';
-          return `<option value="${escapeHtml(option.value)}" ${selected}>${escapeHtml(option.label)}</option>`;
-        })
-        .join('');
-
-      return `
-        <div class="field-wrap">
-          <label for="${fieldId}">${escapeHtml(field.label)}</label>
-          <select id="${fieldId}" name="${escapeHtml(field.name)}" ${required}>
-            ${renderedOptions}
-          </select>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="field-wrap">
-        <label for="${fieldId}">${escapeHtml(field.label)}</label>
-        <input
-          id="${fieldId}"
-          name="${escapeHtml(field.name)}"
-          type="${escapeHtml(field.type || 'text')}"
-          value="${escapeHtml(value)}"
-          placeholder="${escapeHtml(field.placeholder || '')}"
-          ${min}
-          ${required}
-        >
-      </div>
-    `;
-  }
-
-  function openActionModal(operationName, defaults = {}) {
-    const operation = operationMap.get(operationName);
-    if (!operation) {
-      showToast('Aksi tidak ditemukan untuk service ini.', 'error');
-      return;
-    }
-
-    activeOperation = operation;
-    actionModalTitle.textContent = operation.label || operation.name;
-    actionModalCaption.textContent = 'Isi form di bawah ini, lalu klik Proses.';
-
-    const fields = Array.isArray(operation.fields) ? operation.fields : [];
-    actionModalFields.innerHTML = fields.map((field) => buildFieldInput(field, defaults)).join('');
-
-    actionModalSubmit.className = `btn-tone-${operation.tone || 'primary'}`;
-    actionModalSubmit.textContent = operation.label || 'Proses';
-    openModal('action-modal');
-  }
-
-  function normalizePayload(form, operation) {
-    const payload = Object.fromEntries(new FormData(form).entries());
-    const fields = Array.isArray(operation.fields) ? operation.fields : [];
-
-    for (const field of fields) {
-      if (field.type !== 'number') {
-        continue;
-      }
-      const key = field.name;
-      if (payload[key] === undefined || payload[key] === '') {
-        continue;
-      }
-      payload[key] = Number(payload[key]);
-    }
-
-    payload.protocol = activeServiceKey;
-    payload.operation = operation.name;
-    return payload;
-  }
-
-  async function submitAction(event) {
-    event.preventDefault();
-    if (!activeOperation) {
-      return;
-    }
-
-    const payload = normalizePayload(actionModalForm, activeOperation);
-    const endpoint = `/api/services/${encodeURIComponent(activeServiceKey)}/actions/${encodeURIComponent(activeOperation.name)}`;
-    const processingLabel = activeOperation.name === 'create'
-      ? 'VPS sedang memproses pembuatan akun...'
-      : 'VPS sedang memproses aksi akun...';
-
-    showLoading(processingLabel);
-
-    try {
-      const response = await fetchJson(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        shell.classList.toggle('sidebar-collapsed');
+        const value = shell.classList.contains('sidebar-collapsed') ? '1' : '0';
+        window.localStorage.setItem(storageKey, value);
       });
-
-      closeModal('action-modal');
-
-      if (activeOperation.name === 'create' || activeOperation.name === 'trial') {
-        const result = response.result || {};
-        const username = result.username || payload.username || '';
-        const protocol = result.protocol || activeServiceKey;
-
-        window.sessionStorage.setItem('vpnxray.lastMutation', JSON.stringify(response));
-        const params = new URLSearchParams({
-          operation: String(activeOperation.name || ''),
-          username: String(username || ''),
-          protocol: String(protocol || ''),
-        });
-        window.location.href = `${resultPageUrl}?${params.toString()}`;
-        return;
-      }
-
-      showToast(response.message || 'Aksi berhasil diproses.', 'success');
-    } catch (error) {
-      showToast(`Aksi gagal: ${String(error)}`, 'error');
-    } finally {
-      hideLoading();
     }
+
+    if (mobileToggle) {
+      mobileToggle.addEventListener('click', () => {
+        shell.classList.toggle('sidebar-open');
+      });
+    }
+
+    if (sidebarScrim) {
+      sidebarScrim.addEventListener('click', closeMobileSidebar);
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeMobileSidebar();
+      }
+    });
   }
-
-  actionButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      openActionModal(button.dataset.operation || '');
-    });
-  });
-
-  actionModalForm.addEventListener('submit', submitAction);
-
-  document.querySelectorAll('[data-modal-close]').forEach((button) => {
-    button.addEventListener('click', () => {
-      closeModal(button.dataset.modalClose || '');
-    });
-  });
 
   setupSidebarToggle();
 })();
