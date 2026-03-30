@@ -1,0 +1,148 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_NAME="vpnxray-webpanel"
+DEFAULT_SOURCE_DIR="/opt/${APP_NAME}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+SOURCE_DIR="${PANEL_REGRESSION_SOURCE:-}"
+RUN_E2E=0
+SKIP_MIRROR_CHECK=0
+TMP_VENV=""
+
+log() {
+  echo "[PANEL-GATE] $*"
+}
+
+die() {
+  echo "[PANEL-GATE][ERROR] $*" >&2
+  exit 1
+}
+
+cleanup() {
+  if [[ -n "${TMP_VENV}" && -d "${TMP_VENV}" ]]; then
+    rm -rf "${TMP_VENV}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+usage() {
+  cat <<'EOF'
+Usage: panel-mvc-regression-gate [options]
+
+Options:
+  --source <path>         Source folder webpanel-mvc yang akan dites.
+  --with-e2e              Jalankan juga panel-mvc-e2e setelah unit tests.
+  --skip-mirror-check     Lewati cek sinkron menu/webpanel-mvc vs limit/menu/webpanel-mvc.
+  --help                  Tampilkan bantuan.
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --source)
+        shift
+        [[ $# -gt 0 ]] || die "Argumen --source membutuhkan path"
+        SOURCE_DIR="$1"
+        ;;
+      --with-e2e)
+        RUN_E2E=1
+        ;;
+      --skip-mirror-check)
+        SKIP_MIRROR_CHECK=1
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Argumen tidak dikenal: $1"
+        ;;
+    esac
+    shift
+  done
+}
+
+resolve_source_dir() {
+  if [[ -n "$SOURCE_DIR" ]]; then
+    [[ -d "$SOURCE_DIR" ]] || die "Source tidak ditemukan: $SOURCE_DIR"
+    SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
+  elif [[ -d "$DEFAULT_SOURCE_DIR" && -f "$DEFAULT_SOURCE_DIR/run.py" ]]; then
+    SOURCE_DIR="$DEFAULT_SOURCE_DIR"
+  elif [[ -d "$SCRIPT_DIR/webpanel-mvc" && -f "$SCRIPT_DIR/webpanel-mvc/run.py" ]]; then
+    SOURCE_DIR="$SCRIPT_DIR/webpanel-mvc"
+  else
+    die "Tidak dapat menentukan source webpanel-mvc. Gunakan --source <path>."
+  fi
+
+  [[ -f "$SOURCE_DIR/requirements.txt" ]] || die "requirements.txt tidak ditemukan di $SOURCE_DIR"
+  [[ -d "$SOURCE_DIR/tests" ]] || die "Folder tests tidak ditemukan di $SOURCE_DIR"
+}
+
+check_mirror_sync() {
+  if [[ "$SKIP_MIRROR_CHECK" -eq 1 ]]; then
+    log "Mirror check dilewati (--skip-mirror-check)."
+    return 0
+  fi
+
+  local repo_root menu_tree limit_tree diff_output
+  repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+  menu_tree="$repo_root/menu/webpanel-mvc"
+  limit_tree="$repo_root/limit/menu/webpanel-mvc"
+
+  if [[ ! -d "$menu_tree" || ! -d "$limit_tree" ]]; then
+    log "Mirror check dilewati (tree menu/limit tidak tersedia)."
+    return 0
+  fi
+
+  diff_output="$(diff -qr -x '__pycache__' -x '*.pyc' -x '.pytest_cache' "$menu_tree" "$limit_tree" || true)"
+  if [[ -n "$diff_output" ]]; then
+    echo "$diff_output" >&2
+    die "Mirror menu/webpanel-mvc dan limit/menu/webpanel-mvc tidak sinkron."
+  fi
+
+  log "Mirror menu/webpanel-mvc <-> limit/menu/webpanel-mvc: OK"
+}
+
+run_unit_tests() {
+  command -v python3 >/dev/null 2>&1 || die "python3 tidak ditemukan"
+
+  TMP_VENV="$(mktemp -d /tmp/panel-mvc-regression.XXXXXX)"
+  python3 -m venv "$TMP_VENV"
+
+  "$TMP_VENV/bin/pip" install --upgrade pip >/dev/null
+  "$TMP_VENV/bin/pip" install -r "$SOURCE_DIR/requirements.txt" >/dev/null
+
+  log "Menjalankan unit tests API + mutation safety"
+  (
+    cd "$SOURCE_DIR"
+    "$TMP_VENV/bin/python" -m unittest discover -s tests -p "test_*.py" -v
+  )
+}
+
+run_optional_e2e() {
+  if [[ "$RUN_E2E" -ne 1 ]]; then
+    return 0
+  fi
+
+  [[ "$EUID" -eq 0 ]] || die "Flag --with-e2e membutuhkan root."
+  command -v panel-mvc-e2e >/dev/null 2>&1 || die "panel-mvc-e2e tidak ditemukan di PATH"
+
+  log "Menjalankan panel-mvc-e2e"
+  panel-mvc-e2e
+}
+
+main() {
+  parse_args "$@"
+  resolve_source_dir
+
+  log "Source webpanel: $SOURCE_DIR"
+  check_mirror_sync
+  run_unit_tests
+  run_optional_e2e
+
+  log "REGRESSION GATE LULUS"
+}
+
+main "$@"

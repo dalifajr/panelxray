@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import re
+from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, session
 from werkzeug.exceptions import HTTPException
@@ -15,6 +17,8 @@ from ..models.service_model import (
 from ..services import MutationError, get_account_config_details, run_cli_mutation
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
 def _load_all_accounts() -> list[dict[str, str]]:
@@ -33,6 +37,110 @@ def _allowed_operations(service_key: str) -> set[str]:
     if not profile:
         return set()
     return {item.get("name", "") for item in profile.get("operations", [])}
+
+
+def _operation_schema(service_key: str, operation_name: str) -> dict[str, Any] | None:
+    profile = get_service_definition(service_key)
+    if not profile:
+        return None
+
+    normalized_operation = str(operation_name or "").strip().lower()
+    for item in profile.get("operations", []):
+        name = str(item.get("name", "")).strip().lower()
+        if name == normalized_operation:
+            return item
+
+    return None
+
+
+def _parse_payload() -> dict[str, Any]:
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return {}
+
+    if not isinstance(payload, dict):
+        raise MutationError("Payload JSON harus berbentuk object.")
+
+    return payload
+
+
+def _sanitize_field(field: dict[str, Any], payload: dict[str, Any]) -> tuple[bool, Any]:
+    field_name = str(field.get("name", "")).strip()
+    if not field_name:
+        return False, None
+
+    field_label = str(field.get("label") or field_name)
+    required = bool(field.get("required"))
+    field_type = str(field.get("type", "text")).strip().lower()
+
+    exists = field_name in payload
+    raw_value = payload.get(field_name)
+
+    if (raw_value is None or str(raw_value).strip() == "") and "value" in field:
+        raw_value = field.get("value")
+        exists = True
+
+    if raw_value is None or str(raw_value).strip() == "":
+        if required:
+            raise MutationError(f"Field {field_label} wajib diisi.")
+        return False, None
+
+    if field_type == "number":
+        try:
+            number_value = int(str(raw_value).strip())
+        except (TypeError, ValueError) as exc:
+            raise MutationError(f"Field {field_label} harus berupa angka.") from exc
+
+        min_value = field.get("min")
+        if min_value is not None:
+            min_number = int(min_value)
+            if number_value < min_number:
+                raise MutationError(
+                    f"Field {field_label} minimal bernilai {min_number}."
+                )
+
+        return True, number_value
+
+    text_value = str(raw_value).strip()
+    if required and not text_value:
+        raise MutationError(f"Field {field_label} wajib diisi.")
+
+    if field_name == "username" and not USERNAME_RE.fullmatch(text_value):
+        raise MutationError(
+            "Username hanya boleh berisi huruf, angka, titik, underscore, atau strip (maks 64 karakter)."
+        )
+
+    if field_type == "select":
+        valid_options = {
+            str(item.get("value", "")).strip()
+            for item in field.get("options", [])
+            if str(item.get("value", "")).strip()
+        }
+        if valid_options and text_value not in valid_options:
+            raise MutationError(f"Pilihan untuk {field_label} tidak valid.")
+
+    return exists, text_value
+
+
+def _sanitize_payload_for_operation(
+    service_key: str,
+    operation_name: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    schema = _operation_schema(service_key, operation_name)
+    if not schema:
+        return {}
+
+    sanitized: dict[str, Any] = {}
+    for field in schema.get("fields", []):
+        is_set, value = _sanitize_field(field, payload)
+        if not is_set:
+            continue
+        field_name = str(field.get("name", "")).strip()
+        if field_name:
+            sanitized[field_name] = value
+
+    return sanitized
 
 
 def _build_error_response(message: str, status_code: int = 400):
@@ -91,6 +199,27 @@ def _run_mutation(
         lock_timeout_seconds=current_app.config["MUTATION_LOCK_TIMEOUT_SEC"],
         command_timeout_seconds=current_app.config["CLI_MUTATION_TIMEOUT_SEC"],
         audit_log_path=current_app.config["AUDIT_LOG_PATH"],
+        mutation_safety_enabled=bool(
+            current_app.config.get("MUTATION_SAFETY_ENABLED", True)
+        ),
+        mutation_snapshot_dir=str(
+            current_app.config.get(
+                "MUTATION_SNAPSHOT_DIR",
+                "/etc/xray/backup-webpanel",
+            )
+        ),
+        xray_binary_path=str(
+            current_app.config.get("XRAY_BINARY_PATH", "/usr/bin/xray")
+        ),
+        xray_config_path=str(
+            current_app.config.get("XRAY_CONFIG_PATH", "/etc/xray/config.json")
+        ),
+        mutation_postcheck_timeout_seconds=int(
+            current_app.config.get("MUTATION_POSTCHECK_TIMEOUT_SEC", 25)
+        ),
+        mutation_precheck_xray=bool(
+            current_app.config.get("MUTATION_PRECHECK_XRAY", True)
+        ),
     )
 
 
@@ -227,7 +356,21 @@ def service_action(service: str, operation: str):
     if normalized_operation not in allowed_operations:
         return _build_error_response("Operation tidak didukung untuk service ini.")
 
-    payload = request.get_json(silent=True) or {}
+    try:
+        payload = _parse_payload()
+    except MutationError as exc:
+        return _build_error_response(str(exc))
+
+    try:
+        sanitized_payload = _sanitize_payload_for_operation(
+            service_key,
+            normalized_operation,
+            payload,
+        )
+    except MutationError as exc:
+        return _build_error_response(str(exc))
+
+    payload = sanitized_payload
     payload["protocol"] = service_key
     payload["operation"] = normalized_operation
 
@@ -256,7 +399,11 @@ def service_action(service: str, operation: str):
 @api_bp.post("/mutations")
 @login_required
 def mutate_accounts():
-    payload = request.get_json(silent=True) or {}
+    try:
+        payload = _parse_payload()
+    except MutationError as exc:
+        return _build_error_response(str(exc))
+
     operation = str(payload.get("operation", "")).strip().lower()
     protocol = normalize_service_key(payload.get("protocol", ""))
 
@@ -268,10 +415,23 @@ def mutate_accounts():
         return _build_error_response("Operation tidak didukung untuk service ini.")
 
     try:
+        sanitized_payload = _sanitize_payload_for_operation(
+            protocol,
+            operation,
+            payload,
+        )
+    except MutationError as exc:
+        return _build_error_response(str(exc))
+
+    try:
         result = _run_mutation(
             operation=operation,
             protocol=protocol,
-            payload=payload,
+            payload={
+                **sanitized_payload,
+                "operation": operation,
+                "protocol": protocol,
+            },
         )
     except MutationError as exc:
         return _build_error_response(str(exc))

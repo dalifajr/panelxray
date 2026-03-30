@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title or 'VPNXRay Workspace' }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='m3-workspace.css', v=asset_version) }}">
+</head>
+<body>
+  <div class="sky" aria-hidden="true"></div>
+
+  <div
+    class="workspace-shell"
+    id="workspace-shell"
+    data-active-service="{{ active_service_key }}"
+    data-operator="{{ operator }}"
+    data-health-url="{{ url_for('api.health') }}"
+    data-service-action-url-template="{{ url_for('api.service_action', service='__service__', operation='__operation__') }}"
+    data-workspace-url-template="{{ url_for('dashboard.workspace', service='__service__') }}"
+    data-dashboard-url-template="{{ url_for('dashboard.service_dashboard', service='__service__') }}"
+    data-manage-url-template="{{ url_for('dashboard.manage_accounts', service='__service__') }}"
+    data-logout-url="{{ url_for('auth.logout') }}"
+  >
+    <aside class="workspace-sidebar" id="workspace-sidebar" aria-label="Navigasi Service">
+      <div class="brand-block">
+        <p class="eyebrow">VPNXRay Workspace</p>
+        <h1>Material You 3</h1>
+        <p class="caption">Clean expressive control untuk operasi harian akun dan service.</p>
+      </div>
+
+      <nav class="service-nav" id="service-nav"></nav>
+
+      <div class="sidebar-footer">
+        <a class="ghost-link" id="legacy-dashboard-link" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Legacy Dashboard</a>
+        <a class="ghost-link" id="legacy-manage-link" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Legacy Accounts</a>
+        <a class="ghost-link danger" href="{{ url_for('auth.logout') }}">Logout</a>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+    <main class="workspace-main">
+      <header class="workspace-header card fade-rise">
+        <button type="button" id="menu-toggle" class="icon-action" aria-label="Buka menu">
+          <span></span><span></span><span></span>
+        </button>
+
+        <div class="header-copy">
+          <p class="eyebrow">{{ page_subtitle }}</p>
+          <h2 id="workspace-title">Workspace {{ active_service.label if active_service else active_service_key|upper }}</h2>
+        </div>
+
+        <div class="header-controls">
+          <label class="control-label" for="service-picker">Service</label>
+          <select id="service-picker" class="control-select" aria-label="Pilih service aktif"></select>
+          <span class="operator-pill">Operator: {{ operator }}</span>
+        </div>
+      </header>
+
+      <section class="hero-grid">
+        <article class="card health-card fade-rise" style="--delay: 0.04s;">
+          <div>
+            <p class="eyebrow">System Pulse</p>
+            <h3 id="health-state">Checking...</h3>
+            <p class="caption" id="health-time">Menunggu status service...</p>
+          </div>
+          <div id="health-badge" class="status-pill">loading</div>
+        </article>
+
+        <article class="card quick-card fade-rise" style="--delay: 0.08s;">
+          <p class="eyebrow">Quick Action</p>
+          <div class="quick-grid" id="quick-action-grid"></div>
+        </article>
+      </section>
+
+      <section class="card fade-rise" style="--delay: 0.12s;">
+        <div class="section-head">
+          <h3>Ringkasan Akun</h3>
+          <p class="caption">Data sinkron dari API stats dan account list.</p>
+        </div>
+        <div class="metric-grid" id="metric-grid"></div>
+      </section>
+
+      <section class="card fade-rise" style="--delay: 0.16s;">
+        <div class="section-head">
+          <h3>Status Service Runtime</h3>
+          <p class="caption">Monitoring aktif/degraded untuk proses inti.</p>
+        </div>
+        <div class="service-grid" id="service-status-grid"></div>
+      </section>
+
+      <section class="card fade-rise" style="--delay: 0.18s;">
+        <div class="section-head">
+          <div>
+            <h3>Mutation Studio</h3>
+            <p class="caption">Kelola create, renew, delete, trial, suspend, dan unsuspend langsung dari workspace ini.</p>
+          </div>
+          <span class="caption">Safety layer aktif: preflight, snapshot, rollback otomatis.</span>
+        </div>
+
+        <div class="operation-chip-grid" id="operation-chip-grid"></div>
+        <div class="mutation-empty" id="mutation-empty">Pilih service dengan operasi mutasi untuk menampilkan form CRUD.</div>
+
+        <form id="operation-form" class="operation-form hidden" novalidate>
+          <h4 id="operation-form-title">Form Mutasi</h4>
+          <div class="operation-form-fields" id="operation-form-fields"></div>
+          <div class="operation-actions">
+            <button type="submit" class="solid-btn" id="operation-submit">Jalankan Mutasi</button>
+            <button type="button" class="ghost-btn" id="operation-reset">Reset</button>
+          </div>
+        </form>
+
+        <article class="mutation-result hidden" id="mutation-result"></article>
+      </section>
+
+      <section class="card fade-rise" style="--delay: 0.2s;">
+        <div class="section-head account-head">
+          <div>
+            <h3>Daftar Akun Aktif</h3>
+            <p class="caption">Gunakan filter untuk cari akun secara cepat.</p>
+          </div>
+          <div class="account-controls">
+            <input id="account-search" type="search" placeholder="Cari username, protocol, status..." aria-label="Cari akun">
+            <div class="view-switch" role="group" aria-label="Pilih mode tampilan akun">
+              <button type="button" class="view-btn active" data-view="table">Table</button>
+              <button type="button" class="view-btn" data-view="cards">Cards</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="account-table-wrap" id="account-table-wrap">
+          <table class="account-table">
+            <thead>
+              <tr>
+                <th>Protocol</th>
+                <th>Username</th>
+                <th>Expiry</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="account-table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="account-card-grid hidden" id="account-card-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+  <script id="workspace-initial-data" type="application/json">{{ workspace_initial|tojson }}</script>
+  <script type="module" src="{{ url_for('static', filename='m3-workspace.js', v=asset_version) }}"></script>
+</body>
+</html>

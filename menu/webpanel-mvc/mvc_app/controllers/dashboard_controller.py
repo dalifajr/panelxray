@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from flask import (
     Blueprint,
     abort,
@@ -21,6 +23,18 @@ from ..models.service_model import (
 )
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+
+def _build_workspace_initial_payload(context: dict[str, object]) -> dict[str, object]:
+    return {
+        "operator": context.get("operator", "admin"),
+        "summary": context.get("summary", {}),
+        "services": context.get("services", {}),
+        "accounts": context.get("accounts", []),
+        "service_catalog": context.get("service_catalog", []),
+        "active_service_key": context.get("active_service_key", get_default_service_key()),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _build_protocol_operation_catalog(service_key: str) -> dict[str, list[dict[str, object]]]:
@@ -69,7 +83,7 @@ def index():
     if session.get("authenticated"):
         return redirect(
             url_for(
-                "dashboard.service_dashboard",
+                "dashboard.workspace",
                 service=get_default_service_key(),
             )
         )
@@ -81,9 +95,38 @@ def index():
 def dashboard():
     return redirect(
         url_for(
-            "dashboard.service_dashboard",
+            "dashboard.workspace",
             service=get_default_service_key(),
         )
+    )
+
+
+@dashboard_bp.get("/workspace")
+@login_required
+def workspace_default():
+    return redirect(
+        url_for(
+            "dashboard.workspace",
+            service=get_default_service_key(),
+        )
+    )
+
+
+@dashboard_bp.get("/workspace/<service>")
+@login_required
+def workspace(service: str):
+    service_key = normalize_service_key(service)
+    if not service_key:
+        abort(404)
+
+    context = _build_service_context(service_key)
+    return render_template(
+        "workspace_m3.html",
+        page_title="VPNXRay Workspace",
+        page_subtitle="Material You 3 expressive workspace untuk monitoring dan manajemen akun.",
+        current_view="workspace",
+        workspace_initial=_build_workspace_initial_payload(context),
+        **context,
     )
 
 

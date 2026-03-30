@@ -33,6 +33,7 @@
     </nav>
 
     <div class="sidebar-links">
+      <a class="sidebar-link" href="{{ url_for('dashboard.workspace', service=active_service_key) }}">Workspace M3</a>
       <a class="sidebar-link" href="{{ url_for('dashboard.service_dashboard', service=active_service_key) }}">Dashboard</a>
       <a class="sidebar-link active" href="{{ url_for('dashboard.manage_accounts', service=active_service_key) }}">Manajemen Akun</a>
       <a class="sidebar-link sidebar-link-danger" href="{{ url_for('auth.logout') }}">Logout</a>

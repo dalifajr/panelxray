@@ -9,6 +9,15 @@ def _safe_int(value: str, fallback: int) -> int:
         return fallback
 
 
+def _safe_bool(value: str, fallback: bool) -> bool:
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return fallback
+
+
 def _default_secret() -> str:
     return "vpnxray-webpanel-dev-secret"
 
@@ -37,6 +46,19 @@ class Settings:
     AUDIT_LOG_PATH = os.getenv(
         "AUDIT_LOG_PATH", "/var/log/vpnxray-webpanel/audit.log"
     )
+    MUTATION_SAFETY_ENABLED = _safe_bool(
+        os.getenv("MUTATION_SAFETY_ENABLED", "1"), True
+    )
+    MUTATION_PRECHECK_XRAY = _safe_bool(
+        os.getenv("MUTATION_PRECHECK_XRAY", "1"), True
+    )
+    MUTATION_POSTCHECK_TIMEOUT_SEC = _safe_int(
+        os.getenv("MUTATION_POSTCHECK_TIMEOUT_SEC", "25"), 25
+    )
+    MUTATION_SNAPSHOT_DIR = os.getenv(
+        "MUTATION_SNAPSHOT_DIR", "/etc/xray/backup-webpanel"
+    )
+    XRAY_BINARY_PATH = os.getenv("XRAY_BINARY_PATH", "/usr/bin/xray")
     WEB_PANEL_ASSET_VERSION = os.getenv("WEB_PANEL_ASSET_VERSION", "1")
 
     SESSION_COOKIE_HTTPONLY = True

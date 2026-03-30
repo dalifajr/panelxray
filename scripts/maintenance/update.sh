@@ -274,21 +274,66 @@ sync_kyt_bot_assets() {
     fi
 }
 
-auto_fix_webpanel_route() {
-    local installer fix_log has_webpanel
-    installer="${TARGET_SBIN}/install-panel-mvc"
-    fix_log="/tmp/panelxray-webpanel-fix.log"
-    has_webpanel=0
-
+is_webpanel_present() {
     if systemctl list-unit-files 2>/dev/null | grep -q '^vpnxray-webpanel\.service'; then
-        has_webpanel=1
-    elif [[ -d /opt/vpnxray-webpanel || -f /etc/kyt/webpanel.env ]]; then
-        has_webpanel=1
-    elif [[ -f /etc/nginx/conf.d/xray.conf ]] && grep -q "BEGIN VPNXRAY WEB PANEL" /etc/nginx/conf.d/xray.conf 2>/dev/null; then
-        has_webpanel=1
+        return 0
     fi
 
-    if [[ "$has_webpanel" -ne 1 ]]; then
+    if [[ -d /opt/vpnxray-webpanel || -f /etc/kyt/webpanel.env ]]; then
+        return 0
+    fi
+
+    if [[ -f /etc/nginx/conf.d/xray.conf ]] && grep -q "BEGIN VPNXRAY WEB PANEL" /etc/nginx/conf.d/xray.conf 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
+run_webpanel_regression_gate() {
+    local gate_runner gate_log source_dir
+    gate_runner="${TARGET_SBIN}/panel-mvc-regression-gate"
+    gate_log="/tmp/panelxray-webpanel-regression.log"
+    source_dir="${TMP_DIR}/limit/menu/webpanel-mvc"
+
+    if [[ "${PANEL_REGRESSION_GATE:-1}" == "0" ]]; then
+        echo -e "\033[1;33mRegression gate panel dilewati (PANEL_REGRESSION_GATE=0).\033[0m"
+        return 0
+    fi
+
+    if ! is_webpanel_present; then
+        return 0
+    fi
+
+    if [[ ! -x "$gate_runner" ]]; then
+        echo -e "\033[1;31mRegression gate dilewati: $gate_runner tidak ditemukan.\033[0m"
+        return 0
+    fi
+
+    if [[ ! -d "$source_dir" ]]; then
+        echo -e "\033[1;31mRegression gate dilewati: source webpanel tidak ditemukan di $source_dir.\033[0m"
+        return 0
+    fi
+
+    echo -e "\033[1;33mMenjalankan regression gate web panel sebelum deploy produksi...\033[0m"
+    if "$gate_runner" --source "$source_dir" --skip-mirror-check >"$gate_log" 2>&1; then
+        echo -e "\033[0;32mRegression gate web panel lulus.\033[0m"
+        return 0
+    fi
+
+    echo -e "\033[1;31mRegression gate web panel gagal. Lihat log: $gate_log\033[0m"
+    tail -n 20 "$gate_log" 2>/dev/null || true
+    echo -e "\033[1;31mUpdate dihentikan untuk mencegah deploy panel yang regresif.\033[0m"
+    echo -e "\033[1;33mJika darurat, jalankan ulang dengan PANEL_REGRESSION_GATE=0.\033[0m"
+    exit 1
+}
+
+auto_fix_webpanel_route() {
+    local installer fix_log
+    installer="${TARGET_SBIN}/install-panel-mvc"
+    fix_log="/tmp/panelxray-webpanel-fix.log"
+
+    if ! is_webpanel_present; then
         return 0
     fi
 
@@ -317,6 +362,7 @@ new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
 mkdir -p "$TARGET_SBIN" /etc/kyt
 cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
+run_webpanel_regression_gate
 sync_runtime_configs
 sync_kyt_bot_assets
 auto_fix_webpanel_route
@@ -326,6 +372,7 @@ echo -e "\033[0;32mUpdate selesai.\033[0m"
 echo -e "Old revision : $old_sha"
 echo -e "New revision : $new_sha"
 echo -e "Target path  : $TARGET_SBIN"
+echo -e "Regression   : panel gate dijalankan otomatis (set PANEL_REGRESSION_GATE=0 untuk bypass darurat)"
 echo -e "Runtime cfg  : nginx/haproxy/ws synced"
 echo -e "Bot assets   : /usr/bin/kyt + bot scripts synced"
 echo -e "Web panel    : sinkronisasi panel + auto-fix /panel dijalankan jika panel terdeteksi"

@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 from typing import Any, Iterator
@@ -96,6 +98,204 @@ STDERR_NOISE_PATTERNS = [
 ]
 
 QR_CHARS = {" ", "█", "▀", "▄"}
+XRAY_PROTOCOLS = {"vmess", "vless", "trojan", "shadowsocks"}
+XRAY_SNAPSHOT_DB_FILES = [
+    "/etc/vmess/.vmess.db",
+    "/etc/vless/.vless.db",
+    "/etc/trojan/.trojan.db",
+    "/etc/shadowsocks/.shadowsocks.db",
+]
+SSH_SNAPSHOT_DB_FILES = ["/etc/ssh/.ssh.db"]
+
+
+def _safe_snapshot_name(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "")).strip("-")
+    if not cleaned:
+        return "anon"
+    return cleaned[:64]
+
+
+def _build_snapshot_targets(protocol: str, xray_config_path: str) -> list[str]:
+    if protocol in XRAY_PROTOCOLS:
+        return [xray_config_path, *XRAY_SNAPSHOT_DB_FILES]
+    if protocol == "ssh":
+        return SSH_SNAPSHOT_DB_FILES.copy()
+    return []
+
+
+def _create_snapshot(
+    *,
+    protocol: str,
+    operation: str,
+    username: str,
+    snapshot_root: str,
+    xray_config_path: str,
+) -> dict[str, Any]:
+    root = Path(snapshot_root)
+    root.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    safe_username = _safe_snapshot_name(username)
+    snapshot_id = f"{timestamp}-{protocol}-{operation}-{safe_username}"
+    snapshot_dir = root / snapshot_id
+
+    suffix = 1
+    while snapshot_dir.exists():
+        snapshot_dir = root / f"{snapshot_id}-{suffix}"
+        suffix += 1
+
+    snapshot_dir.mkdir(parents=True, exist_ok=False)
+
+    entries: list[dict[str, str]] = []
+    for source_text in _build_snapshot_targets(protocol, xray_config_path):
+        source = Path(source_text)
+        if not source.exists() or not source.is_file():
+            continue
+
+        safe_name = source.as_posix().strip("/").replace("/", "__")
+        backup = snapshot_dir / f"{len(entries) + 1:02d}__{safe_name}"
+        shutil.copy2(source, backup)
+        entries.append(
+            {
+                "source": str(source),
+                "backup": str(backup),
+            }
+        )
+
+    return {
+        "id": snapshot_dir.name,
+        "path": str(snapshot_dir),
+        "entries": entries,
+    }
+
+
+def _restore_snapshot(snapshot: dict[str, Any]) -> tuple[bool, list[str]]:
+    entries = list(snapshot.get("entries") or [])
+    if not entries:
+        return True, []
+
+    errors: list[str] = []
+    for item in entries:
+        source = Path(str(item.get("source", "")))
+        backup = Path(str(item.get("backup", "")))
+
+        if not backup.exists() or not backup.is_file():
+            errors.append(f"backup hilang: {backup}")
+            continue
+
+        try:
+            source.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup, source)
+        except OSError as exc:
+            errors.append(f"restore gagal untuk {source}: {exc}")
+
+    return len(errors) == 0, errors
+
+
+def _run_xray_test(
+    *,
+    xray_binary_path: str,
+    xray_config_path: str,
+    timeout_seconds: int,
+) -> None:
+    binary = str(xray_binary_path or "xray").strip() or "xray"
+    if "/" in binary and not Path(binary).exists():
+        raise MutationError(f"Binary xray tidak ditemukan: {binary}")
+
+    try:
+        completed = subprocess.run(
+            [binary, "-test", "-config", xray_config_path],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except OSError as exc:
+        raise MutationError(f"Gagal menjalankan preflight xray: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise MutationError("Preflight xray timeout.") from exc
+
+    if completed.returncode != 0:
+        reason = _tail_lines(_filter_stderr_noise(completed.stderr or ""), max_lines=12)
+        if not reason:
+            reason = _tail_lines(completed.stdout or "", max_lines=12)
+        detail = f" ({reason})" if reason else ""
+        raise MutationError(f"Preflight xray config gagal{detail}")
+
+
+def _restart_xray_service(timeout_seconds: int) -> None:
+    try:
+        restart = subprocess.run(
+            ["systemctl", "restart", "xray"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except OSError as exc:
+        raise MutationError(f"Gagal restart service xray: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise MutationError("Restart service xray timeout.") from exc
+
+    if restart.returncode != 0:
+        detail = _tail_lines(_filter_stderr_noise(restart.stderr or ""), max_lines=10)
+        raise MutationError(
+            f"Restart service xray gagal{f' ({detail})' if detail else ''}"
+        )
+
+    status = subprocess.run(
+        ["systemctl", "is-active", "xray"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout_seconds,
+    )
+    if status.returncode != 0:
+        state = (status.stdout or status.stderr or "unknown").strip() or "unknown"
+        raise MutationError(f"Service xray tidak aktif setelah restart ({state}).")
+
+
+def _postcheck_xray_runtime(
+    *,
+    xray_binary_path: str,
+    xray_config_path: str,
+    timeout_seconds: int,
+) -> None:
+    _run_xray_test(
+        xray_binary_path=xray_binary_path,
+        xray_config_path=xray_config_path,
+        timeout_seconds=timeout_seconds,
+    )
+    _restart_xray_service(timeout_seconds=timeout_seconds)
+
+
+def _attempt_rollback(
+    *,
+    snapshot: dict[str, Any] | None,
+    protocol: str,
+    xray_binary_path: str,
+    xray_config_path: str,
+    timeout_seconds: int,
+) -> tuple[bool, str]:
+    if not snapshot:
+        return False, "snapshot tidak tersedia"
+
+    restored, errors = _restore_snapshot(snapshot)
+    if protocol in XRAY_PROTOCOLS:
+        try:
+            _postcheck_xray_runtime(
+                xray_binary_path=xray_binary_path,
+                xray_config_path=xray_config_path,
+                timeout_seconds=timeout_seconds,
+            )
+        except MutationError as exc:
+            restored = False
+            errors.append(str(exc))
+
+    if restored:
+        return True, "rollback selesai"
+
+    return False, "; ".join(errors) if errors else "rollback gagal"
 
 
 @contextmanager
@@ -643,6 +843,12 @@ def run_cli_mutation(
     lock_timeout_seconds: int,
     command_timeout_seconds: int,
     audit_log_path: str,
+    mutation_safety_enabled: bool = True,
+    mutation_snapshot_dir: str = "/etc/xray/backup-webpanel",
+    xray_binary_path: str = "/usr/bin/xray",
+    xray_config_path: str = "/etc/xray/config.json",
+    mutation_postcheck_timeout_seconds: int = 25,
+    mutation_precheck_xray: bool = True,
 ) -> MutationResult:
     operation = str(operation or "").strip().lower()
     protocol = str(protocol or "").strip().lower()
@@ -666,6 +872,22 @@ def run_cli_mutation(
     stdin_data = _build_stdin(operation, protocol, payload)
     script_args = _build_script_args(operation, payload)
     username = str(payload.get("username", "")).strip()
+    safety_enabled = bool(mutation_safety_enabled)
+    postcheck_timeout = max(5, int(mutation_postcheck_timeout_seconds))
+
+    safety_details: dict[str, Any] = {
+        "enabled": safety_enabled,
+        "preflight_ok": False,
+        "postcheck_ok": False,
+        "snapshot_id": "",
+        "snapshot_dir": "",
+        "snapshot_files": [],
+        "rollback_performed": False,
+        "rollback_status": "not-needed",
+        "rollback_reason": "",
+        "rollback_error": "",
+    }
+    snapshot: dict[str, Any] | None = None
 
     audit_context = {
         "event": "web_crud_mutation",
@@ -686,6 +908,30 @@ def run_cli_mutation(
 
     try:
         with mutation_lock(lock_file, timeout_seconds=lock_timeout_seconds):
+            if safety_enabled:
+                if protocol in XRAY_PROTOCOLS and mutation_precheck_xray:
+                    _run_xray_test(
+                        xray_binary_path=xray_binary_path,
+                        xray_config_path=xray_config_path,
+                        timeout_seconds=postcheck_timeout,
+                    )
+                    safety_details["preflight_ok"] = True
+
+                snapshot = _create_snapshot(
+                    protocol=protocol,
+                    operation=operation,
+                    username=username,
+                    snapshot_root=mutation_snapshot_dir,
+                    xray_config_path=xray_config_path,
+                )
+                safety_details["snapshot_id"] = str(snapshot.get("id", ""))
+                safety_details["snapshot_dir"] = str(snapshot.get("path", ""))
+                safety_details["snapshot_files"] = [
+                    str(item.get("source", ""))
+                    for item in snapshot.get("entries", [])
+                    if str(item.get("source", "")).strip()
+                ]
+
             with _shim_bin_dir() as shim_dir:
                 base_env = os.environ.copy()
                 default_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -708,6 +954,17 @@ def run_cli_mutation(
                     env=base_env,
                     cwd=run_cwd,
                 )
+    except MutationError as exc:
+        append_audit_log(
+            audit_log_path,
+            {
+                **audit_context,
+                "status": "safety_failed",
+                "error": str(exc),
+                "safety": safety_details,
+            },
+        )
+        raise
     except LockTimeoutError as exc:
         append_audit_log(
             audit_log_path,
@@ -739,20 +996,71 @@ def run_cli_mutation(
         )
         raise MutationError("Gagal mengeksekusi shell adapter.") from exc
 
+    final_error_message = ""
+    if completed.returncode != 0:
+        final_error_message = "Eksekusi script gagal. Cek audit log untuk detail terakhir."
+        if safety_enabled:
+            rollback_ok, rollback_info = _attempt_rollback(
+                snapshot=snapshot,
+                protocol=protocol,
+                xray_binary_path=xray_binary_path,
+                xray_config_path=xray_config_path,
+                timeout_seconds=postcheck_timeout,
+            )
+            safety_details["rollback_performed"] = True
+            safety_details["rollback_reason"] = "script_failed"
+            safety_details["rollback_status"] = "success" if rollback_ok else "failed"
+            if not rollback_ok:
+                safety_details["rollback_error"] = rollback_info
+                final_error_message = f"{final_error_message} Rollback gagal: {rollback_info}"
+            else:
+                final_error_message = f"{final_error_message} Rollback otomatis berhasil."
+
+    if not final_error_message and safety_enabled and protocol in XRAY_PROTOCOLS:
+        try:
+            _postcheck_xray_runtime(
+                xray_binary_path=xray_binary_path,
+                xray_config_path=xray_config_path,
+                timeout_seconds=postcheck_timeout,
+            )
+            safety_details["postcheck_ok"] = True
+        except MutationError as exc:
+            final_error_message = str(exc)
+            rollback_ok, rollback_info = _attempt_rollback(
+                snapshot=snapshot,
+                protocol=protocol,
+                xray_binary_path=xray_binary_path,
+                xray_config_path=xray_config_path,
+                timeout_seconds=postcheck_timeout,
+            )
+            safety_details["rollback_performed"] = True
+            safety_details["rollback_reason"] = "postcheck_failed"
+            safety_details["rollback_status"] = "success" if rollback_ok else "failed"
+            if not rollback_ok:
+                safety_details["rollback_error"] = rollback_info
+                final_error_message = f"{final_error_message} Rollback gagal: {rollback_info}"
+            else:
+                final_error_message = f"{final_error_message} Rollback otomatis berhasil."
+
     details = _build_result_details(
         operation=operation,
         protocol=protocol,
         payload=payload,
         stdout=completed.stdout or "",
     )
+    details["safety"] = safety_details
     resolved_username = details.get("username", "") or username
+
+    effective_returncode = completed.returncode
+    if final_error_message and effective_returncode == 0:
+        effective_returncode = 1
 
     result = MutationResult(
         operation=operation,
         protocol=protocol,
         script_name=script_name,
         username=resolved_username,
-        returncode=completed.returncode,
+        returncode=effective_returncode,
         stdout_tail=_tail_lines(completed.stdout or ""),
         stderr_tail=_tail_lines(_filter_stderr_noise(completed.stderr or "")),
         details=details,
@@ -761,16 +1069,18 @@ def run_cli_mutation(
     audit_row = {
         **audit_context,
         "username": result.username,
-        "status": "success" if result.returncode == 0 else "failed",
+        "status": "success" if result.returncode == 0 and not final_error_message else "failed",
         "returncode": result.returncode,
         "stdout_tail": result.stdout_tail,
         "stderr_tail": result.stderr_tail,
+        "safety": safety_details,
     }
     append_audit_log(audit_log_path, audit_row)
 
+    if final_error_message:
+        raise MutationError(final_error_message)
+
     if result.returncode != 0:
-        raise MutationError(
-            "Eksekusi script gagal. Cek audit log untuk detail terakhir."
-        )
+        raise MutationError("Eksekusi script gagal. Cek audit log untuk detail terakhir.")
 
     return result
