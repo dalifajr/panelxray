@@ -65,6 +65,19 @@ is_valid_source_dir() {
   [[ -f "${dir}/main.py" ]] || return 1
   [[ -f "${dir}/panel.sh" ]] || return 1
   [[ -f "${dir}/telegram_main.py" ]] || return 1
+  [[ -d "${dir}/app" ]] || return 1
+  [[ -d "${dir}/app/client" ]] || return 1
+  [[ -d "${dir}/app/menus" ]] || return 1
+  [[ -d "${dir}/app/service" ]] || return 1
+  [[ -d "${dir}/app/bot_handlers" ]] || return 1
+  [[ -f "${dir}/app/service/auth.py" ]] || return 1
+  [[ -f "${dir}/app/service/decoy.py" ]] || return 1
+  [[ -d "${dir}/hot_data" ]] || return 1
+  [[ -f "${dir}/hot_data/hot.json" ]] || return 1
+  [[ -f "${dir}/hot_data/hot2.json" ]] || return 1
+  [[ -d "${dir}/decoy_data" ]] || return 1
+  [[ -f "${dir}/decoy_data/decoy-default-balance.json" ]] || return 1
+  [[ -f "${dir}/decoy_data/decoy-default-qris.json" ]] || return 1
   return 0
 }
 
