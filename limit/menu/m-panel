@@ -38,10 +38,11 @@ echo -e " \033[35m│$NC [08]${NC} \033[0;36m Installer VPNXRay MVC Web Panel${N
 echo -e " \033[35m│$NC [09]${NC} \033[0;36m Uninstall VPNXRay MVC Web Panel${NC}"
 echo -e " \033[35m│$NC [10]${NC} \033[0;36m Uji E2E VPNXRay MVC (Staging)${NC}"
 echo -e " \033[35m│$NC [11]${NC} \033[0;36m Installer MYnyak Engsel CLI (me-cli)${NC}"
+echo -e " \033[35m│$NC [12]${NC} \033[0;36m Uninstall MYnyak Engsel CLI (me-cli)${NC}"
 echo -e " \033[36m╰══════════════════════════════════════════════════════════╯\e[0m"
 echo -e " \033[31m##########\033[33m##########\033[32m##########\033[34m##########\033[35m##########\033[36m##########\e[0m"
 echo -e ""
-read -p " Select From Options [ 1 - 11 ] : " menu
+read -p " Select From Options [ 1 - 12 ] : " menu
 case $menu in
 1) clear ; wget ${RDP}/foldder/ins-rdp.sh && chmod +x ins-rdp.sh && ./ins-rdp.sh ; exit ;;
 2) clear ; wget -N ${WEBU} && chmod 0755 install.sh && ./install.sh ; exit ;;
@@ -54,5 +55,6 @@ case $menu in
 9) clear ; uninstall-panel-mvc ; exit ;;
 10) clear ; panel-mvc-e2e ; exit ;;
 11) clear ; install-me-cli ; exit ;;
+12) clear ; uninstall-me-cli ; exit ;;
 *) clear ; menu ; exit ;;
 esac

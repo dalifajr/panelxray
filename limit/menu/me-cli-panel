@@ -170,11 +170,14 @@ main() {
   fi
 
   if ! ensure_non_conflicting_bot_token; then
-    command -v menu >/dev/null 2>&1 && menu
-    exit 0
+    echo "Panel tetap dibuka. Perbaiki TELEGRAM_BOT_TOKEN jika ingin start bot Telegram tanpa bentrok."
+    sleep 2
   fi
 
-  open_panel || true
+  if ! open_panel; then
+    echo "Panel me-cli gagal dijalankan. Jalankan installer ulang: /usr/local/sbin/install-me-cli"
+    exit 1
+  fi
   command -v menu >/dev/null 2>&1 && menu
 }
 

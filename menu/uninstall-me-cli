@@ -1,0 +1,106 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_DIR="/opt/vpnxray-me-cli-sunset"
+ASSET_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
+RUN_DIR="${APP_DIR}/run"
+BOT_PID_FILE="${RUN_DIR}/telegram_bot.pid"
+CLI_PID_FILE="${RUN_DIR}/cli.pid"
+
+FORCE=0
+
+log() {
+  echo "[INFO] $*"
+}
+
+warn() {
+  echo "[WARN] $*" >&2
+}
+
+die() {
+  echo "[ERROR] $*" >&2
+  exit 1
+}
+
+require_root() {
+  [[ "${EUID}" -eq 0 ]] || die "Jalankan script ini sebagai root."
+}
+
+parse_args() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -y|--yes)
+        FORCE=1
+        ;;
+      *)
+        die "Argumen tidak dikenal: $arg"
+        ;;
+    esac
+  done
+}
+
+stop_from_pid_file() {
+  local pid_file="$1"
+  local pid
+
+  [[ -f "$pid_file" ]] || return 0
+
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+    sleep 1
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  rm -f "$pid_file" >/dev/null 2>&1 || true
+}
+
+stop_runtime() {
+  stop_from_pid_file "$BOT_PID_FILE"
+  stop_from_pid_file "$CLI_PID_FILE"
+
+  pkill -f "${APP_DIR}/.venv/bin/python .*telegram_main.py" >/dev/null 2>&1 || true
+  pkill -f "${APP_DIR}/.venv/bin/python .*main.py" >/dev/null 2>&1 || true
+}
+
+confirm_uninstall() {
+  if [[ "$FORCE" -eq 1 ]]; then
+    return 0
+  fi
+
+  if [[ -t 0 ]]; then
+    local ans
+    read -rp "Yakin uninstall MYnyak Engsel CLI (me-cli)? [y/N]: " ans
+    [[ "$ans" =~ ^[Yy]$ ]] || return 1
+  fi
+
+  return 0
+}
+
+main() {
+  parse_args "$@"
+  require_root
+
+  if [[ ! -d "$APP_DIR" && ! -d "$ASSET_DIR" ]]; then
+    log "me-cli belum terpasang. Tidak ada yang dihapus."
+    exit 0
+  fi
+
+  if ! confirm_uninstall; then
+    log "Uninstall dibatalkan."
+    exit 0
+  fi
+
+  stop_runtime
+  rm -rf "$APP_DIR"
+  rm -rf "$ASSET_DIR"
+
+  log "Uninstall me-cli selesai"
+  log "Lokasi terhapus : $APP_DIR"
+  log "Asset cache     : $ASSET_DIR"
+}
+
+main "$@"

@@ -166,15 +166,12 @@ case "$opt" in
 16) clear ; zi-vpn ;;
 17)
   clear
-  if command -v me-cli-panel >/dev/null 2>&1; then
-    me-cli-panel
-  elif command -v install-me-cli >/dev/null 2>&1; then
-    install-me-cli
-  else
+  panel_cmd="$(command -v me-cli-panel 2>/dev/null || command -v install-me-cli 2>/dev/null || true)"
+  [[ -n "$panel_cmd" ]] && "$panel_cmd" || {
     echo "me-cli-panel/install-me-cli tidak ditemukan. Jalankan cek-update terlebih dahulu."
     sleep 2
     menu
-  fi
+  }
   ;;
 *) clear ; menu ;;
 esac
