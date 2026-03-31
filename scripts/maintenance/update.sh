@@ -7,6 +7,8 @@ TARGET_SBIN="/usr/local/sbin"
 STATE_FILE="/etc/kyt/panelxray-revision"
 TMP_DIR="/tmp/panelxray-update.$$"
 BRANCH="${PANELXRAY_BRANCH:-}"
+MECLI_ASSET_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
+MECLI_INSTALL_DIR="/opt/vpnxray-me-cli-sunset"
 
 cleanup() {
     rm -rf "$TMP_DIR"
@@ -274,6 +276,47 @@ sync_kyt_bot_assets() {
     fi
 }
 
+sync_me_cli_assets() {
+    local src_dir
+    src_dir="$TMP_DIR/limit/me-cli-sunset-main"
+
+    if [[ ! -d "$src_dir" ]]; then
+        echo -e "\033[1;31mAsset me-cli tidak ditemukan di source update, sinkronisasi dilewati.\033[0m"
+        return 0
+    fi
+
+    mkdir -p "$MECLI_ASSET_DIR"
+    find "$MECLI_ASSET_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    cp -a "$src_dir"/. "$MECLI_ASSET_DIR"/
+
+    rm -rf "$MECLI_ASSET_DIR/.git" "$MECLI_ASSET_DIR/.venv" "$MECLI_ASSET_DIR/logs" "$MECLI_ASSET_DIR/run" "$MECLI_ASSET_DIR/__pycache__"
+    find "$MECLI_ASSET_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+    find "$MECLI_ASSET_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
+    rm -f "$MECLI_ASSET_DIR/.env"
+}
+
+auto_refresh_me_cli_runtime() {
+    local installer sync_log
+    installer="${TARGET_SBIN}/install-me-cli"
+    sync_log="/tmp/panelxray-me-cli-sync.log"
+
+    if [[ ! -d "$MECLI_INSTALL_DIR" ]]; then
+        return 0
+    fi
+
+    if [[ ! -x "$installer" ]]; then
+        echo -e "\033[1;31mSinkronisasi runtime me-cli dilewati: installer $installer tidak ditemukan.\033[0m"
+        return 0
+    fi
+
+    echo -e "\033[1;33mme-cli terpasang, menjalankan sinkronisasi runtime...\033[0m"
+    if "$installer" --sync-only --non-interactive >"$sync_log" 2>&1; then
+        echo -e "\033[0;32mSinkronisasi runtime me-cli berhasil.\033[0m"
+    else
+        echo -e "\033[1;31mSinkronisasi runtime me-cli gagal. Lihat log: $sync_log\033[0m"
+    fi
+}
+
 is_webpanel_present() {
     if systemctl list-unit-files 2>/dev/null | grep -q '^vpnxray-webpanel\.service'; then
         return 0
@@ -365,6 +408,8 @@ chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
 run_webpanel_regression_gate
 sync_runtime_configs
 sync_kyt_bot_assets
+sync_me_cli_assets
+auto_refresh_me_cli_runtime
 auto_fix_webpanel_route
 echo "$new_sha" > "$STATE_FILE"
 
@@ -375,4 +420,6 @@ echo -e "Target path  : $TARGET_SBIN"
 echo -e "Regression   : panel gate dijalankan otomatis (set PANEL_REGRESSION_GATE=0 untuk bypass darurat)"
 echo -e "Runtime cfg  : nginx/haproxy/ws synced"
 echo -e "Bot assets   : /usr/bin/kyt + bot scripts synced"
+echo -e "ME-CLI assets: $MECLI_ASSET_DIR synced"
+echo -e "ME-CLI sync  : runtime me-cli di-refresh otomatis bila sudah terpasang"
 echo -e "Web panel    : sinkronisasi panel + auto-fix /panel dijalankan jika panel terdeteksi"

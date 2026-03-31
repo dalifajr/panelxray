@@ -1,0 +1,223 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_NAME="vpnxray-me-cli-sunset"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="/opt/${APP_NAME}"
+VENV_DIR="${INSTALL_DIR}/.venv"
+ASSET_CACHE_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
+TMP_ASSET_DIR="/tmp/${APP_NAME}-asset.$$"
+REPO_URL="https://github.com/dalifajr/panelxray.git"
+
+SYNC_ONLY=0
+NON_INTERACTIVE=0
+
+cleanup() {
+  rm -rf "${TMP_ASSET_DIR}"
+}
+trap cleanup EXIT
+
+log() {
+  echo "[INFO] $*"
+}
+
+warn() {
+  echo "[WARN] $*" >&2
+}
+
+die() {
+  echo "[ERROR] $*" >&2
+  exit 1
+}
+
+require_root() {
+  [[ "${EUID}" -eq 0 ]] || die "Jalankan script ini sebagai root."
+}
+
+parse_args() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --sync-only)
+        SYNC_ONLY=1
+        ;;
+      --non-interactive)
+        NON_INTERACTIVE=1
+        ;;
+      *)
+        die "Argumen tidak dikenal: $arg"
+        ;;
+    esac
+  done
+}
+
+install_system_deps() {
+  log "Memastikan dependency sistem terpasang"
+  apt-get update -y >/dev/null 2>&1 || true
+  apt-get install -y python3 python3-venv python3-pip build-essential git curl >/dev/null 2>&1
+}
+
+resolve_source_dir() {
+  local candidate
+  local candidates=(
+    "${ASSET_CACHE_DIR}"
+    "${SCRIPT_DIR}/../me-cli-sunset-main"
+    "${SCRIPT_DIR}/../../limit/me-cli-sunset-main"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if [[ -d "${candidate}" && -f "${candidate}/requirements.txt" && -f "${candidate}/main.py" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+clone_source_fallback() {
+  rm -rf "${TMP_ASSET_DIR}"
+  if git clone --depth 1 "${REPO_URL}" "${TMP_ASSET_DIR}" >/dev/null 2>&1; then
+    if [[ -d "${TMP_ASSET_DIR}/limit/me-cli-sunset-main" ]]; then
+      printf '%s' "${TMP_ASSET_DIR}/limit/me-cli-sunset-main"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+sync_assets() {
+  local source_dir="$1"
+  local preserve_dir
+  local preserve_files
+  preserve_dir="$(mktemp -d /tmp/${APP_NAME}-preserve.XXXXXX)"
+  preserve_files=(
+    ".env"
+    "user_allow.txt"
+    "active.number"
+    "bookmark.json"
+    "refresh-tokens.json"
+    "ax.fp"
+  )
+
+  mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/logs" "${INSTALL_DIR}/run"
+
+  for file in "${preserve_files[@]}"; do
+    if [[ -f "${INSTALL_DIR}/${file}" ]]; then
+      cp -f "${INSTALL_DIR}/${file}" "${preserve_dir}/${file}"
+    fi
+  done
+
+  find "${INSTALL_DIR}" -mindepth 1 -maxdepth 1 \
+    ! -name ".venv" \
+    ! -name "logs" \
+    ! -name "run" \
+    -exec rm -rf {} + 2>/dev/null || true
+
+  cp -a "${source_dir}/." "${INSTALL_DIR}/"
+
+  rm -rf "${INSTALL_DIR}/.git" "${INSTALL_DIR}/.venv" "${INSTALL_DIR}/logs" "${INSTALL_DIR}/run"
+  rm -rf "${INSTALL_DIR}/__pycache__"
+  find "${INSTALL_DIR}" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+  find "${INSTALL_DIR}" -type f -name "*.pyc" -delete 2>/dev/null || true
+  rm -f "${INSTALL_DIR}/.env"
+
+  mkdir -p "${INSTALL_DIR}/logs" "${INSTALL_DIR}/run"
+
+  for file in "${preserve_files[@]}"; do
+    if [[ -f "${preserve_dir}/${file}" ]]; then
+      cp -f "${preserve_dir}/${file}" "${INSTALL_DIR}/${file}"
+    fi
+  done
+
+  rm -rf "${preserve_dir}"
+
+  if [[ ! -f "${INSTALL_DIR}/.env" && -f "${INSTALL_DIR}/.env.template" ]]; then
+    cp -f "${INSTALL_DIR}/.env.template" "${INSTALL_DIR}/.env"
+  fi
+
+  chmod +x "${INSTALL_DIR}/panel.sh" 2>/dev/null || true
+}
+
+setup_python_env() {
+  log "Menyiapkan virtual environment me-cli"
+  python3 -m venv "${VENV_DIR}"
+  "${VENV_DIR}/bin/pip" install --upgrade pip >/dev/null 2>&1
+  "${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
+}
+
+read_kv() {
+  local file="$1"
+  local key="$2"
+  local line
+  local value
+
+  [[ -f "${file}" ]] || return 0
+  line="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "${file}" | tail -n 1 || true)"
+  [[ -n "${line}" ]] || return 0
+
+  value="${line#*=}"
+  value="$(printf '%s' "${value}" | tr -d '\r')"
+  value="$(printf '%s' "${value}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "${value}"
+}
+
+check_token_conflict() {
+  local me_token
+  local kyt_token
+
+  me_token="$(read_kv "${INSTALL_DIR}/.env" "TELEGRAM_BOT_TOKEN" || true)"
+  kyt_token="$(read_kv "/usr/bin/kyt/var.txt" "BOT_TOKEN" || true)"
+
+  if [[ -z "${me_token}" || "${me_token}" == "your_bot_token_here" ]]; then
+    warn "TELEGRAM_BOT_TOKEN belum di-set di ${INSTALL_DIR}/.env"
+    return 0
+  fi
+
+  if [[ -n "${kyt_token}" && "${me_token}" == "${kyt_token}" ]]; then
+    warn "TELEGRAM_BOT_TOKEN me-cli sama dengan BOT_TOKEN kyt."
+    warn "Ganti token di ${INSTALL_DIR}/.env agar dua bot tidak bentrok saat berjalan bersamaan."
+  fi
+}
+
+show_result() {
+  echo
+  log "Install/sinkronisasi me-cli selesai"
+  log "Lokasi app : ${INSTALL_DIR}"
+  log "Panel me-cli: jalankan command me-cli-panel dari menu utama"
+  if [[ "${SYNC_ONLY}" -eq 1 ]]; then
+    log "Mode        : sync-only (dipanggil dari updater)"
+  fi
+}
+
+main() {
+  local source_dir
+
+  parse_args "$@"
+  require_root
+  install_system_deps
+
+  source_dir="$(resolve_source_dir || true)"
+  if [[ -z "${source_dir}" ]]; then
+    log "Asset lokal tidak ditemukan, mencoba ambil dari repository"
+    source_dir="$(clone_source_fallback || true)"
+  fi
+  [[ -n "${source_dir}" ]] || die "Asset me-cli-sunset-main tidak ditemukan"
+
+  sync_assets "${source_dir}"
+  setup_python_env
+  check_token_conflict
+
+  if [[ "${NON_INTERACTIVE}" -eq 0 && -t 0 && "${SYNC_ONLY}" -eq 0 ]]; then
+    echo "Edit konfigurasi .env jika belum berisi token Telegram yang valid:"
+    echo "  nano ${INSTALL_DIR}/.env"
+  fi
+
+  show_result
+}
+
+main "$@"

@@ -1,0 +1,56 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+set -euo pipefail
+
+APP_DIR="/opt/vpnxray-me-cli-sunset"
+INSTALLER="/usr/local/sbin/install-me-cli"
+
+open_panel() {
+  cd "$APP_DIR"
+  bash "$APP_DIR/panel.sh"
+}
+
+offer_install() {
+  clear
+  echo "MYnyak Engsel (me-cli) belum terpasang."
+  if [[ ! -x "$INSTALLER" ]]; then
+    echo "Installer tidak ditemukan: $INSTALLER"
+    return 1
+  fi
+
+  if [[ -t 0 ]]; then
+    read -rp "Install sekarang? [y/N]: " ans
+    if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+      return 1
+    fi
+  fi
+
+  "$INSTALLER"
+  return 0
+}
+
+main() {
+  if [[ ! -x "$APP_DIR/panel.sh" ]]; then
+    if ! offer_install; then
+      command -v menu >/dev/null 2>&1 && menu
+      exit 0
+    fi
+  fi
+
+  if [[ ! -x "$APP_DIR/panel.sh" ]]; then
+    echo "Panel me-cli tidak ditemukan setelah proses instalasi."
+    exit 1
+  fi
+
+  open_panel || true
+  command -v menu >/dev/null 2>&1 && menu
+}
+
+main "$@"

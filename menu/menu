@@ -129,6 +129,7 @@ thm_menu_item 13 "UNINSTALL PANEL"
 thm_menu_item 14 "UPDATE PROGRAM"
 thm_menu_item 15 "STATUS SERVICE"
 thm_menu_item 16 "ZI-VPN PANEL (OPSIONAL)"
+thm_menu_item 17 "MYNYAK ENGSEL PANEL (OPSIONAL)"
 
 thm_section "SCRIPT INFO"
 thm_info_row "CLIENT" "$username"
@@ -139,10 +140,10 @@ thm_info_row "DAYS LEFT" "$days_left"
 thm_footer
 echo
 if declare -F thm_prompt >/dev/null; then
-  thm_prompt "Options [ 1 - 16 ] >>> "
+  thm_prompt "Options [ 1 - 17 ] >>> "
   read -r opt
 else
-  read -rp "Options [ 1 - 16 ] >>> " opt
+  read -rp "Options [ 1 - 17 ] >>> " opt
 fi
 echo
 
@@ -163,5 +164,6 @@ case "$opt" in
 14) clear ; cek-update ;;
 15) clear ; cek-service ;;
 16) clear ; zi-vpn ;;
+17) clear ; me-cli-panel ;;
 *) clear ; menu ;;
 esac
