@@ -164,6 +164,17 @@ case "$opt" in
 14) clear ; cek-update ;;
 15) clear ; cek-service ;;
 16) clear ; zi-vpn ;;
-17) clear ; me-cli-panel ;;
+17)
+  clear
+  if command -v me-cli-panel >/dev/null 2>&1; then
+    me-cli-panel
+  elif command -v install-me-cli >/dev/null 2>&1; then
+    install-me-cli
+  else
+    echo "me-cli-panel/install-me-cli tidak ditemukan. Jalankan cek-update terlebih dahulu."
+    sleep 2
+    menu
+  fi
+  ;;
 *) clear ; menu ;;
 esac

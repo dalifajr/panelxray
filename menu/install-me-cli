@@ -211,6 +211,7 @@ sync_assets() {
   [[ -f "${INSTALL_DIR}/requirements.txt" ]] || die "requirements.txt tidak ditemukan setelah sinkronisasi asset"
   [[ -f "${INSTALL_DIR}/main.py" ]] || die "main.py tidak ditemukan setelah sinkronisasi asset"
   [[ -f "${INSTALL_DIR}/telegram_main.py" ]] || die "telegram_main.py tidak ditemukan setelah sinkronisasi asset"
+  is_valid_source_dir "${INSTALL_DIR}" || die "struktur me-cli tidak lengkap setelah sinkronisasi (subfolder/subservice hilang)"
 
   chmod +x "${INSTALL_DIR}/panel.sh" 2>/dev/null || true
 }
