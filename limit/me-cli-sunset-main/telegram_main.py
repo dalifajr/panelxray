@@ -77,6 +77,8 @@ RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
 PAYMENT_LOCKS: dict[int, asyncio.Lock] = {}
 PAYMENT_CANCEL_FLAGS: dict[int, bool] = {}
 BALANCE_N_TASKS: dict[int, asyncio.Task] = {}
+ACCESS_REQUEST_LAST_SENT: dict[int, float] = {}
+ACCESS_REQUEST_COOLDOWN_SEC = 60
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,7 @@ def keyboard_main() -> InlineKeyboardMarkup:
             [("5 🧩 Option", "5"), ("6 👪 Family", "6"), ("7 🔁 Loop", "7"), ("8 🧾 Riwayat", "8")],
             [("9 👨‍👩‍👧 FamPlan", "9"), ("10 ⭕ Circle", "10"), ("11 🏪 Segments", "11"), ("12 🧬 Families", "12")],
             [("13 🛒 Store", "13"), ("14 🎟 Redeem", "14"), ("00 ⭐ Bookmark", "00")],
+            [("A 🛡 Akses User", "a")],
             [("R 📝 Register", "r"), ("N 🔔 Notif", "n"), ("V ✅ Validate", "v")],
             [("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")],
         ]
@@ -275,6 +278,23 @@ def keyboard_bookmark_menu() -> InlineKeyboardMarkup:
     )
 
 
+def keyboard_admin_access() -> InlineKeyboardMarkup:
+    return _mk_inline(
+        [
+            [("📋 List Allow", "allow_list"), ("➕ Add User", "allow_add")],
+            _row_home_cancel(),
+        ]
+    )
+
+
+def keyboard_request_access() -> InlineKeyboardMarkup:
+    return _mk_inline(
+        [
+            [("🙋 Minta Akses", "access_req")],
+        ]
+    )
+
+
 def keyboard_yes_no(yes_data: str, no_data: str) -> InlineKeyboardMarkup:
     return _mk_inline(
         [
@@ -348,6 +368,8 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup
         return keyboard_notif_menu()
     if state == "bookmark_menu":
         return keyboard_bookmark_menu()
+    if state == "admin_access_menu":
+        return keyboard_admin_access()
     if state == "await_package_unsub_confirm":
         return keyboard_yes_no("pkg_unsub_yes", "pkg_unsub_no")
     if state == "await_balance_n_decoy":
@@ -403,6 +425,7 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup
         "await_decoy_qris_manual_amount",
         "await_balance_n_count",
         "await_balance_n_delay",
+        "await_admin_allow_add_id",
     }:
         return keyboard_single_input()
     if state == "famplan_menu":
@@ -419,40 +442,199 @@ def _single_panel_text(text: str, max_len: int = 3900) -> str:
     return text[: (max_len - 40)] + "\n\n...[output dipotong]"
 
 
-def load_allowed_ids() -> set[int]:
+def load_allowed_id_list() -> list[int]:
     if not ALLOW_FILE.exists():
-        return set()
+        return []
 
-    allowed: set[int] = set()
+    allowed: list[int] = []
     for raw in ALLOW_FILE.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if line.isdigit():
-            allowed.add(int(line))
+            user_id = int(line)
+            if user_id not in allowed:
+                allowed.append(user_id)
     return allowed
 
 
-async def ensure_allowed(update: Update) -> bool:
+def load_allowed_ids() -> set[int]:
+    return set(load_allowed_id_list())
+
+
+def get_admin_id() -> int | None:
+    allowed = load_allowed_id_list()
+    return allowed[0] if allowed else None
+
+
+def is_admin_user(user_id: int | None) -> bool:
+    admin_id = get_admin_id()
+    return user_id is not None and admin_id is not None and user_id == admin_id
+
+
+def write_allowed_id_list(ids: list[int]):
+    cleaned: list[int] = []
+    for user_id in ids:
+        if isinstance(user_id, int) and user_id > 0 and user_id not in cleaned:
+            cleaned.append(user_id)
+
+    payload = ""
+    if cleaned:
+        payload = "\n".join(str(v) for v in cleaned) + "\n"
+    ALLOW_FILE.write_text(payload, encoding="utf-8")
+
+
+def append_allowed_id(user_id: int) -> bool:
+    if user_id <= 0:
+        return False
+
+    ids = load_allowed_id_list()
+    if user_id in ids:
+        return False
+
+    ids.append(user_id)
+    write_allowed_id_list(ids)
+    return True
+
+
+def _read_auth_meta(scope_key: str) -> tuple[int | None, int]:
+    if scope_key == "global":
+        scope_dir = ROOT_DIR
+    else:
+        scope_dir = ROOT_DIR / "user_data" / scope_key
+
+    refresh_file = scope_dir / "refresh-tokens.json"
+    active_file = scope_dir / "active.number"
+
+    token_count = 0
+    if refresh_file.exists():
+        try:
+            payload = json.loads(refresh_file.read_text(encoding="utf-8"))
+            if isinstance(payload, list):
+                token_count = len(payload)
+        except Exception:
+            token_count = 0
+
+    active_number: int | None = None
+    if active_file.exists():
+        raw = active_file.read_text(encoding="utf-8").strip()
+        if raw.isdigit():
+            active_number = int(raw)
+
+    return active_number, token_count
+
+
+def _allow_list_panel_text() -> str:
+    ids = load_allowed_id_list()
+    if not ids:
+        return (
+            "Allow list belum dikonfigurasi.\n"
+            "Isi user_allow.txt dan pastikan baris pertama adalah Telegram user id admin."
+        )
+
+    lines = [
+        "Kelola Akses Telegram",
+        f"Admin (baris pertama): {ids[0]}",
+        "Allow list:",
+    ]
+    for idx, user_id in enumerate(ids, start=1):
+        role = "ADMIN" if idx == 1 else "USER"
+        scope_key = "global" if idx == 1 else f"user_{user_id}"
+        active_number, token_count = _read_auth_meta(scope_key)
+        active_text = str(active_number) if active_number is not None else "-"
+        lines.append(f"{idx}. {user_id} [{role}] | akun={token_count} | aktif={active_text}")
+    lines.append("Gunakan tombol ➕ Add User untuk menambah Telegram user id.")
+    return "\n".join(lines)
+
+
+async def _submit_access_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    user = update.effective_user
+    if msg is None or user is None:
+        return
+
+    user_id = user.id
+    admin_id = get_admin_id()
+    if admin_id is None:
+        await msg.reply_text(
+            "Admin belum dikonfigurasi. Isi user_allow.txt dan pastikan baris pertama adalah Telegram user id admin."
+        )
+        return
+
+    if user_id == admin_id:
+        await msg.reply_text("Anda terdeteksi sebagai admin.")
+        return
+
+    now = time.time()
+    last_sent = ACCESS_REQUEST_LAST_SENT.get(user_id, 0)
+    if now - last_sent < ACCESS_REQUEST_COOLDOWN_SEC:
+        wait_for = int(ACCESS_REQUEST_COOLDOWN_SEC - (now - last_sent))
+        await msg.reply_text(f"Permintaan terakhir baru dikirim. Coba lagi {wait_for} detik lagi.")
+        return
+
+    ACCESS_REQUEST_LAST_SENT[user_id] = now
+
+    username = f"@{user.username}" if user.username else "(tidak ada)"
+    fullname = " ".join(filter(None, [user.first_name, user.last_name])) or "(tidak ada)"
+    text_admin = (
+        "Permintaan akses bot me-cli\n"
+        f"User ID: {user_id}\n"
+        f"Username: {username}\n"
+        f"Nama: {fullname}\n\n"
+        "Setujui atau tolak user ini?"
+    )
+    kb = _mk_inline([[ ("✅ Setujui", f"allow_approve:{user_id}"), ("❌ Tolak", f"allow_reject:{user_id}") ]])
+
+    try:
+        await context.bot.send_message(chat_id=admin_id, text=text_admin, reply_markup=kb)
+    except Exception:
+        await msg.reply_text("Gagal mengirim permintaan ke admin. Pastikan admin pernah chat bot ini terlebih dahulu.")
+        return
+
+    await msg.reply_text("Permintaan akses sudah dikirim ke admin. Tunggu persetujuan.")
+
+
+async def ensure_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     msg = update.effective_message
     if msg is None:
         return False
 
     user = update.effective_user
     user_id = user.id if user else None
-    allowed = load_allowed_ids()
+    allowed_ids = load_allowed_id_list()
+    allowed_set = set(allowed_ids)
+    admin_id = allowed_ids[0] if allowed_ids else None
 
-    if not allowed:
+    if not allowed_set:
         await msg.reply_text(
-            "Akses bot belum dikonfigurasi. Isi user_allow.txt dengan Telegram user id yang diizinkan.",
+            "Akses bot belum dikonfigurasi. Isi user_allow.txt dengan Telegram user id yang diizinkan (baris pertama = admin).",
             reply_markup=keyboard_main(),
         )
         return False
 
-    if user_id not in allowed:
-        await msg.reply_text("Akses ditolak untuk user ini.")
+    if user_id in allowed_set:
+        AuthInstance.set_runtime_owner(user_id, is_admin=(admin_id is not None and user_id == admin_id))
+        return True
+
+    callback_data = ""
+    if update.callback_query is not None:
+        callback_data = (update.callback_query.data or "").strip()
+
+    text_input = (msg.text or "").strip().lower()
+    if callback_data == "access_req" or text_input in {"/request_access", "request_access", "minta akses"}:
+        if update.callback_query is not None:
+            try:
+                await update.callback_query.answer("Permintaan akses diproses...")
+            except Exception:
+                pass
+        await _submit_access_request(update, context)
         return False
-    return True
+
+    await msg.reply_text(
+        "Akses ditolak untuk user ini. Tekan tombol berikut untuk mengirim permintaan akses ke admin.",
+        reply_markup=keyboard_request_access(),
+    )
+    return False
 
 
 async def _delete_user_input(update: Update):
@@ -714,11 +896,13 @@ def _normalize_choice(text: str) -> str:
         return "n"
     if t.startswith("v"):
         return "v"
+    if t == "a" or "akses user" in t:
+        return "a"
     return t
 
 
 def _state_help_content(state: str) -> tuple[str, list[str]]:
-    if state in {"home", "account_menu", "packages_menu", "history_menu", "notifications_menu", "bookmark_menu", "famplan_menu", "circle_menu"}:
+    if state in {"home", "account_menu", "packages_menu", "history_menu", "notifications_menu", "bookmark_menu", "famplan_menu", "circle_menu", "admin_access_menu"}:
         return (
             "Pilih menu sesuai kebutuhan. Tombol Home/Batal selalu tersedia untuk kembali ke area aman.",
             [
@@ -1927,7 +2111,7 @@ async def _show_package_detail_menu(
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await ensure_allowed(update):
+    if not await ensure_allowed(update, context):
         return
     set_flow(context, "home", {})
     home_panel = await asyncio.to_thread(_home_panel_text_sync)
@@ -1942,11 +2126,24 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await ensure_allowed(update):
+    if not await ensure_allowed(update, context):
         return
     set_flow(context, "home", {})
     home_panel = await asyncio.to_thread(_home_panel_text_sync)
     await render_panel(update, context, "State bot di-reset ke menu utama.\n\n" + home_panel)
+
+
+async def request_access_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    user = update.effective_user
+    if msg is None or user is None:
+        return
+
+    if user.id in load_allowed_ids():
+        await msg.reply_text("Akses Anda sudah aktif. Gunakan /start untuk membuka panel.")
+        return
+
+    await _submit_access_request(update, context)
 
 
 async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
@@ -1955,6 +2152,47 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
     flow = get_flow(context)
     state = flow.get("state", "home")
     data = flow.get("data", {})
+
+    if text.startswith("allow_approve:") or text.startswith("allow_reject:"):
+        actor_id = update.effective_user.id if update.effective_user else None
+        if not is_admin_user(actor_id):
+            await render_panel(update, context, "Aksi ini khusus admin.")
+            return
+
+        target_raw = text.split(":", 1)[1] if ":" in text else ""
+        if not target_raw.isdigit():
+            await render_panel(update, context, "Format callback approval tidak valid.")
+            return
+
+        target_id = int(target_raw)
+        set_flow(context, "admin_access_menu", {})
+
+        if text.startswith("allow_approve:"):
+            added = append_allowed_id(target_id)
+            result = (
+                f"User {target_id} disetujui dan ditambahkan ke allow list."
+                if added
+                else f"User {target_id} sudah ada di allow list."
+            )
+            await render_panel(update, context, result + "\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text="Permintaan akses Anda disetujui admin. Silakan kirim /start untuk menggunakan bot me-cli.",
+                )
+            except Exception:
+                pass
+            return
+
+        await render_panel(update, context, f"Permintaan akses user {target_id} ditolak.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+        try:
+            await context.bot.send_message(
+                chat_id=target_id,
+                text="Permintaan akses Anda ditolak admin.",
+            )
+        except Exception:
+            pass
+        return
 
     if text == "bal_n_cancel":
         chat = update.effective_chat
@@ -2355,6 +2593,55 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
             await render_panel(update, context, account_text + "\n\nPilih nomor akun yang ingin dihapus.")
             return
 
+    if state == "admin_access_menu":
+        actor_id = update.effective_user.id if update.effective_user else None
+        if not is_admin_user(actor_id):
+            set_flow(context, "home", {})
+            await render_panel(update, context, "Menu akses user hanya untuk admin.")
+            return
+
+        if text in {"allow_list", "📋 List Allow", "List Allow"}:
+            await render_panel(update, context, _allow_list_panel_text(), keyboard_admin_access())
+            return
+
+        if text in {"allow_add", "➕ Add User", "Add User"}:
+            set_flow(context, "await_admin_allow_add_id", {})
+            await render_panel(update, context, "Kirim Telegram user id yang ingin ditambahkan ke allow list.")
+            return
+
+    if state == "await_admin_allow_add_id":
+        actor_id = update.effective_user.id if update.effective_user else None
+        if not is_admin_user(actor_id):
+            set_flow(context, "home", {})
+            await render_panel(update, context, "Aksi ini hanya untuk admin.")
+            return
+
+        if not text.isdigit():
+            await render_panel(update, context, "Telegram user id harus angka. Contoh: 123456789")
+            return
+
+        target_id = int(text)
+        if target_id <= 0:
+            await render_panel(update, context, "Telegram user id tidak valid.")
+            return
+
+        added = append_allowed_id(target_id)
+        set_flow(context, "admin_access_menu", {})
+        if added:
+            result = f"User {target_id} berhasil ditambahkan ke allow list."
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text="Akses bot me-cli Anda sudah diaktifkan admin. Silakan kirim /start.",
+                )
+            except Exception:
+                pass
+        else:
+            result = f"User {target_id} sudah ada di allow list."
+
+        await render_panel(update, context, result + "\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+        return
+
     if state == "famplan_menu":
         if text in {"🔄 Refresh FamPlan", "Refresh FamPlan", "fam_refresh"}:
             snap_text, members = await asyncio.to_thread(_famplan_snapshot_sync)
@@ -2490,6 +2777,16 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         await render_panel(update, context, await asyncio.to_thread(_bookmark_text_sync))
         return
 
+    if choice == "a":
+        actor_id = update.effective_user.id if update.effective_user else None
+        if not is_admin_user(actor_id):
+            await render_panel(update, context, "Menu Akses User hanya untuk admin.")
+            return
+
+        set_flow(context, "admin_access_menu", {})
+        await render_panel(update, context, _allow_list_panel_text(), keyboard_admin_access())
+        return
+
     if lowered == "add bookmark":
         set_flow(context, "await_bookmark_add", {})
         await render_panel(update, context, "Kirim format: family_code|is_enterprise(0/1)|variant_name|option_name|order")
@@ -2526,7 +2823,7 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await ensure_allowed(update):
+    if not await ensure_allowed(update, context):
         return
 
     message = update.effective_message
@@ -2539,7 +2836,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await ensure_allowed(update):
+    if not await ensure_allowed(update, context):
         return
 
     query = update.callback_query
@@ -2559,6 +2856,7 @@ def build_application() -> Application:
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("stop", stop_cmd))
+    app.add_handler(CommandHandler("request_access", request_access_cmd))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     return app

@@ -159,24 +159,28 @@ clone_source_fallback() {
 sync_assets() {
   local source_dir="$1"
   local preserve_dir
-  local preserve_files
+  local preserve_entries
+  local entry
   preserve_dir="$(mktemp -d /tmp/${APP_NAME}-preserve.XXXXXX)"
-  preserve_files=(
+  preserve_entries=(
     ".env"
     "user_allow.txt"
     "active.number"
     "bookmark.json"
     "refresh-tokens.json"
     "ax.fp"
+    "user_data"
   )
 
   is_valid_source_dir "${source_dir}" || die "Source me-cli tidak valid atau tidak lengkap di ${source_dir}"
 
   mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/logs" "${INSTALL_DIR}/run"
 
-  for file in "${preserve_files[@]}"; do
-    if [[ -f "${INSTALL_DIR}/${file}" ]]; then
-      cp -f "${INSTALL_DIR}/${file}" "${preserve_dir}/${file}"
+  for entry in "${preserve_entries[@]}"; do
+    if [[ -f "${INSTALL_DIR}/${entry}" ]]; then
+      cp -f "${INSTALL_DIR}/${entry}" "${preserve_dir}/${entry}"
+    elif [[ -d "${INSTALL_DIR}/${entry}" ]]; then
+      cp -a "${INSTALL_DIR}/${entry}" "${preserve_dir}/${entry}"
     fi
   done
 
@@ -196,9 +200,11 @@ sync_assets() {
 
   mkdir -p "${INSTALL_DIR}/logs" "${INSTALL_DIR}/run"
 
-  for file in "${preserve_files[@]}"; do
-    if [[ -f "${preserve_dir}/${file}" ]]; then
-      cp -f "${preserve_dir}/${file}" "${INSTALL_DIR}/${file}"
+  for entry in "${preserve_entries[@]}"; do
+    if [[ -f "${preserve_dir}/${entry}" ]]; then
+      cp -f "${preserve_dir}/${entry}" "${INSTALL_DIR}/${entry}"
+    elif [[ -d "${preserve_dir}/${entry}" ]]; then
+      cp -a "${preserve_dir}/${entry}" "${INSTALL_DIR}/${entry}"
     fi
   done
 
