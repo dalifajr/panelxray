@@ -1,0 +1,3 @@
+# Daftar user id Telegram yang diizinkan mengakses bot.
+# Satu id per baris, contoh:
+1167516058

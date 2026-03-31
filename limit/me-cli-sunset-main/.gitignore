@@ -1,0 +1,16 @@
+.vscode
+env
+.env
+tokens*
+__pycache__/
+.vscode/
+*.ipynb
+play*
+pg*
+refresh-tokens*
+ax.fp
+bookmark.json
+active.number
+run/
+logs/
+*.pid
