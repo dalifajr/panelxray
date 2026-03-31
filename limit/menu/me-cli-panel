@@ -11,6 +11,48 @@ set -euo pipefail
 
 APP_DIR="/opt/vpnxray-me-cli-sunset"
 INSTALLER="/usr/local/sbin/install-me-cli"
+KYT_VAR_FILE="/usr/bin/kyt/var.txt"
+
+read_kv() {
+  local file="$1"
+  local key="$2"
+  local line
+  local value
+
+  [[ -f "$file" ]] || return 0
+  line="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$file" | tail -n 1 || true)"
+  [[ -n "$line" ]] || return 0
+
+  value="${line#*=}"
+  value="$(printf '%s' "$value" | tr -d '\r')"
+  value="$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "$value"
+}
+
+ensure_non_conflicting_bot_token() {
+  local me_token
+  local kyt_token
+
+  me_token="$(read_kv "$APP_DIR/.env" "TELEGRAM_BOT_TOKEN" || true)"
+  kyt_token="$(read_kv "$KYT_VAR_FILE" "BOT_TOKEN" || true)"
+
+  if [[ -z "$me_token" || "$me_token" == "your_bot_token_here" ]]; then
+    echo "TELEGRAM_BOT_TOKEN belum valid di $APP_DIR/.env"
+    return 1
+  fi
+
+  if [[ -n "$kyt_token" && "$me_token" == "$kyt_token" ]]; then
+    echo "Token Telegram me-cli sama dengan token bot panel vpnxray (kyt)."
+    echo "Ganti TELEGRAM_BOT_TOKEN di $APP_DIR/.env agar dua bot tidak bentrok."
+    return 1
+  fi
+
+  return 0
+}
 
 open_panel() {
   cd "$APP_DIR"
@@ -47,6 +89,11 @@ main() {
   if [[ ! -x "$APP_DIR/panel.sh" ]]; then
     echo "Panel me-cli tidak ditemukan setelah proses instalasi."
     exit 1
+  fi
+
+  if ! ensure_non_conflicting_bot_token; then
+    command -v menu >/dev/null 2>&1 && menu
+    exit 0
   fi
 
   open_panel || true

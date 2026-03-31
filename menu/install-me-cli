@@ -7,7 +7,8 @@ INSTALL_DIR="/opt/${APP_NAME}"
 VENV_DIR="${INSTALL_DIR}/.venv"
 ASSET_CACHE_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
 TMP_ASSET_DIR="/tmp/${APP_NAME}-asset.$$"
-REPO_URL="https://github.com/dalifajr/panelxray.git"
+PANELXRAY_REPO_URL="https://github.com/dalifajr/panelxray.git"
+MECLI_UPSTREAM_REPO_URL="https://github.com/dalifajr/xl-cli.git"
 
 SYNC_ONLY=0
 NON_INTERACTIVE=0
@@ -57,6 +58,44 @@ install_system_deps() {
   apt-get install -y python3 python3-venv python3-pip build-essential git curl >/dev/null 2>&1
 }
 
+is_valid_source_dir() {
+  local dir="$1"
+  [[ -d "${dir}" ]] || return 1
+  [[ -f "${dir}/requirements.txt" ]] || return 1
+  [[ -f "${dir}/main.py" ]] || return 1
+  [[ -f "${dir}/panel.sh" ]] || return 1
+  [[ -f "${dir}/telegram_main.py" ]] || return 1
+  return 0
+}
+
+search_source_in_tree() {
+  local root="$1"
+  local candidate
+  local static_candidates=(
+    "${root}/limit/me-cli-sunset-main"
+    "${root}/me-cli-sunset-main"
+    "${root}/me-cli-sunset"
+    "${root}"
+  )
+
+  for candidate in "${static_candidates[@]}"; do
+    if is_valid_source_dir "${candidate}"; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
+
+  while IFS= read -r candidate; do
+    candidate="$(dirname "${candidate}")"
+    if is_valid_source_dir "${candidate}"; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done < <(find "${root}" -maxdepth 5 -type f -name "requirements.txt" 2>/dev/null)
+
+  return 1
+}
+
 resolve_source_dir() {
   local candidate
   local candidates=(
@@ -66,7 +105,7 @@ resolve_source_dir() {
   )
 
   for candidate in "${candidates[@]}"; do
-    if [[ -d "${candidate}" && -f "${candidate}/requirements.txt" && -f "${candidate}/main.py" ]]; then
+    if is_valid_source_dir "${candidate}"; then
       printf '%s' "${candidate}"
       return 0
     fi
@@ -76,13 +115,31 @@ resolve_source_dir() {
 }
 
 clone_source_fallback() {
+  local candidate
+  local panel_repo_dir
+  local upstream_repo_dir
+
   rm -rf "${TMP_ASSET_DIR}"
-  if git clone --depth 1 "${REPO_URL}" "${TMP_ASSET_DIR}" >/dev/null 2>&1; then
-    if [[ -d "${TMP_ASSET_DIR}/limit/me-cli-sunset-main" ]]; then
-      printf '%s' "${TMP_ASSET_DIR}/limit/me-cli-sunset-main"
+  mkdir -p "${TMP_ASSET_DIR}"
+
+  panel_repo_dir="${TMP_ASSET_DIR}/panelxray"
+  if git clone --depth 1 "${PANELXRAY_REPO_URL}" "${panel_repo_dir}" >/dev/null 2>&1; then
+    candidate="$(search_source_in_tree "${panel_repo_dir}" || true)"
+    if [[ -n "${candidate}" ]]; then
+      printf '%s' "${candidate}"
       return 0
     fi
   fi
+
+  upstream_repo_dir="${TMP_ASSET_DIR}/mecli-upstream"
+  if git clone --depth 1 "${MECLI_UPSTREAM_REPO_URL}" "${upstream_repo_dir}" >/dev/null 2>&1; then
+    candidate="$(search_source_in_tree "${upstream_repo_dir}" || true)"
+    if [[ -n "${candidate}" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  fi
+
   return 1
 }
 
@@ -99,6 +156,8 @@ sync_assets() {
     "refresh-tokens.json"
     "ax.fp"
   )
+
+  is_valid_source_dir "${source_dir}" || die "Source me-cli tidak valid atau tidak lengkap di ${source_dir}"
 
   mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/logs" "${INSTALL_DIR}/run"
 
@@ -135,6 +194,10 @@ sync_assets() {
   if [[ ! -f "${INSTALL_DIR}/.env" && -f "${INSTALL_DIR}/.env.template" ]]; then
     cp -f "${INSTALL_DIR}/.env.template" "${INSTALL_DIR}/.env"
   fi
+
+  [[ -f "${INSTALL_DIR}/requirements.txt" ]] || die "requirements.txt tidak ditemukan setelah sinkronisasi asset"
+  [[ -f "${INSTALL_DIR}/main.py" ]] || die "main.py tidak ditemukan setelah sinkronisasi asset"
+  [[ -f "${INSTALL_DIR}/telegram_main.py" ]] || die "telegram_main.py tidak ditemukan setelah sinkronisasi asset"
 
   chmod +x "${INSTALL_DIR}/panel.sh" 2>/dev/null || true
 }
@@ -206,7 +269,7 @@ main() {
     log "Asset lokal tidak ditemukan, mencoba ambil dari repository"
     source_dir="$(clone_source_fallback || true)"
   fi
-  [[ -n "${source_dir}" ]] || die "Asset me-cli-sunset-main tidak ditemukan"
+  [[ -n "${source_dir}" ]] || die "Asset me-cli tidak ditemukan di cache lokal maupun repo fallback"
 
   sync_assets "${source_dir}"
   setup_python_env

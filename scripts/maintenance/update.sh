@@ -9,6 +9,7 @@ TMP_DIR="/tmp/panelxray-update.$$"
 BRANCH="${PANELXRAY_BRANCH:-}"
 MECLI_ASSET_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
 MECLI_INSTALL_DIR="/opt/vpnxray-me-cli-sunset"
+MECLI_UPSTREAM_REPO_URL="https://github.com/dalifajr/xl-cli.git"
 
 cleanup() {
     rm -rf "$TMP_DIR"
@@ -276,18 +277,65 @@ sync_kyt_bot_assets() {
     fi
 }
 
-sync_me_cli_assets() {
-    local src_dir
-    src_dir="$TMP_DIR/limit/me-cli-sunset-main"
+is_valid_me_cli_source() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 1
+    [[ -f "$dir/requirements.txt" ]] || return 1
+    [[ -f "$dir/main.py" ]] || return 1
+    [[ -f "$dir/panel.sh" ]] || return 1
+    [[ -f "$dir/telegram_main.py" ]] || return 1
+    return 0
+}
 
-    if [[ ! -d "$src_dir" ]]; then
-        echo -e "\033[1;31mAsset me-cli tidak ditemukan di source update, sinkronisasi dilewati.\033[0m"
+resolve_me_cli_source_dir() {
+    local root="$1"
+    local candidate
+    local candidates=(
+        "$root"
+        "$root/limit/me-cli-sunset-main"
+        "$root/me-cli-sunset-main"
+        "$root/me-cli-sunset"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if is_valid_me_cli_source "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+
+    while IFS= read -r candidate; do
+        candidate="$(dirname "$candidate")"
+        if is_valid_me_cli_source "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done < <(find "$root" -maxdepth 5 -type f -name "requirements.txt" 2>/dev/null)
+
+    return 1
+}
+
+sync_me_cli_assets() {
+    local src_dir resolved_src upstream_dir
+    src_dir="$TMP_DIR/limit/me-cli-sunset-main"
+    resolved_src="$(resolve_me_cli_source_dir "$src_dir" || true)"
+
+    if [[ -z "$resolved_src" ]]; then
+        upstream_dir="$TMP_DIR/mecli-upstream"
+        rm -rf "$upstream_dir"
+        if git clone --depth 1 "$MECLI_UPSTREAM_REPO_URL" "$upstream_dir" >/dev/null 2>&1; then
+            resolved_src="$(resolve_me_cli_source_dir "$upstream_dir" || true)"
+        fi
+    fi
+
+    if [[ -z "$resolved_src" ]]; then
+        echo -e "\033[1;31mAsset me-cli valid tidak ditemukan (source update/upstream), sinkronisasi dilewati.\033[0m"
         return 0
     fi
 
     mkdir -p "$MECLI_ASSET_DIR"
     find "$MECLI_ASSET_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
-    cp -a "$src_dir"/. "$MECLI_ASSET_DIR"/
+    cp -a "$resolved_src"/. "$MECLI_ASSET_DIR"/
 
     rm -rf "$MECLI_ASSET_DIR/.git" "$MECLI_ASSET_DIR/.venv" "$MECLI_ASSET_DIR/logs" "$MECLI_ASSET_DIR/run" "$MECLI_ASSET_DIR/__pycache__"
     find "$MECLI_ASSET_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
