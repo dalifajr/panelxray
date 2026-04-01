@@ -148,6 +148,43 @@ ensure_dropbear_legacy_runtime() {
   fi
 }
 
+disable_legacy_daily_reboot() {
+  local cron_file backup_file
+  cron_file="/etc/cron.d/daily_reboot"
+
+  if [ -f "$cron_file" ] && grep -q '/sbin/reboot' "$cron_file" 2>/dev/null; then
+    backup_file="${cron_file}.disabled.$(date +%Y%m%d%H%M%S)"
+    cp -f "$cron_file" "$backup_file" 2>/dev/null || true
+    rm -f "$cron_file"
+    echo -e "${yellow}Legacy auto reboot dimatikan untuk mencegah lockout SSH. Backup: $backup_file${NC}"
+  fi
+
+  mkdir -p /home
+  echo "0" >/home/daily_reboot 2>/dev/null || true
+}
+
+ensure_ssh_ports_in_iptables_rules() {
+  local rules_file changed port
+  rules_file="/etc/iptables/rules.v4"
+  changed=0
+
+  [ -f "$rules_file" ] || return 0
+
+  for port in 22 2222 2223 143 109; do
+    if ! grep -qE "^-A INPUT -p tcp -m tcp --dport ${port} -j ACCEPT$" "$rules_file" 2>/dev/null; then
+      sed -i "/^:OUTPUT /i -A INPUT -p tcp -m tcp --dport ${port} -j ACCEPT" "$rules_file" 2>/dev/null || true
+      changed=1
+    fi
+  done
+
+  if [ "$changed" -eq 1 ]; then
+    echo -e "${yellow}Menambahkan rule ACCEPT untuk port SSH management di $rules_file${NC}"
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+      netfilter-persistent reload >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
 sync_runtime_configs() {
   local domain
   domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
@@ -191,6 +228,8 @@ sync_runtime_configs() {
   fi
 
   ensure_dropbear_legacy_runtime
+  disable_legacy_daily_reboot
+  ensure_ssh_ports_in_iptables_rules
 
   mkdir -p /etc/systemd/system/dropbear.service.d
   printf '%s\n' \

@@ -445,15 +445,12 @@ END
 	END
     chmod 644 /root/.profile
 
-    cat >/etc/cron.d/daily_reboot <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		0 5 * * * root /sbin/reboot
-	END
+    # Do not enable hidden reboot scheduler by default.
+    rm -f /etc/cron.d/daily_reboot
 
     service cron restart
     cat >/home/daily_reboot <<-END
-		5
+        0
 	END
     cat >/etc/cron.d/x_limp <<-END
 		SHELL=/bin/sh
