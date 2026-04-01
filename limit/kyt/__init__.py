@@ -92,7 +92,8 @@ def _write_allow_list_ids(admin_id: str, user_ids: List[str]):
 
 
 def _sync_allow_list_from_db():
-	db = get_db()
+	db = sqlite3.connect(DB_FILE)
+	db.row_factory = sqlite3.Row
 	try:
 		rows = db.execute(
 			"""
