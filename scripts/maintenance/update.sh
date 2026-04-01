@@ -507,9 +507,6 @@ cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
 run_webpanel_regression_gate
 sync_runtime_configs
-sync_kyt_bot_assets
-sync_me_cli_assets
-auto_refresh_me_cli_runtime
 auto_fix_webpanel_route
 echo "$new_sha" > "$STATE_FILE"
 
@@ -519,7 +516,4 @@ echo -e "New revision : $new_sha"
 echo -e "Target path  : $TARGET_SBIN"
 echo -e "Regression   : panel gate dijalankan otomatis (set PANEL_REGRESSION_GATE=0 untuk bypass darurat)"
 echo -e "Runtime cfg  : nginx/haproxy/ws synced"
-echo -e "Bot assets   : /usr/bin/kyt + bot scripts synced"
-echo -e "ME-CLI assets: $MECLI_ASSET_DIR synced"
-echo -e "ME-CLI sync  : runtime me-cli di-refresh otomatis bila sudah terpasang"
 echo -e "Web panel    : sinkronisasi panel + auto-fix /panel dijalankan jika panel terdeteksi"
