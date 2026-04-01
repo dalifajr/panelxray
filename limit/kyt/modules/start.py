@@ -1,7 +1,7 @@
 from kyt import *
 from kyt.modules.ui import require_access, menu_credit
 
-@bot.on(events.NewMessage(pattern=r"(?:\.start|/start|\.mulai|/mulai)$"))
+@bot.on(events.NewMessage(pattern=r"(?i)^(?:[./](?:start|mulai)(?:@\w+)?)\s*$"))
 @bot.on(events.CallbackQuery(data=b'start'))
 async def start(event):
 	inline = [

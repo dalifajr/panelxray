@@ -113,6 +113,94 @@ def _sync_allow_list_from_db():
 	_write_allow_list_ids(admin_id, approved_ids)
 
 
+def _table_columns(cursor, table_name: str) -> set:
+	try:
+		rows = cursor.execute(f"PRAGMA table_info({table_name})").fetchall()
+		return {str(row[1]) for row in rows}
+	except Exception:
+		return set()
+
+
+def _add_column_if_missing(cursor, table_name: str, column_name: str, column_sql: str):
+	cols = _table_columns(cursor, table_name)
+	if column_name in cols:
+		return
+	cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def _migrate_legacy_schema(cursor):
+	# Ensure legacy installs are upgraded in-place so new access/quota queries do not fail.
+	_add_column_if_missing(cursor, "telegram_users", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "telegram_users", "username", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "telegram_users", "full_name", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "telegram_users", "role", "TEXT NOT NULL DEFAULT 'user'")
+	_add_column_if_missing(cursor, "telegram_users", "status", "TEXT NOT NULL DEFAULT 'pending'")
+	_add_column_if_missing(cursor, "telegram_users", "note", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "telegram_users", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "telegram_users", "updated_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "access_requests", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "access_requests", "username", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "full_name", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "status", "TEXT NOT NULL DEFAULT 'pending'")
+	_add_column_if_missing(cursor, "access_requests", "admin_id", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "admin_reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "processed_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "quota_limits", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "quota_limits", "ssh_limit", "INTEGER NOT NULL DEFAULT 0")
+	_add_column_if_missing(cursor, "quota_limits", "xray_limit", "INTEGER NOT NULL DEFAULT 0")
+	_add_column_if_missing(cursor, "quota_limits", "updated_by", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_limits", "updated_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "quota_requests", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "quota_requests", "reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "status", "TEXT NOT NULL DEFAULT 'pending'")
+	_add_column_if_missing(cursor, "quota_requests", "admin_id", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "admin_reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "processed_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "account_registry", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "service", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "category", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "username", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "expires_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "account_registry", "is_trial", "INTEGER NOT NULL DEFAULT 0")
+	_add_column_if_missing(cursor, "account_registry", "active", "INTEGER NOT NULL DEFAULT 1")
+	_add_column_if_missing(cursor, "account_registry", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "account_registry", "updated_at", "TEXT DEFAULT ''")
+
+	# Backfill tg_id from legacy admin table when needed.
+	cursor.execute(
+		"""
+		UPDATE telegram_users
+		SET tg_id = (SELECT user_id FROM admin LIMIT 1)
+		WHERE (tg_id IS NULL OR tg_id = '')
+		  AND role = 'admin'
+		"""
+	)
+
+	cursor.execute("UPDATE telegram_users SET role = 'user' WHERE role IS NULL OR role = ''")
+	cursor.execute("UPDATE telegram_users SET status = 'pending' WHERE status IS NULL OR status = ''")
+	cursor.execute("UPDATE telegram_users SET note = '' WHERE note IS NULL")
+	cursor.execute("UPDATE telegram_users SET username = '' WHERE username IS NULL")
+	cursor.execute("UPDATE telegram_users SET full_name = '' WHERE full_name IS NULL")
+	cursor.execute("UPDATE telegram_users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE telegram_users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
+	cursor.execute("UPDATE access_requests SET status = 'pending' WHERE status IS NULL OR status = ''")
+	cursor.execute("UPDATE access_requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE access_requests SET processed_at = '' WHERE processed_at IS NULL")
+	cursor.execute("UPDATE quota_limits SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
+	cursor.execute("UPDATE quota_requests SET status = 'pending' WHERE status IS NULL OR status = ''")
+	cursor.execute("UPDATE quota_requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE quota_requests SET processed_at = '' WHERE processed_at IS NULL")
+	cursor.execute("UPDATE account_registry SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE account_registry SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
+
+
 def _bootstrap_db():
 	x = sqlite3.connect(DB_FILE)
 	c = x.cursor()
@@ -188,6 +276,7 @@ def _bootstrap_db():
 		)
 		"""
 	)
+	_migrate_legacy_schema(c)
 	c.execute("CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status, created_at)")
 	c.execute("CREATE INDEX IF NOT EXISTS idx_quota_requests_status ON quota_requests(status, created_at)")
 	c.execute("CREATE INDEX IF NOT EXISTS idx_account_registry_owner ON account_registry(tg_id, category, service)")

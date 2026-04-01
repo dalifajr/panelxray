@@ -34,7 +34,15 @@ async def require_access(event, admin_only: bool = False) -> bool:
     sender_id = str(sender.id)
     username = getattr(sender, "username", "") or ""
     full_name = _sender_full_name(sender)
-    touch_user(sender_id, username, full_name)
+    try:
+        touch_user(sender_id, username, full_name)
+    except Exception as e:
+        logging.exception("touch_user failed for %s: %s", sender_id, e)
+        await upsert_message(
+            event,
+            "⚠️ Bot sedang melakukan pemulihan data akses. Coba lagi beberapa detik, atau hubungi admin.",
+        )
+        return False
 
     if admin_only:
         if is_admin(sender.id):
@@ -46,10 +54,18 @@ async def require_access(event, admin_only: bool = False) -> bool:
         await upsert_message(event, "⛔ Menu ini hanya untuk admin.")
         return False
 
-    if valid(sender_id) == "true":
-        return True
+    try:
+        if valid(sender_id) == "true":
+            return True
 
-    record = get_user_record(sender_id) or {}
+        record = get_user_record(sender_id) or {}
+    except Exception as e:
+        logging.exception("access check failed for %s: %s", sender_id, e)
+        await upsert_message(
+            event,
+            "⚠️ Validasi akses gagal karena data lama belum sinkron. Silakan ketik /start lagi dalam 10 detik.",
+        )
+        return False
     status = str(record.get("status", "pending") or "pending").lower()
     note = str(record.get("note", "") or "").strip()
     msg = ""

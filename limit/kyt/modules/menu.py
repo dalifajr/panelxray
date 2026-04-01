@@ -12,7 +12,7 @@ def _run_count(cmd: str, divisor: int = 1) -> str:
 	except Exception:
 		return "0"
 
-@bot.on(events.NewMessage(pattern=r"(?:.menu|/menu)$"))
+@bot.on(events.NewMessage(pattern=r"(?i)^(?:[./]menu(?:@\w+)?)\s*$"))
 @bot.on(events.CallbackQuery(data=b'menu'))
 async def menu(event):
 	if not await require_access(event):
