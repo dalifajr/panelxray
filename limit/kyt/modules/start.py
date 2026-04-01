@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import require_admin, menu_credit
+from kyt.modules.ui import require_access, menu_credit
 
 @bot.on(events.NewMessage(pattern=r"(?:\.start|/start|\.mulai|/mulai)$"))
 @bot.on(events.CallbackQuery(data=b'start'))
@@ -9,7 +9,7 @@ async def start(event):
 		[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
 	]
 
-	if not await require_admin(event):
+	if not await require_access(event):
 		return
 
 	sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"

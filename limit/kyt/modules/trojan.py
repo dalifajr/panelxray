@@ -3,12 +3,16 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
-    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button
+    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
+    ensure_creation_quota, is_admin
 )
 
 @bot.on(events.CallbackQuery(data=b'create-trojan'))
 async def create_trojan(event):
     async def create_trojan_(event):
+        if not await ensure_creation_quota(event, str(sender.id), "xray"):
+            return
+
         msgs_to_del = []
         
         # Username
@@ -71,6 +75,7 @@ async def create_trojan(event):
         else:
             today = DT.date.today()
             later = today + DT.timedelta(days=int(exp))
+            register_account_creation(str(sender.id), "trojan", user, str(later), is_trial=False)
             b = [x.group() for x in re.finditer("trojan://(.*)",a)]
             if len(b) < 2:
                 await upsert_message(event, "❌ **Gagal membaca link TROJAN dari panel.**")
@@ -145,11 +150,28 @@ async def cek_trojan(event):
 @bot.on(events.CallbackQuery(data=b'list-trojan'))
 async def list_trojan(event):
     async def list_trojan_(event):
-        cmd = "grep -E '^### ' /etc/trojan/.trojan.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
-        _, out = run_command(cmd)
-        if not out:
-            out = "Tidak ada user TROJAN."
-        await upsert_message(event, f"📋 **Daftar User TROJAN**\n```\n{out}\n```", buttons=back_button("trojan"))
+        if is_admin(sender.id):
+            cmd = "grep -E '^### ' /etc/trojan/.trojan.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
+            _, out = run_command(cmd)
+            if not out:
+                out = "Tidak ada user TROJAN."
+            await upsert_message(event, f"📋 **Daftar User TROJAN**\n```\n{out}\n```", buttons=back_button("trojan"))
+            return
+
+        accounts = get_user_accounts(str(sender.id), service="trojan", active_only=True, limit=120)
+        if not accounts:
+            await upsert_message(event, "📭 Anda belum memiliki akun TROJAN yang tercatat.", buttons=back_button("trojan"))
+            return
+
+        lines = ["📋 **Akun TROJAN Anda**", ""]
+        for idx, account in enumerate(accounts, start=1):
+            trial = " (TRIAL)" if int(account.get("is_trial", 0) or 0) == 1 else ""
+            expires = str(account.get("expires_at") or "-")
+            lines.append(f"{idx}. `{account.get('username', '-')}`{trial} - expired `{expires}`")
+        text = "\n".join(lines)
+        if len(text) > 3900:
+            text = text[:3800] + "\n\n..."
+        await upsert_message(event, text, buttons=back_button("trojan"))
 
     sender = await event.get_sender()
     a = valid(str(sender.id))
@@ -199,6 +221,7 @@ async def renew_trojan(event):
         _, exp = run_command(f"grep -wE '^#! {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
         
         if exp:
+            refresh_account_expiry("trojan", user, exp)
             msg = build_result(
                 "TROJAN Account Renewed",
                 [
@@ -225,6 +248,9 @@ async def renew_trojan(event):
 @bot.on(events.CallbackQuery(data=b'trial-trojan'))
 async def trial_trojan(event):
     async def trial_trojan_(event):
+        if not await ensure_creation_quota(event, str(sender.id), "xray"):
+            return
+
         msgs_to_del = []
         
         # Trial duration (dengan tombol)
@@ -264,6 +290,7 @@ async def trial_trojan(event):
             remarks = re.search("#(.*)",links["TLS"]).group(1)
             domain = re.search("@(.*?):",links["TLS"]).group(1)
             uuid = re.search("trojan://(.*?)@",links["TLS"]).group(1)
+            register_account_creation(str(sender.id), "trojan", remarks, f"{exp} menit", is_trial=True)
             selected_links = []
             qr_link = ""
             if cfg_mode == "ALL":
@@ -321,6 +348,7 @@ async def delete_trojan(event):
         except:
             await upsert_message(event, "**User Not Found**")
         else:
+            mark_account_inactive("trojan", user)
             await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", trojan, delay=3)
     
     chat = event.chat_id
@@ -394,13 +422,21 @@ async def unsuspend_trojan(event):
 @bot.on(events.CallbackQuery(data=b'trojan'))
 async def trojan(event):
     async def trojan_(event):
-        inline = [
-            [Button.inline("🧪 Trial", "trial-trojan"), Button.inline("➕ Create", "create-trojan")],
-            [Button.inline("👀 Check Login", "cek-trojan"), Button.inline("📋 List User", "list-trojan")],
-            [Button.inline("🗓️ Renew", "renew-trojan"), Button.inline("🗑️ Delete", "delete-trojan")],
-            [Button.inline("⛔ Suspend", "suspend-trojan"), Button.inline("✅ Unsuspend", "unsuspend-trojan")],
-            [Button.inline("⬅️ Main Menu", "menu")],
-        ]
+        if is_admin(sender.id):
+            inline = [
+                [Button.inline("🧪 Trial", "trial-trojan"), Button.inline("➕ Create", "create-trojan")],
+                [Button.inline("👀 Check Login", "cek-trojan"), Button.inline("📋 List User", "list-trojan")],
+                [Button.inline("🗓️ Renew", "renew-trojan"), Button.inline("🗑️ Delete", "delete-trojan")],
+                [Button.inline("⛔ Suspend", "suspend-trojan"), Button.inline("✅ Unsuspend", "unsuspend-trojan")],
+                [Button.inline("⬅️ Main Menu", "menu")],
+            ]
+        else:
+            inline = [
+                [Button.inline("🧪 Trial", "trial-trojan"), Button.inline("➕ Create", "create-trojan")],
+                [Button.inline("📋 Akun Saya", "list-trojan")],
+                [Button.inline("📨 Request Kuota", "quota-request")],
+                [Button.inline("⬅️ Main Menu", "menu")],
+            ]
         msg = manager_banner("TROJAN Manager", "TROJAN")
         await event.edit(msg,buttons=inline)
     sender = await event.get_sender()

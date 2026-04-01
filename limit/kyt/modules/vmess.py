@@ -3,7 +3,8 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
-    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button
+    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
+    ensure_creation_quota, is_admin
 )
 
 BOT_DOMAIN = str(globals().get("DOMAIN", globals().get("domain", "-")))
@@ -13,6 +14,9 @@ BOT_HOST = str(globals().get("HOST", globals().get("NS", BOT_DOMAIN)))
 @bot.on(events.CallbackQuery(data=b'create-vmess'))
 async def create_vmess(event):
     async def create_vmess_(event):
+        if not await ensure_creation_quota(event, str(sender.id), "xray"):
+            return
+
         msgs_to_del = []
         
         # Username
@@ -75,6 +79,7 @@ async def create_vmess(event):
         else:
             today = DT.date.today()
             later = today + DT.timedelta(days=int(exp))
+            register_account_creation(str(sender.id), "vmess", user, str(later), is_trial=False)
             b = [x.group() for x in re.finditer("vmess://(.*)",a)]
             if len(b) < 3:
                 await upsert_message(event, "❌ **Gagal membaca link VMESS dari panel.**")
@@ -129,6 +134,9 @@ async def create_vmess(event):
 @bot.on(events.CallbackQuery(data=b'trial-vmess'))
 async def trial_vmess(event):
     async def trial_vmess_(event):
+        if not await ensure_creation_quota(event, str(sender.id), "xray"):
+            return
+
         msgs_to_del = []
         
         # Trial duration (dengan tombol)
@@ -162,6 +170,7 @@ async def trial_vmess(event):
                 return
             z = base64.b64decode(b[0].replace("vmess://","")).decode("ascii")
             z = json.loads(z)
+            register_account_creation(str(sender.id), "vmess", z.get("ps", "trial-vmess"), f"{exp} menit", is_trial=True)
             links = {
                 "TLS": b[0].strip("'").replace(" ", ""),
                 "NTLS": b[1].strip("'").replace(" ", ""),
@@ -227,11 +236,28 @@ async def cek_vmess(event):
 @bot.on(events.CallbackQuery(data=b'list-vmess'))
 async def list_vmess(event):
     async def list_vmess_(event):
-        cmd = "grep -E '^### ' /etc/vmess/.vmess.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
-        _, out = run_command(cmd)
-        if not out:
-            out = "Tidak ada user VMESS."
-        await upsert_message(event, f"📋 **Daftar User VMESS**\n```\n{out}\n```", buttons=back_button("vmess"))
+        if is_admin(sender.id):
+            cmd = "grep -E '^### ' /etc/vmess/.vmess.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
+            _, out = run_command(cmd)
+            if not out:
+                out = "Tidak ada user VMESS."
+            await upsert_message(event, f"📋 **Daftar User VMESS**\n```\n{out}\n```", buttons=back_button("vmess"))
+            return
+
+        accounts = get_user_accounts(str(sender.id), service="vmess", active_only=True, limit=120)
+        if not accounts:
+            await upsert_message(event, "📭 Anda belum memiliki akun VMESS yang tercatat.", buttons=back_button("vmess"))
+            return
+
+        lines = ["📋 **Akun VMESS Anda**", ""]
+        for idx, account in enumerate(accounts, start=1):
+            trial = " (TRIAL)" if int(account.get("is_trial", 0) or 0) == 1 else ""
+            expires = str(account.get("expires_at") or "-")
+            lines.append(f"{idx}. `{account.get('username', '-')}`{trial} - expired `{expires}`")
+        text = "\n".join(lines)
+        if len(text) > 3900:
+            text = text[:3800] + "\n\n..."
+        await upsert_message(event, text, buttons=back_button("vmess"))
 
     sender = await event.get_sender()
     a = valid(str(sender.id))
@@ -281,6 +307,7 @@ async def renew_vmess(event):
         _, exp = run_command(f"grep -wE '^### {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
         
         if exp:
+            refresh_account_expiry("vmess", user, exp)
             msg = build_result(
                 "VMESS Account Renewed",
                 [
@@ -324,6 +351,7 @@ async def delete_vmess(event):
         except:
             await upsert_message(event, "**User Not Found**")
         else:
+            mark_account_inactive("vmess", user)
             await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", vmess, delay=3)
     
     chat = event.chat_id
@@ -397,13 +425,21 @@ async def unsuspend_vmess(event):
 @bot.on(events.CallbackQuery(data=b'vmess'))
 async def vmess(event):
     async def vmess_(event):
-        inline = [
-            [Button.inline("🧪 Trial", "trial-vmess"), Button.inline("➕ Create", "create-vmess")],
-            [Button.inline("👀 Check Login", "cek-vmess"), Button.inline("📋 List User", "list-vmess")],
-            [Button.inline("🗓️ Renew", "renew-vmess"), Button.inline("🗑️ Delete", "delete-vmess")],
-            [Button.inline("⛔ Suspend", "suspend-vmess"), Button.inline("✅ Unsuspend", "unsuspend-vmess")],
-            [Button.inline("⬅️ Main Menu", "menu")],
-        ]
+        if is_admin(sender.id):
+            inline = [
+                [Button.inline("🧪 Trial", "trial-vmess"), Button.inline("➕ Create", "create-vmess")],
+                [Button.inline("👀 Check Login", "cek-vmess"), Button.inline("📋 List User", "list-vmess")],
+                [Button.inline("🗓️ Renew", "renew-vmess"), Button.inline("🗑️ Delete", "delete-vmess")],
+                [Button.inline("⛔ Suspend", "suspend-vmess"), Button.inline("✅ Unsuspend", "unsuspend-vmess")],
+                [Button.inline("⬅️ Main Menu", "menu")],
+            ]
+        else:
+            inline = [
+                [Button.inline("🧪 Trial", "trial-vmess"), Button.inline("➕ Create", "create-vmess")],
+                [Button.inline("📋 Akun Saya", "list-vmess")],
+                [Button.inline("📨 Request Kuota", "quota-request")],
+                [Button.inline("⬅️ Main Menu", "menu")],
+            ]
         msg = manager_banner("VMESS Manager", "VMESS")
         await event.edit(msg,buttons=inline)
     sender = await event.get_sender()

@@ -8,18 +8,97 @@ _callback_data = {}
 
 
 def is_admin(sender_id: int) -> bool:
-    return valid(str(sender_id)) == "true"
+    return is_admin_user(str(sender_id))
+
+
+def _sender_full_name(sender) -> str:
+    first = getattr(sender, "first_name", "") or ""
+    last = getattr(sender, "last_name", "") or ""
+    full = f"{first} {last}".strip()
+    return full
+
+
+def access_request_buttons():
+    return [[Button.inline("📨 Request Akses", b"request-access")]]
+
+
+def quota_request_buttons():
+    return [
+        [Button.inline("📨 Request Tambah Kuota", b"quota-request")],
+        [Button.inline("⬅️ Menu", b"menu")],
+    ]
+
+
+async def require_access(event, admin_only: bool = False) -> bool:
+    sender = await event.get_sender()
+    sender_id = str(sender.id)
+    username = getattr(sender, "username", "") or ""
+    full_name = _sender_full_name(sender)
+    touch_user(sender_id, username, full_name)
+
+    if admin_only:
+        if is_admin(sender.id):
+            return True
+        try:
+            await event.answer("Menu khusus admin", alert=True)
+        except Exception:
+            pass
+        await upsert_message(event, "⛔ Menu ini hanya untuk admin.")
+        return False
+
+    if valid(sender_id) == "true":
+        return True
+
+    record = get_user_record(sender_id) or {}
+    status = str(record.get("status", "pending") or "pending").lower()
+    note = str(record.get("note", "") or "").strip()
+    msg = ""
+    buttons = None
+
+    if status == "pending":
+        msg = "⏳ Akses Anda masih menunggu persetujuan admin."
+    elif status == "rejected":
+        msg = "❌ Request akses Anda ditolak admin."
+        if note:
+            msg += f"\n\nAlasan: `{note}`"
+        buttons = access_request_buttons()
+    elif status == "suspended":
+        msg = "⛔ Akses bot Anda sedang disuspend oleh admin."
+        if note:
+            msg += f"\n\nAlasan: `{note}`"
+    elif status == "kicked":
+        msg = "👢 Akses bot Anda sudah di-kick oleh admin."
+        if note:
+            msg += f"\n\nAlasan: `{note}`"
+        buttons = access_request_buttons()
+    else:
+        msg = "🔒 Anda belum memiliki akses ke bot ini."
+        buttons = access_request_buttons()
+
+    try:
+        await event.answer("Akses belum aktif", alert=True)
+    except Exception:
+        pass
+    await upsert_message(event, msg, buttons=buttons)
+    return False
+
+
+async def ensure_creation_quota(event, sender_id: str, category: str) -> bool:
+    quota = check_creation_quota(sender_id, category)
+    if quota.get("ok", False):
+        return True
+
+    msg = str(quota.get("message", "Limit pembuatan akun sudah tercapai."))
+    await upsert_message(
+        event,
+        f"❌ {msg}\n\nJika perlu tambahan kuota, kirim request ke admin.",
+        buttons=quota_request_buttons(),
+    )
+    return False
 
 
 async def require_admin(event) -> bool:
-    sender = await event.get_sender()
-    if not is_admin(sender.id):
-        try:
-            await event.answer("Akses ditolak", alert=True)
-        except Exception:
-            await event.respond("Akses ditolak")
-        return False
-    return True
+    return await require_access(event, admin_only=True)
 
 
 async def delete_messages(chat_id: int, msg_ids: list):

@@ -1,5 +1,14 @@
 from kyt import *
-from kyt.modules.ui import ask_choice, ask_text, build_result, manager_banner, short_progress, back_button
+from kyt.modules.ui import (
+	ask_choice,
+	ask_text,
+	build_result,
+	manager_banner,
+	short_progress,
+	back_button,
+	ensure_creation_quota,
+	is_admin,
+)
 
 #DELETESSH
 @bot.on(events.CallbackQuery(data=b'delete-ssh'))
@@ -15,6 +24,7 @@ async def delete_ssh(event):
 		except:
 			await event.respond(f"**User** `{user}` **Not Found**", buttons=back_button("ssh"))
 		else:
+			mark_account_inactive("ssh", user)
 			await event.respond(f"**Successfully Deleted** `{user}`", buttons=back_button("ssh"))
 	chat = event.chat_id
 	sender = await event.get_sender()
@@ -27,6 +37,9 @@ async def delete_ssh(event):
 @bot.on(events.CallbackQuery(data=b'create-ssh'))
 async def create_ssh(event):
 	async def create_ssh_(event):
+		if not await ensure_creation_quota(event, str(sender.id), "ssh"):
+			return
+
 		user = await ask_text(event, chat, sender.id, "👤 **Masukkan Username SSH:**")
 		pw = await ask_text(event, chat, sender.id, "🔐 **Masukkan Password SSH:**")
 		exp = await ask_choice(
@@ -45,6 +58,7 @@ async def create_ssh(event):
 		else:
 			today = DT.date.today()
 			later = today + DT.timedelta(days=int(exp))
+			register_account_creation(str(sender.id), "ssh", user.strip(), str(later), is_trial=False)
 			msg = build_result(
 				"SSH Account Created",
 				[
@@ -77,17 +91,35 @@ async def create_ssh(event):
 @bot.on(events.CallbackQuery(data=b'show-ssh'))
 async def show_ssh(event):
 	async def show_ssh_(event):
-		cmd = 'bot-member-ssh'.strip()
-		x = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-		print(x)
-		z = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		await event.respond(f"""
+		if is_admin(sender.id):
+			cmd = 'bot-member-ssh'.strip()
+			x = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
+			print(x)
+			z = subprocess.check_output(cmd, shell=True).decode("utf-8")
+			await event.respond(f"""
 ```
 {z}
 ```
 **Show All SSH User**
 **» 🤖@AutoFTbot**
 """,buttons=back_button("ssh"))
+			return
+
+		accounts = get_user_accounts(str(sender.id), category="ssh", active_only=True, limit=120)
+		if not accounts:
+			await event.respond("📭 Anda belum memiliki akun SSH yang tercatat.", buttons=back_button("ssh"))
+			return
+
+		lines = ["📋 **List Akun SSH Anda**", ""]
+		for idx, account in enumerate(accounts, start=1):
+			expires = str(account.get("expires_at") or "-")
+			trial = " (TRIAL)" if int(account.get("is_trial", 0) or 0) == 1 else ""
+			lines.append(f"{idx}. `{account.get('username', '-')}`{trial} - expired `{expires}`")
+
+		text = "\n".join(lines)
+		if len(text) > 3900:
+			text = text[:3800] + "\n\n..."
+		await event.respond(text, buttons=back_button("ssh"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -100,6 +132,9 @@ async def show_ssh(event):
 @bot.on(events.CallbackQuery(data=b'trial-ssh'))
 async def trial_ssh(event):
 	async def trial_ssh_(event):
+		if not await ensure_creation_quota(event, str(sender.id), "ssh"):
+			return
+
 		async with bot.conversation(chat) as exp:
 			await event.respond("**Choose Expiry Minutes**",buttons=[
 [Button.inline(" 10 Menit ","10"),
@@ -142,6 +177,7 @@ Button.inline(" 60 Menit ","60")]])
 		else:
 			#today = DT.date.today()
 			#later = today + DT.timedelta(days=int(exp))
+			register_account_creation(str(sender.id), "ssh", user.strip(), f"{exp} Minutes", is_trial=True)
 			msg = f"""
 **━━━━━━━━━━━━━━━━━**
 **🐾🕊️ SSH OVPN ACCOUNT 🕊️🐾**
@@ -211,12 +247,20 @@ async def login_ssh(event):
 @bot.on(events.CallbackQuery(data=b'ssh'))
 async def ssh(event):
 	async def ssh_(event):
-		inline = [
-			[Button.inline("🧪 Trial", "trial-ssh"), Button.inline("➕ Create", "create-ssh")],
-			[Button.inline("👀 Check Login", "login-ssh"), Button.inline("📋 List User", "show-ssh")],
-			[Button.inline("🗑️ Delete", "delete-ssh"), Button.inline("🧾 Regis IP", "regis")],
-			[Button.inline("⬅️ Main Menu", "menu")],
-		]
+		if is_admin(sender.id):
+			inline = [
+				[Button.inline("🧪 Trial", "trial-ssh"), Button.inline("➕ Create", "create-ssh")],
+				[Button.inline("👀 Check Login", "login-ssh"), Button.inline("📋 List User", "show-ssh")],
+				[Button.inline("🗑️ Delete", "delete-ssh"), Button.inline("🧾 Regis IP", "regis")],
+				[Button.inline("⬅️ Main Menu", "menu")],
+			]
+		else:
+			inline = [
+				[Button.inline("🧪 Trial", "trial-ssh"), Button.inline("➕ Create", "create-ssh")],
+				[Button.inline("📋 Akun Saya", "show-ssh")],
+				[Button.inline("📨 Request Kuota", "quota-request")],
+				[Button.inline("⬅️ Main Menu", "menu")],
+			]
 		msg = manager_banner("SSH/OVPN Manager", "SSH")
 		await event.edit(msg,buttons=inline)
 	sender = await event.get_sender()

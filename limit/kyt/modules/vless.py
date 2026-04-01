@@ -3,12 +3,16 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
-    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button
+    ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
+    ensure_creation_quota, is_admin
 )
 
 @bot.on(events.CallbackQuery(data=b'create-vless'))
 async def create_vless(event):
     async def create_vless_(event):
+        if not await ensure_creation_quota(event, str(sender.id), "xray"):
+            return
+
         msgs_to_del = []
         
         # Username
@@ -71,6 +75,7 @@ async def create_vless(event):
         else:
             today = DT.date.today()
             later = today + DT.timedelta(days=int(exp))
+            register_account_creation(str(sender.id), "vless", user, str(later), is_trial=False)
             x = [x.group() for x in re.finditer("vless://(.*)",a)]
             if len(x) < 3:
                 await upsert_message(event, "❌ **Gagal membaca link VLESS dari panel.**")
@@ -144,11 +149,28 @@ async def cek_vless(event):
 @bot.on(events.CallbackQuery(data=b'list-vless'))
 async def list_vless(event):
     async def list_vless_(event):
-        cmd = "grep -E '^### ' /etc/vless/.vless.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
-        _, out = run_command(cmd)
-        if not out:
-            out = "Tidak ada user VLESS."
-        await upsert_message(event, f"📋 **Daftar User VLESS**\n```\n{out}\n```", buttons=back_button("vless"))
+        if is_admin(sender.id):
+            cmd = "grep -E '^### ' /etc/vless/.vless.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
+            _, out = run_command(cmd)
+            if not out:
+                out = "Tidak ada user VLESS."
+            await upsert_message(event, f"📋 **Daftar User VLESS**\n```\n{out}\n```", buttons=back_button("vless"))
+            return
+
+        accounts = get_user_accounts(str(sender.id), service="vless", active_only=True, limit=120)
+        if not accounts:
+            await upsert_message(event, "📭 Anda belum memiliki akun VLESS yang tercatat.", buttons=back_button("vless"))
+            return
+
+        lines = ["📋 **Akun VLESS Anda**", ""]
+        for idx, account in enumerate(accounts, start=1):
+            trial = " (TRIAL)" if int(account.get("is_trial", 0) or 0) == 1 else ""
+            expires = str(account.get("expires_at") or "-")
+            lines.append(f"{idx}. `{account.get('username', '-')}`{trial} - expired `{expires}`")
+        text = "\n".join(lines)
+        if len(text) > 3900:
+            text = text[:3800] + "\n\n..."
+        await upsert_message(event, text, buttons=back_button("vless"))
 
     sender = await event.get_sender()
     a = valid(str(sender.id))
@@ -198,6 +220,7 @@ async def renew_vless(event):
         _, exp = run_command(f"grep -wE '^#& {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
         
         if exp:
+            refresh_account_expiry("vless", user, exp)
             msg = build_result(
                 "VLESS Account Renewed",
                 [
@@ -241,6 +264,7 @@ async def delete_vless(event):
         except:
             await upsert_message(event, "**User Not Found**")
         else:
+            mark_account_inactive("vless", user)
             await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", vless, delay=3)
     
     chat = event.chat_id
@@ -314,6 +338,9 @@ async def unsuspend_vless(event):
 @bot.on(events.CallbackQuery(data=b'trial-vless'))
 async def trial_vless(event):
     async def trial_vless_(event):
+        if not await ensure_creation_quota(event, str(sender.id), "xray"):
+            return
+
         msgs_to_del = []
         
         # Trial duration (dengan tombol)
@@ -347,6 +374,7 @@ async def trial_vless(event):
                 return
             remarks = re.search("#(.*)",x[0]).group(1)
             uuid = re.search("vless://(.*?)@",x[0]).group(1)
+            register_account_creation(str(sender.id), "vless", remarks, f"{exp} menit", is_trial=True)
             links = {
                 "TLS": x[0].replace(" ", ""),
                 "NTLS": x[1].replace(" ", ""),
@@ -392,13 +420,21 @@ async def trial_vless(event):
 @bot.on(events.CallbackQuery(data=b'vless'))
 async def vless(event):
     async def vless_(event):
-        inline = [
-            [Button.inline("🧪 Trial", "trial-vless"), Button.inline("➕ Create", "create-vless")],
-            [Button.inline("👀 Check Login", "cek-vless"), Button.inline("📋 List User", "list-vless")],
-            [Button.inline("🗓️ Renew", "renew-vless"), Button.inline("🗑️ Delete", "delete-vless")],
-            [Button.inline("⛔ Suspend", "suspend-vless"), Button.inline("✅ Unsuspend", "unsuspend-vless")],
-            [Button.inline("⬅️ Main Menu", "menu")],
-        ]
+        if is_admin(sender.id):
+            inline = [
+                [Button.inline("🧪 Trial", "trial-vless"), Button.inline("➕ Create", "create-vless")],
+                [Button.inline("👀 Check Login", "cek-vless"), Button.inline("📋 List User", "list-vless")],
+                [Button.inline("🗓️ Renew", "renew-vless"), Button.inline("🗑️ Delete", "delete-vless")],
+                [Button.inline("⛔ Suspend", "suspend-vless"), Button.inline("✅ Unsuspend", "unsuspend-vless")],
+                [Button.inline("⬅️ Main Menu", "menu")],
+            ]
+        else:
+            inline = [
+                [Button.inline("🧪 Trial", "trial-vless"), Button.inline("➕ Create", "create-vless")],
+                [Button.inline("📋 Akun Saya", "list-vless")],
+                [Button.inline("📨 Request Kuota", "quota-request")],
+                [Button.inline("⬅️ Main Menu", "menu")],
+            ]
         msg = manager_banner("VLESS Manager", "VLESS")
         await event.edit(msg,buttons=inline)
     sender = await event.get_sender()
