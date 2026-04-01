@@ -71,6 +71,7 @@ from app.type_dict import PaymentItem
 
 ROOT_DIR = Path(__file__).resolve().parent
 ALLOW_FILE = ROOT_DIR / "user_allow.txt"
+ACCESS_STATE_FILE = ROOT_DIR / "access_state.json"
 FLOW_KEY = "native_flow"
 PANEL_MESSAGE_IDS: dict[int, int] = {}
 RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
@@ -281,8 +282,19 @@ def keyboard_bookmark_menu() -> InlineKeyboardMarkup:
 def keyboard_admin_access() -> InlineKeyboardMarkup:
     return _mk_inline(
         [
+            [("📥 Pending", "allow_pending"), ("👥 Kelola User", "allow_manage")],
             [("📋 List Allow", "allow_list"), ("➕ Add User", "allow_add")],
             _row_home_cancel(),
+        ]
+    )
+
+
+def keyboard_admin_user_actions(user_id: int) -> InlineKeyboardMarkup:
+    return _mk_inline(
+        [
+            [("⛔ Suspend", f"allow_suspend:{user_id}"), ("👢 Kick", f"allow_kick:{user_id}")],
+            [("✅ Unsuspend", f"allow_unsuspend:{user_id}")],
+            [("⬅️ Kelola User", "allow_manage"), ("🏠 Home", "home")],
         ]
     )
 
@@ -426,6 +438,7 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup
         "await_balance_n_count",
         "await_balance_n_delay",
         "await_admin_allow_add_id",
+        "await_admin_action_reason",
     }:
         return keyboard_single_input()
     if state == "famplan_menu":
@@ -497,6 +510,314 @@ def append_allowed_id(user_id: int) -> bool:
     return True
 
 
+_ACCESS_STATUSES = {"pending", "approved", "rejected", "suspended", "kicked"}
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat(sep=" ")
+
+
+def _default_access_state() -> dict:
+    return {
+        "last_request_id": 0,
+        "users": {},
+        "requests": [],
+    }
+
+
+def _load_access_state() -> dict:
+    if not ACCESS_STATE_FILE.exists():
+        return _default_access_state()
+
+    try:
+        payload = json.loads(ACCESS_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return _default_access_state()
+
+    if not isinstance(payload, dict):
+        return _default_access_state()
+
+    users = payload.get("users")
+    requests = payload.get("requests")
+    last_request_id = payload.get("last_request_id", 0)
+    if not isinstance(users, dict):
+        users = {}
+    if not isinstance(requests, list):
+        requests = []
+
+    return {
+        "last_request_id": int(last_request_id) if str(last_request_id).isdigit() else 0,
+        "users": users,
+        "requests": requests,
+    }
+
+
+def _save_access_state(state: dict):
+    ACCESS_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _sync_access_state_from_allow_list() -> dict:
+    state = _load_access_state()
+    users = state.setdefault("users", {})
+    ids = load_allowed_id_list()
+    now = _now_iso()
+    changed = False
+
+    for idx, user_id in enumerate(ids):
+        key = str(user_id)
+        existing = users.get(key, {})
+        role = "admin" if idx == 0 else str(existing.get("role", "user") or "user")
+        if idx > 0 and role != "admin":
+            role = "user"
+        status = str(existing.get("status", "approved") or "approved")
+        if status not in _ACCESS_STATUSES:
+            status = "approved"
+        if status != "approved":
+            status = "approved"
+
+        record = {
+            "user_id": user_id,
+            "role": role,
+            "status": status,
+            "note": str(existing.get("note", "") or ""),
+            "updated_at": str(existing.get("updated_at", now) or now),
+        }
+
+        if existing != record:
+            users[key] = record
+            changed = True
+
+    if changed:
+        _save_access_state(state)
+    return state
+
+
+def _write_allow_list_from_state(state: dict):
+    users = state.get("users", {}) if isinstance(state, dict) else {}
+    allow_ids = load_allowed_id_list()
+    admin_id: int | None = allow_ids[0] if allow_ids else None
+
+    if admin_id is None:
+        admin_candidates = []
+        for key, item in users.items():
+            if not str(key).isdigit():
+                continue
+            if str(item.get("role", "")) == "admin":
+                admin_candidates.append(int(key))
+        if admin_candidates:
+            admin_id = sorted(admin_candidates)[0]
+
+    if admin_id is None:
+        write_allowed_id_list([])
+        return
+
+    admin_key = str(admin_id)
+    admin_rec = users.get(admin_key, {})
+    users[admin_key] = {
+        "user_id": admin_id,
+        "role": "admin",
+        "status": "approved",
+        "note": str(admin_rec.get("note", "") or ""),
+        "updated_at": _now_iso(),
+    }
+
+    approved_users: list[int] = []
+    for key, item in users.items():
+        if not str(key).isdigit():
+            continue
+        uid = int(key)
+        if uid == admin_id:
+            continue
+        if str(item.get("status", "")) != "approved":
+            continue
+        approved_users.append(uid)
+
+    approved_users = sorted(set(approved_users))
+    write_allowed_id_list([admin_id] + approved_users)
+
+
+def _get_user_access_record(user_id: int) -> dict:
+    state = _sync_access_state_from_allow_list()
+    users = state.get("users", {})
+    key = str(user_id)
+    rec = users.get(key)
+    if isinstance(rec, dict):
+        return rec
+    return {
+        "user_id": user_id,
+        "role": "user",
+        "status": "pending",
+        "note": "",
+        "updated_at": "",
+    }
+
+
+def _set_user_access_status(user_id: int, status: str, note: str = "") -> dict:
+    status = str(status or "").strip().lower()
+    if status not in _ACCESS_STATUSES:
+        status = "pending"
+
+    state = _sync_access_state_from_allow_list()
+    users = state.setdefault("users", {})
+    key = str(user_id)
+    existing = users.get(key, {}) if isinstance(users.get(key), dict) else {}
+    role = "admin" if is_admin_user(user_id) else str(existing.get("role", "user") or "user")
+
+    if role == "admin":
+        status = "approved"
+
+    users[key] = {
+        "user_id": user_id,
+        "role": role,
+        "status": status,
+        "note": str(note or ""),
+        "updated_at": _now_iso(),
+    }
+
+    _write_allow_list_from_state(state)
+    _save_access_state(state)
+    return users[key]
+
+
+def _list_managed_users_access() -> list[dict]:
+    state = _sync_access_state_from_allow_list()
+    users = state.get("users", {})
+    out: list[dict] = []
+    for key, item in users.items():
+        if not str(key).isdigit() or not isinstance(item, dict):
+            continue
+        out.append(item)
+
+    def _rank(rec: dict) -> tuple[int, int]:
+        role = str(rec.get("role", "user") or "user")
+        status = str(rec.get("status", "pending") or "pending")
+        role_rank = 0 if role == "admin" else 1
+        status_rank_map = {
+            "pending": 0,
+            "approved": 1,
+            "suspended": 2,
+            "kicked": 3,
+            "rejected": 4,
+        }
+        status_rank = status_rank_map.get(status, 99)
+        return (role_rank, status_rank)
+
+    out.sort(key=_rank)
+    return out
+
+
+def _next_request_id(state: dict) -> int:
+    current = int(state.get("last_request_id", 0) or 0)
+    current += 1
+    state["last_request_id"] = current
+    return current
+
+
+def _find_pending_request_for_user(state: dict, user_id: int) -> dict | None:
+    rows = state.get("requests", []) if isinstance(state.get("requests"), list) else []
+    for item in reversed(rows):
+        if not isinstance(item, dict):
+            continue
+        if int(item.get("user_id", 0) or 0) != user_id:
+            continue
+        if str(item.get("status", "")) == "pending":
+            return item
+    return None
+
+
+def _create_access_request(user, reason: str = "") -> tuple[str, dict | None]:
+    user_id = int(getattr(user, "id", 0) or 0)
+    if user_id <= 0:
+        return "invalid", None
+
+    rec = _get_user_access_record(user_id)
+    if str(rec.get("status", "")) == "approved":
+        return "already-approved", None
+
+    state = _sync_access_state_from_allow_list()
+    pending = _find_pending_request_for_user(state, user_id)
+    if pending is not None:
+        return "pending", pending
+
+    req = {
+        "id": _next_request_id(state),
+        "user_id": user_id,
+        "username": str(getattr(user, "username", "") or ""),
+        "full_name": " ".join(filter(None, [getattr(user, "first_name", ""), getattr(user, "last_name", "")])).strip(),
+        "reason": str(reason or ""),
+        "status": "pending",
+        "admin_id": 0,
+        "admin_reason": "",
+        "created_at": _now_iso(),
+        "processed_at": "",
+    }
+    state.setdefault("requests", []).append(req)
+
+    users = state.setdefault("users", {})
+    key = str(user_id)
+    existing = users.get(key, {}) if isinstance(users.get(key), dict) else {}
+    users[key] = {
+        "user_id": user_id,
+        "role": "user",
+        "status": "pending",
+        "note": str(reason or existing.get("note", "") or ""),
+        "updated_at": _now_iso(),
+    }
+
+    _save_access_state(state)
+    return "created", req
+
+
+def _list_pending_access_requests() -> list[dict]:
+    state = _sync_access_state_from_allow_list()
+    rows = state.get("requests", []) if isinstance(state.get("requests"), list) else []
+    pending = [item for item in rows if isinstance(item, dict) and str(item.get("status", "")) == "pending"]
+    pending.sort(key=lambda x: int(x.get("id", 0) or 0))
+    return pending
+
+
+def _process_access_request(user_id: int, approved: bool, admin_id: int, admin_reason: str = "") -> tuple[bool, str]:
+    state = _sync_access_state_from_allow_list()
+    req = _find_pending_request_for_user(state, user_id)
+    if req is None:
+        return False, "Permintaan user ini sudah diproses atau tidak ditemukan."
+
+    req["status"] = "approved" if approved else "rejected"
+    req["admin_id"] = admin_id
+    req["admin_reason"] = str(admin_reason or "")
+    req["processed_at"] = _now_iso()
+
+    users = state.setdefault("users", {})
+    key = str(user_id)
+    existing = users.get(key, {}) if isinstance(users.get(key), dict) else {}
+    users[key] = {
+        "user_id": user_id,
+        "role": str(existing.get("role", "user") or "user"),
+        "status": "approved" if approved else "rejected",
+        "note": str(admin_reason or ""),
+        "updated_at": _now_iso(),
+    }
+
+    _write_allow_list_from_state(state)
+    _save_access_state(state)
+    return True, "ok"
+
+
+def _status_label(status: str) -> str:
+    s = str(status or "").lower()
+    if s == "approved":
+        return "APPROVED"
+    if s == "pending":
+        return "PENDING"
+    if s == "rejected":
+        return "REJECTED"
+    if s == "suspended":
+        return "SUSPENDED"
+    if s == "kicked":
+        return "KICKED"
+    return s.upper() if s else "UNKNOWN"
+
+
 def _read_auth_meta(scope_key: str) -> tuple[int | None, int]:
     if scope_key == "global":
         scope_dir = ROOT_DIR
@@ -525,25 +846,91 @@ def _read_auth_meta(scope_key: str) -> tuple[int | None, int]:
 
 
 def _allow_list_panel_text() -> str:
-    ids = load_allowed_id_list()
-    if not ids:
+    _sync_access_state_from_allow_list()
+    users = _list_managed_users_access()
+    admin_id = get_admin_id()
+    pending_count = len(_list_pending_access_requests())
+
+    if not users:
         return (
-            "Allow list belum dikonfigurasi.\n"
-            "Isi user_allow.txt dan pastikan baris pertama adalah Telegram user id admin."
+            "Kelola Akses Telegram\n"
+            "Belum ada user terdaftar.\n"
+            "Gunakan tombol ➕ Add User atau tunggu request akses dari user."
         )
 
     lines = [
         "Kelola Akses Telegram",
-        f"Admin (baris pertama): {ids[0]}",
-        "Allow list:",
+        f"Admin (baris pertama): {admin_id if admin_id is not None else '-'}",
+        f"Pending request: {pending_count}",
+        "Daftar user:",
     ]
-    for idx, user_id in enumerate(ids, start=1):
-        role = "ADMIN" if idx == 1 else "USER"
-        scope_key = "global" if idx == 1 else f"user_{user_id}"
+    for idx, rec in enumerate(users, start=1):
+        user_id = int(rec.get("user_id", 0) or 0)
+        role = str(rec.get("role", "user") or "user").upper()
+        status = _status_label(str(rec.get("status", "pending") or "pending"))
+        scope_key = "global" if role == "ADMIN" else f"user_{user_id}"
         active_number, token_count = _read_auth_meta(scope_key)
         active_text = str(active_number) if active_number is not None else "-"
-        lines.append(f"{idx}. {user_id} [{role}] | akun={token_count} | aktif={active_text}")
-    lines.append("Gunakan tombol ➕ Add User untuk menambah Telegram user id.")
+        lines.append(f"{idx}. {user_id} [{role}|{status}] | akun={token_count} | aktif={active_text}")
+
+    lines.append("Gunakan menu Pending/Kelola User untuk approve, suspend, kick, atau unsuspend user.")
+    return "\n".join(lines)
+
+
+def _pending_requests_panel_text() -> str:
+    pending = _list_pending_access_requests()
+    if not pending:
+        return "Tidak ada request akses yang pending."
+
+    lines = ["Pending Request Akses:"]
+    for req in pending[:25]:
+        user_id = int(req.get("user_id", 0) or 0)
+        username = str(req.get("username", "") or "-")
+        full_name = str(req.get("full_name", "") or "-")
+        reason = str(req.get("reason", "") or "-")
+        uname = f"@{username}" if username not in {"", "-"} else "-"
+        lines.append(f"- {user_id} | {uname} | {full_name} | alasan: {reason}")
+    return "\n".join(lines)
+
+
+def _managed_users_panel_text() -> tuple[str, list[int]]:
+    users = [rec for rec in _list_managed_users_access() if str(rec.get("role", "user")) != "admin"]
+    if not users:
+        return "Belum ada user non-admin yang terdaftar.", []
+
+    lines = ["Kelola User (non-admin):"]
+    user_ids: list[int] = []
+    for rec in users[:30]:
+        user_id = int(rec.get("user_id", 0) or 0)
+        if user_id <= 0:
+            continue
+        user_ids.append(user_id)
+        status = _status_label(str(rec.get("status", "pending") or "pending"))
+        note = str(rec.get("note", "") or "")
+        suffix = f" | note={note}" if note else ""
+        lines.append(f"- {user_id} [{status}]{suffix}")
+    return "\n".join(lines), user_ids
+
+
+def _admin_user_detail_text(user_id: int) -> str:
+    rec = _get_user_access_record(user_id)
+    role = str(rec.get("role", "user") or "user").upper()
+    status = _status_label(str(rec.get("status", "pending") or "pending"))
+    note = str(rec.get("note", "") or "")
+    scope_key = "global" if role == "ADMIN" else f"user_{user_id}"
+    active_number, token_count = _read_auth_meta(scope_key)
+    active_text = str(active_number) if active_number is not None else "-"
+    lines = [
+        "Detail User Akses",
+        f"User ID: {user_id}",
+        f"Role: {role}",
+        f"Status: {status}",
+        f"Jumlah akun tersimpan: {token_count}",
+        f"Akun aktif: {active_text}",
+    ]
+    if note:
+        lines.append(f"Catatan: {note}")
+    lines.append("Gunakan tombol aksi di bawah untuk suspend, kick, atau unsuspend.")
     return "\n".join(lines)
 
 
@@ -554,6 +941,7 @@ async def _submit_access_request(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     user_id = user.id
+    _sync_access_state_from_allow_list()
     admin_id = get_admin_id()
     if admin_id is None:
         await msg.reply_text(
@@ -574,10 +962,26 @@ async def _submit_access_request(update: Update, context: ContextTypes.DEFAULT_T
 
     ACCESS_REQUEST_LAST_SENT[user_id] = now
 
+    req_state, req_data = _create_access_request(user, "")
+    if req_state == "already-approved":
+        await msg.reply_text("Akses Anda sudah aktif. Kirim /start untuk membuka panel.")
+        return
+    if req_state == "pending":
+        req_id = int((req_data or {}).get("id", 0) or 0)
+        await msg.reply_text(f"Request Anda masih pending (ID: {req_id}). Mohon tunggu persetujuan admin.")
+        return
+    if req_state != "created":
+        await msg.reply_text("Gagal membuat request akses. Coba lagi.")
+        return
+
+    req = req_data or {}
+    req_id = int(req.get("id", 0) or 0)
+
     username = f"@{user.username}" if user.username else "(tidak ada)"
     fullname = " ".join(filter(None, [user.first_name, user.last_name])) or "(tidak ada)"
     text_admin = (
         "Permintaan akses bot me-cli\n"
+        f"Request ID: {req_id}\n"
         f"User ID: {user_id}\n"
         f"Username: {username}\n"
         f"Nama: {fullname}\n\n"
@@ -601,18 +1005,23 @@ async def ensure_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     user = update.effective_user
     user_id = user.id if user else None
+    _sync_access_state_from_allow_list()
     allowed_ids = load_allowed_id_list()
-    allowed_set = set(allowed_ids)
     admin_id = allowed_ids[0] if allowed_ids else None
 
-    if not allowed_set:
+    if user_id is None:
+        return False
+
+    if not allowed_ids:
         await msg.reply_text(
             "Akses bot belum dikonfigurasi. Isi user_allow.txt dengan Telegram user id yang diizinkan (baris pertama = admin).",
             reply_markup=keyboard_main(),
         )
         return False
 
-    if user_id in allowed_set:
+    rec = _get_user_access_record(user_id)
+    status = str(rec.get("status", "pending") or "pending")
+    if status == "approved":
         AuthInstance.set_runtime_owner(user_id, is_admin=(admin_id is not None and user_id == admin_id))
         return True
 
@@ -630,10 +1039,25 @@ async def ensure_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await _submit_access_request(update, context)
         return False
 
-    await msg.reply_text(
-        "Akses ditolak untuk user ini. Tekan tombol berikut untuk mengirim permintaan akses ke admin.",
-        reply_markup=keyboard_request_access(),
-    )
+    note = str(rec.get("note", "") or "")
+    if status == "pending":
+        text_out = "Akses Anda masih menunggu persetujuan admin."
+    elif status == "rejected":
+        text_out = "Permintaan akses Anda ditolak admin."
+        if note:
+            text_out += f"\nCatatan: {note}"
+    elif status == "suspended":
+        text_out = "Akses Anda sedang disuspend admin."
+        if note:
+            text_out += f"\nAlasan: {note}"
+    elif status == "kicked":
+        text_out = "Akses Anda di-kick admin."
+        if note:
+            text_out += f"\nAlasan: {note}"
+    else:
+        text_out = "Akses ditolak untuk user ini."
+
+    await msg.reply_text(text_out + "\n\nTekan tombol berikut untuk mengirim request akses.", reply_markup=keyboard_request_access())
     return False
 
 
@@ -2139,7 +2563,8 @@ async def request_access_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if msg is None or user is None:
         return
 
-    if user.id in load_allowed_ids():
+    rec = _get_user_access_record(user.id)
+    if str(rec.get("status", "")) == "approved":
         await msg.reply_text("Akses Anda sudah aktif. Gunakan /start untuk membuka panel.")
         return
 
@@ -2153,7 +2578,14 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
     state = flow.get("state", "home")
     data = flow.get("data", {})
 
-    if text.startswith("allow_approve:") or text.startswith("allow_reject:"):
+    if (
+        text.startswith("allow_approve:")
+        or text.startswith("allow_reject:")
+        or text.startswith("allow_suspend:")
+        or text.startswith("allow_unsuspend:")
+        or text.startswith("allow_kick:")
+        or text.startswith("allow_user:")
+    ):
         actor_id = update.effective_user.id if update.effective_user else None
         if not is_admin_user(actor_id):
             await render_panel(update, context, "Aksi ini khusus admin.")
@@ -2165,33 +2597,37 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
             return
 
         target_id = int(target_raw)
-        set_flow(context, "admin_access_menu", {})
-
-        if text.startswith("allow_approve:"):
-            added = append_allowed_id(target_id)
-            result = (
-                f"User {target_id} disetujui dan ditambahkan ke allow list."
-                if added
-                else f"User {target_id} sudah ada di allow list."
+        if text.startswith("allow_user:"):
+            await render_panel(
+                update,
+                context,
+                _admin_user_detail_text(target_id),
+                keyboard_admin_user_actions(target_id),
             )
-            await render_panel(update, context, result + "\n\n" + _allow_list_panel_text(), keyboard_admin_access())
-            try:
-                await context.bot.send_message(
-                    chat_id=target_id,
-                    text="Permintaan akses Anda disetujui admin. Silakan kirim /start untuk menggunakan bot me-cli.",
-                )
-            except Exception:
-                pass
             return
 
-        await render_panel(update, context, f"Permintaan akses user {target_id} ditolak.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
-        try:
-            await context.bot.send_message(
-                chat_id=target_id,
-                text="Permintaan akses Anda ditolak admin.",
-            )
-        except Exception:
-            pass
+        if text.startswith("allow_approve:"):
+            action = "approve_request"
+            label = "APPROVE"
+        elif text.startswith("allow_reject:"):
+            action = "reject_request"
+            label = "REJECT"
+        elif text.startswith("allow_suspend:"):
+            action = "suspend_user"
+            label = "SUSPEND"
+        elif text.startswith("allow_unsuspend:"):
+            action = "unsuspend_user"
+            label = "UNSUSPEND"
+        else:
+            action = "kick_user"
+            label = "KICK"
+
+        set_flow(context, "await_admin_action_reason", {"action": action, "target_id": target_id})
+        await render_panel(
+            update,
+            context,
+            f"Aksi {label} untuk user {target_id}.\nKirim alasan (opsional), atau kirim '-' untuk tanpa alasan.",
+        )
         return
 
     if text == "bal_n_cancel":
@@ -2604,6 +3040,35 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
             await render_panel(update, context, _allow_list_panel_text(), keyboard_admin_access())
             return
 
+        if text in {"allow_pending", "📥 Pending", "Pending"}:
+            pending = _list_pending_access_requests()
+            rows: list[list[tuple[str, str]]] = []
+            for req in pending[:20]:
+                user_id = int(req.get("user_id", 0) or 0)
+                req_id = int(req.get("id", 0) or 0)
+                if user_id <= 0:
+                    continue
+                rows.append(
+                    [
+                        (f"✅ #{req_id}", f"allow_approve:{user_id}"),
+                        (f"❌ #{req_id}", f"allow_reject:{user_id}"),
+                    ]
+                )
+            rows.append([("⬅️ Kelola Akses", "allow_list"), ("🏠 Home", "home")])
+            await render_panel(update, context, _pending_requests_panel_text(), _mk_inline(rows))
+            return
+
+        if text in {"allow_manage", "👥 Kelola User", "Kelola User"}:
+            panel_text, user_ids = _managed_users_panel_text()
+            rows: list[list[tuple[str, str]]] = []
+            for user_id in user_ids[:24]:
+                rec = _get_user_access_record(user_id)
+                status = _status_label(str(rec.get("status", "pending") or "pending"))
+                rows.append([(f"{status[:1]} {user_id}", f"allow_user:{user_id}")])
+            rows.append([("⬅️ Kelola Akses", "allow_list"), ("🏠 Home", "home")])
+            await render_panel(update, context, panel_text, _mk_inline(rows))
+            return
+
         if text in {"allow_add", "➕ Add User", "Add User"}:
             set_flow(context, "await_admin_allow_add_id", {})
             await render_panel(update, context, "Kirim Telegram user id yang ingin ditambahkan ke allow list.")
@@ -2625,7 +3090,9 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
             await render_panel(update, context, "Telegram user id tidak valid.")
             return
 
-        added = append_allowed_id(target_id)
+        rec_before = _get_user_access_record(target_id)
+        added = str(rec_before.get("status", "")) != "approved"
+        _set_user_access_status(target_id, "approved", "Ditambahkan manual oleh admin")
         set_flow(context, "admin_access_menu", {})
         if added:
             result = f"User {target_id} berhasil ditambahkan ke allow list."
@@ -2640,6 +3107,96 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
             result = f"User {target_id} sudah ada di allow list."
 
         await render_panel(update, context, result + "\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+        return
+
+    if state == "await_admin_action_reason":
+        actor_id = update.effective_user.id if update.effective_user else None
+        if not is_admin_user(actor_id):
+            set_flow(context, "home", {})
+            await render_panel(update, context, "Aksi ini hanya untuk admin.")
+            return
+
+        action = str(data.get("action", "") or "")
+        target_id = int(data.get("target_id", 0) or 0)
+        if target_id <= 0 or not action:
+            set_flow(context, "admin_access_menu", {})
+            await render_panel(update, context, "State aksi admin tidak valid.", keyboard_admin_access())
+            return
+
+        reason = "" if text.strip() in {"-", ".", "skip", "none"} else text.strip()
+        set_flow(context, "admin_access_menu", {})
+
+        if action in {"suspend_user", "kick_user"} and is_admin_user(target_id):
+            await render_panel(update, context, "Akun admin tidak dapat di-suspend atau di-kick.", keyboard_admin_access())
+            return
+
+        if action == "approve_request":
+            ok, info = _process_access_request(target_id, True, int(actor_id or 0), reason)
+            if not ok:
+                await render_panel(update, context, info + "\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+                return
+            notify = "Permintaan akses Anda disetujui admin."
+            if reason:
+                notify += f"\nCatatan: {reason}"
+            try:
+                await context.bot.send_message(chat_id=target_id, text=notify + "\n\nSilakan kirim /start.")
+            except Exception:
+                pass
+            await render_panel(update, context, f"Request user {target_id} di-approve.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+            return
+
+        if action == "reject_request":
+            ok, info = _process_access_request(target_id, False, int(actor_id or 0), reason)
+            if not ok:
+                await render_panel(update, context, info + "\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+                return
+            notify = "Permintaan akses Anda ditolak admin."
+            if reason:
+                notify += f"\nAlasan: {reason}"
+            try:
+                await context.bot.send_message(chat_id=target_id, text=notify)
+            except Exception:
+                pass
+            await render_panel(update, context, f"Request user {target_id} di-reject.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+            return
+
+        if action == "suspend_user":
+            _set_user_access_status(target_id, "suspended", reason)
+            notify = "Akses bot Anda disuspend admin."
+            if reason:
+                notify += f"\nAlasan: {reason}"
+            try:
+                await context.bot.send_message(chat_id=target_id, text=notify)
+            except Exception:
+                pass
+            await render_panel(update, context, f"User {target_id} disuspend.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+            return
+
+        if action == "kick_user":
+            _set_user_access_status(target_id, "kicked", reason)
+            notify = "Akses bot Anda di-kick admin."
+            if reason:
+                notify += f"\nAlasan: {reason}"
+            try:
+                await context.bot.send_message(chat_id=target_id, text=notify)
+            except Exception:
+                pass
+            await render_panel(update, context, f"User {target_id} di-kick.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+            return
+
+        if action == "unsuspend_user":
+            _set_user_access_status(target_id, "approved", reason)
+            notify = "Akses bot Anda diaktifkan kembali admin."
+            if reason:
+                notify += f"\nCatatan: {reason}"
+            try:
+                await context.bot.send_message(chat_id=target_id, text=notify + "\n\nSilakan kirim /start.")
+            except Exception:
+                pass
+            await render_panel(update, context, f"User {target_id} diaktifkan kembali.\n\n" + _allow_list_panel_text(), keyboard_admin_access())
+            return
+
+        await render_panel(update, context, "Aksi admin tidak dikenali.", keyboard_admin_access())
         return
 
     if state == "famplan_menu":
