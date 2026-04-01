@@ -195,6 +195,11 @@ async def renew_trojan(event):
             await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/._-")
             return
 
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "trojan", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa renew akun TROJAN milik Anda sendiri.")
+            return
+
         # Expiry (dengan tombol + custom)
         days, msgs = await ask_expiry(event, chat, sender.id, is_trial=False)
         msgs_to_del.extend(msgs)
@@ -334,10 +339,16 @@ async def delete_trojan(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "trojan", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa menghapus akun TROJAN milik Anda sendiri.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -365,10 +376,16 @@ async def suspend_trojan(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan disuspend:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "trojan", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa suspend akun TROJAN milik Anda sendiri.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -395,10 +412,16 @@ async def unsuspend_trojan(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan di-unsuspend:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "trojan", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa unsuspend akun TROJAN milik Anda sendiri.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -434,6 +457,8 @@ async def trojan(event):
             inline = [
                 [Button.inline("🧪 Trial", "trial-trojan"), Button.inline("➕ Create", "create-trojan")],
                 [Button.inline("📋 Akun Saya", "list-trojan")],
+                [Button.inline("🗓️ Renew", "renew-trojan"), Button.inline("🗑️ Delete", "delete-trojan")],
+                [Button.inline("⛔ Suspend", "suspend-trojan"), Button.inline("✅ Unsuspend", "unsuspend-trojan")],
                 [Button.inline("📨 Request Kuota", "quota-request")],
                 [Button.inline("⬅️ Main Menu", "menu")],
             ]

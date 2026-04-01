@@ -1,5 +1,53 @@
 from kyt import *
-from kyt.modules.ui import manager_banner, back_button
+import asyncio
+from kyt.modules.ui import manager_banner, back_button, upsert_message, is_admin
+
+
+def _progress_bar(percent: int, width: int = 24) -> str:
+	clamped = max(0, min(100, int(percent)))
+	filled = int((clamped * width) / 100)
+	return "#" * filled + "-" * (width - filled)
+
+
+def _clean_log_line(line: str) -> str:
+	if not line:
+		return ""
+	# Strip ANSI color/control sequences from shell updater output.
+	return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line).strip()
+
+
+def _resolve_update_command() -> str:
+	candidates = [
+		"/usr/local/sbin/cek-update",
+		"/usr/local/sbin/update.sh",
+	]
+	for path in candidates:
+		if os.path.isfile(path) and os.access(path, os.X_OK):
+			return path
+
+	repo_update = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "update.sh"))
+	if os.path.isfile(repo_update):
+		return f'bash "{repo_update}"'
+
+	return "cek-update"
+
+
+def _render_update_panel(percent: int, status: str, logs: list) -> str:
+	if logs:
+		log_text = "\n".join(logs[-10:])
+	else:
+		log_text = "(menunggu output updater...)"
+	if len(log_text) > 1500:
+		log_text = "...\n" + log_text[-1450:]
+
+	bar = _progress_bar(percent)
+	return (
+		"🔄 **Panel Update (GitHub)**\n"
+		f"`[{bar}] {percent}%`\n"
+		f"Status: {status}\n\n"
+		"📜 **Log Updater (terbaru):**\n"
+		f"```\n{log_text}\n```"
+	)
 
 @bot.on(events.CallbackQuery(data=b'reboot'))
 async def rebooot(event):
@@ -75,6 +123,63 @@ async def resx(event):
 	a = valid(str(sender.id))
 	if a == "true":
 		await resx_(event)
+	else:
+		await event.answer("Access Denied",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'panel-update'))
+async def panel_update(event):
+	async def panel_update_(event):
+		if not is_admin(sender.id):
+			await event.answer("Menu khusus admin", alert=True)
+			return
+
+		cmd = _resolve_update_command()
+		logs = [f"$ {cmd}"]
+		percent = 5
+		await upsert_message(event, _render_update_panel(percent, "Menyiapkan updater...", logs), buttons=back_button("setting"))
+
+		try:
+			proc = await asyncio.create_subprocess_shell(
+				cmd,
+				stdout=asyncio.subprocess.PIPE,
+				stderr=asyncio.subprocess.STDOUT,
+			)
+		except Exception as exc:
+			await upsert_message(
+				event,
+				_render_update_panel(100, f"Gagal menjalankan updater: {exc}", logs),
+				buttons=back_button("setting"),
+			)
+			return
+
+		last_edit = time.monotonic()
+		while True:
+			line = await proc.stdout.readline()
+			if not line:
+				break
+			clean = _clean_log_line(line.decode("utf-8", errors="ignore"))
+			if clean:
+				logs.append(clean)
+				logs = logs[-20:]
+				percent = min(95, percent + 2)
+
+			now = time.monotonic()
+			if now - last_edit >= 1.0:
+				await upsert_message(event, _render_update_panel(percent, "Updater sedang berjalan...", logs), buttons=back_button("setting"))
+				last_edit = now
+
+		rc = await proc.wait()
+		if rc == 0:
+			status = "Selesai. Perubahan berhasil diterapkan."
+		else:
+			status = f"Updater selesai dengan error (exit {rc})."
+		await upsert_message(event, _render_update_panel(100, status, logs), buttons=back_button("setting"))
+
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await panel_update_(event)
 	else:
 		await event.answer("Access Denied",alert=True)
 		
@@ -189,6 +294,7 @@ async def settings(event):
 		inline = [
 [Button.inline(" SPEEDTEST","speedtest"),
 Button.inline(" BACKUP & RESTORE","backer")],
+[Button.inline(" UPDATE PANEL","panel-update")],
 [Button.inline(" REBOOT SERVER","reboot"),
 Button.inline(" RESTART SERVICE","resx")],
 [Button.inline("⬅️ Kembali","menu")]]

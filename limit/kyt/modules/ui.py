@@ -73,6 +73,7 @@ async def require_access(event, admin_only: bool = False) -> bool:
 
     if status == "pending":
         msg = "⏳ Akses Anda masih menunggu persetujuan admin."
+        buttons = access_request_buttons()
     elif status == "rejected":
         msg = "❌ Request akses Anda ditolak admin."
         if note:

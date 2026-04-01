@@ -898,6 +898,36 @@ def get_user_accounts(
 		db.close()
 
 
+def user_owns_account(tg_id, service: str, username: str, active_only: bool = True) -> bool:
+	uid = _normalize_tg_id(tg_id)
+	svc = str(service or "").strip().lower()
+	user = str(username or "").strip()
+
+	if not uid or not svc or not user:
+		return False
+
+	if is_admin_user(uid):
+		return True
+
+	query = """
+		SELECT 1
+		FROM account_registry
+		WHERE tg_id = ?
+		  AND service = ?
+		  AND LOWER(username) = LOWER(?)
+	"""
+	params = [uid, svc, user]
+	if active_only:
+		query += " AND active = 1"
+
+	db = get_db()
+	try:
+		row = db.execute(query, tuple(params)).fetchone()
+		return row is not None
+	finally:
+		db.close()
+
+
 def create_quota_request(tg_id, reason: str = "") -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:

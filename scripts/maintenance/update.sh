@@ -10,6 +10,12 @@ BRANCH="${PANELXRAY_BRANCH:-}"
 MECLI_ASSET_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
 MECLI_INSTALL_DIR="/opt/vpnxray-me-cli-sunset"
 MECLI_UPSTREAM_REPO_URL="https://github.com/dalifajr/xl-cli.git"
+KYT_ASSETS_CHANGED=0
+KYT_REQUIREMENTS_CHANGED=0
+MECLI_ASSETS_CHANGED=0
+KYT_RESTARTED=0
+MECLI_BOT_RESTARTED=0
+MECLI_CLI_RESTARTED=0
 
 cleanup() {
     rm -rf "$TMP_DIR"
@@ -293,6 +299,11 @@ EOF
 
 sync_kyt_bot_assets() {
     local kyt_dir venv_pip
+
+    if [[ "${KYT_ASSETS_CHANGED:-0}" != "1" ]]; then
+        return 0
+    fi
+
     kyt_dir="/usr/bin/kyt"
     venv_pip="${kyt_dir}/.venv/bin/pip"
 
@@ -306,13 +317,14 @@ sync_kyt_bot_assets() {
         cp -rf "$TMP_DIR/limit/kyt/." "$kyt_dir/"
     fi
 
-    if [[ -x "$venv_pip" && -f "${kyt_dir}/requirements.txt" ]]; then
+    if [[ "${KYT_REQUIREMENTS_CHANGED:-0}" == "1" && -x "$venv_pip" && -f "${kyt_dir}/requirements.txt" ]]; then
         "$venv_pip" install -r "${kyt_dir}/requirements.txt" >/dev/null 2>&1 || true
     fi
 
     if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
         systemctl daemon-reload >/dev/null 2>&1 || true
         systemctl restart kyt >/dev/null 2>&1 || true
+        KYT_RESTARTED=1
     fi
 }
 
@@ -369,6 +381,11 @@ resolve_me_cli_source_dir() {
 
 sync_me_cli_assets() {
     local src_dir resolved_src upstream_dir
+
+    if [[ "${MECLI_ASSETS_CHANGED:-0}" != "1" ]]; then
+        return 0
+    fi
+
     src_dir="$TMP_DIR/limit/me-cli-sunset-main"
     resolved_src="$(resolve_me_cli_source_dir "$src_dir" || true)"
 
@@ -397,6 +414,11 @@ sync_me_cli_assets() {
 
 auto_refresh_me_cli_runtime() {
     local installer sync_log
+
+    if [[ "${MECLI_ASSETS_CHANGED:-0}" != "1" ]]; then
+        return 0
+    fi
+
     installer="${TARGET_SBIN}/install-me-cli"
     sync_log="/tmp/panelxray-me-cli-sync.log"
 
@@ -414,6 +436,84 @@ auto_refresh_me_cli_runtime() {
         echo -e "\033[0;32mSinkronisasi runtime me-cli berhasil.\033[0m"
     else
         echo -e "\033[1;31mSinkronisasi runtime me-cli gagal. Lihat log: $sync_log\033[0m"
+    fi
+}
+
+restart_me_cli_runtime_if_running() {
+    local app_dir venv_py bot_pid_file cli_pid_file pid
+
+    if [[ "${MECLI_ASSETS_CHANGED:-0}" != "1" ]]; then
+        return 0
+    fi
+
+    app_dir="$MECLI_INSTALL_DIR"
+    venv_py="${app_dir}/.venv/bin/python"
+    bot_pid_file="${app_dir}/run/telegram_bot.pid"
+    cli_pid_file="${app_dir}/run/cli.pid"
+
+    if [[ ! -d "$app_dir" || ! -x "$venv_py" ]]; then
+        return 0
+    fi
+
+    mkdir -p "${app_dir}/run" "${app_dir}/logs"
+
+    if [[ -f "$bot_pid_file" ]]; then
+        pid="$(cat "$bot_pid_file" 2>/dev/null || true)"
+        if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+            kill "$pid" >/dev/null 2>&1 || true
+            sleep 1
+            if kill -0 "$pid" >/dev/null 2>&1; then
+                kill -9 "$pid" >/dev/null 2>&1 || true
+            fi
+            (cd "$app_dir" && nohup "$venv_py" telegram_main.py >> "${app_dir}/logs/telegram_bot.log" 2>&1 & echo $! > "$bot_pid_file")
+            MECLI_BOT_RESTARTED=1
+        fi
+    fi
+
+    if [[ -f "$cli_pid_file" ]]; then
+        pid="$(cat "$cli_pid_file" 2>/dev/null || true)"
+        if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+            kill "$pid" >/dev/null 2>&1 || true
+            sleep 1
+            if kill -0 "$pid" >/dev/null 2>&1; then
+                kill -9 "$pid" >/dev/null 2>&1 || true
+            fi
+            (cd "$app_dir" && nohup "$venv_py" main.py >> "${app_dir}/logs/cli.log" 2>&1 & echo $! > "$cli_pid_file")
+            MECLI_CLI_RESTARTED=1
+        fi
+    fi
+}
+
+detect_bot_asset_changes() {
+    local changed
+
+    KYT_ASSETS_CHANGED=0
+    KYT_REQUIREMENTS_CHANGED=0
+    MECLI_ASSETS_CHANGED=0
+
+    if [[ "$old_sha" == "unknown" ]] || ! git -C "$TMP_DIR" rev-parse --verify --quiet "$old_sha" >/dev/null 2>&1; then
+        if [[ -d "$TMP_DIR/limit/kyt" || -d "$TMP_DIR/limit/bot" ]]; then
+            KYT_ASSETS_CHANGED=1
+        fi
+        if [[ -d "$TMP_DIR/limit/me-cli-sunset-main" ]]; then
+            MECLI_ASSETS_CHANGED=1
+        fi
+        return 0
+    fi
+
+    changed="$(git -C "$TMP_DIR" diff --name-only "$old_sha" "$new_sha" 2>/dev/null || true)"
+    if [[ -z "$changed" ]]; then
+        return 0
+    fi
+
+    if printf '%s\n' "$changed" | grep -qE '^limit/(kyt|bot)/'; then
+        KYT_ASSETS_CHANGED=1
+    fi
+    if printf '%s\n' "$changed" | grep -qE '^limit/kyt/requirements\.txt$'; then
+        KYT_REQUIREMENTS_CHANGED=1
+    fi
+    if printf '%s\n' "$changed" | grep -qE '^limit/me-cli-sunset-main/'; then
+        MECLI_ASSETS_CHANGED=1
     fi
 }
 
@@ -501,12 +601,17 @@ auto_fix_webpanel_route() {
 old_sha="unknown"
 [[ -f "$STATE_FILE" ]] && old_sha="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
 new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+detect_bot_asset_changes
 
 mkdir -p "$TARGET_SBIN" /etc/kyt
 cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
 run_webpanel_regression_gate
 sync_runtime_configs
+sync_kyt_bot_assets
+sync_me_cli_assets
+auto_refresh_me_cli_runtime
+restart_me_cli_runtime_if_running
 auto_fix_webpanel_route
 echo "$new_sha" > "$STATE_FILE"
 
@@ -516,4 +621,16 @@ echo -e "New revision : $new_sha"
 echo -e "Target path  : $TARGET_SBIN"
 echo -e "Regression   : panel gate dijalankan otomatis (set PANEL_REGRESSION_GATE=0 untuk bypass darurat)"
 echo -e "Runtime cfg  : nginx/haproxy/ws synced"
+if [[ "$KYT_ASSETS_CHANGED" == "1" ]]; then
+    echo -e "KYT sync     : /usr/bin/kyt + bot scripts disinkronkan"
+    if [[ "$KYT_RESTARTED" == "1" ]]; then
+        echo -e "KYT restart  : kyt.service di-restart"
+    fi
+fi
+if [[ "$MECLI_ASSETS_CHANGED" == "1" ]]; then
+    echo -e "ME-CLI sync  : asset me-cli disinkronkan"
+    if [[ "$MECLI_BOT_RESTARTED" == "1" || "$MECLI_CLI_RESTARTED" == "1" ]]; then
+        echo -e "ME-CLI restart: proses aktif me-cli di-restart"
+    fi
+fi
 echo -e "Web panel    : sinkronisasi panel + auto-fix /panel dijalankan jika panel terdeteksi"

@@ -281,6 +281,11 @@ async def renew_vmess(event):
             await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/._-")
             return
 
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "vmess", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa renew akun VMESS milik Anda sendiri.")
+            return
+
         # Expiry (dengan tombol + custom)
         days, msgs = await ask_expiry(event, chat, sender.id, is_trial=False)
         msgs_to_del.extend(msgs)
@@ -337,10 +342,16 @@ async def delete_vmess(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "vmess", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa menghapus akun VMESS milik Anda sendiri.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -368,10 +379,16 @@ async def suspend_vmess(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan disuspend:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "vmess", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa suspend akun VMESS milik Anda sendiri.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -398,10 +415,16 @@ async def unsuspend_vmess(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan di-unsuspend:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
             await upsert_message(event, "❌ Proses dibatalkan.")
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "vmess", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa unsuspend akun VMESS milik Anda sendiri.")
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -437,6 +460,8 @@ async def vmess(event):
             inline = [
                 [Button.inline("🧪 Trial", "trial-vmess"), Button.inline("➕ Create", "create-vmess")],
                 [Button.inline("📋 Akun Saya", "list-vmess")],
+                [Button.inline("🗓️ Renew", "renew-vmess"), Button.inline("🗑️ Delete", "delete-vmess")],
+                [Button.inline("⛔ Suspend", "suspend-vmess"), Button.inline("✅ Unsuspend", "unsuspend-vmess")],
                 [Button.inline("📨 Request Kuota", "quota-request")],
                 [Button.inline("⬅️ Main Menu", "menu")],
             ]

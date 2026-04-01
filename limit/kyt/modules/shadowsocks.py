@@ -3,7 +3,7 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     send_account_with_qr, short_progress, run_command,
     ask_expiry, upsert_message, notify_then_back, back_button,
-    ensure_creation_quota, is_admin
+    ensure_creation_quota, is_admin, sanitize_username
 )
 
 @bot.on(events.CallbackQuery(data=b'create-shadowsocks'))
@@ -145,10 +145,16 @@ async def delete_shadowsocks(event):
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
         
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await upsert_message(event, "❌ Proses dibatalkan.")
+            await upsert_message(event, "❌ Proses dibatalkan.", buttons=back_button("shadowsocks"))
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "shadowsocks", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa menghapus akun SHADOWSOCKS milik Anda sendiri.", buttons=back_button("shadowsocks"))
             return
         
         await delete_messages(chat, msgs_to_del)
@@ -157,7 +163,7 @@ async def delete_shadowsocks(event):
         try:
             a = subprocess.check_output(cmd, shell=True).decode("utf-8")
         except:
-            await upsert_message(event, "**User Not Found**")
+            await upsert_message(event, "**User Not Found**", buttons=back_button("shadowsocks"))
         else:
             mark_account_inactive("shadowsocks", user)
             await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", shadowsocks, delay=3)
@@ -167,6 +173,64 @@ async def delete_shadowsocks(event):
     a = valid(str(sender.id))
     if a == "true":
         await delete_shadowsocks_(event)
+    else:
+        await event.answer("Akses Ditolak",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'renew-shadowsocks'))
+async def renew_shadowsocks(event):
+    async def renew_shadowsocks_(event):
+        msgs_to_del = []
+
+        user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Masukkan Username SHADOWSOCKS:**")
+        msgs_to_del.extend(msgs)
+        user = sanitize_username(user)
+        if not user:
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/._-", buttons=back_button("shadowsocks"))
+            return
+
+        if not is_admin(sender.id) and not user_owns_account(str(sender.id), "shadowsocks", user, active_only=True):
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "⛔ Anda hanya bisa renew akun SHADOWSOCKS milik Anda sendiri.", buttons=back_button("shadowsocks"))
+            return
+
+        days, msgs = await ask_expiry(event, chat, sender.id, is_trial=False)
+        msgs_to_del.extend(msgs)
+        if not days:
+            await delete_messages(chat, msgs_to_del)
+            await upsert_message(event, "❌ Proses dibatalkan.", buttons=back_button("shadowsocks"))
+            return
+
+        await delete_messages(chat, msgs_to_del)
+        await upsert_message(event, "⏳ Memperpanjang akun SHADOWSOCKS...")
+        _, out = run_command("renewss", [user, days])
+        _, exp = run_command(f"grep -wE '^#!# {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
+
+        if exp:
+            refresh_account_expiry("shadowsocks", user, exp)
+            msg = build_result(
+                "Shadowsocks Account Renewed",
+                [
+                    ("Username", user),
+                    ("Added Days", days),
+                    ("Aktif sampai dengan", exp),
+                ],
+                [("JSON", f"https://{DOMAIN}:81/ss-{user}.txt")],
+            )
+            await upsert_message(event, msg, buttons=back_button("shadowsocks"))
+        else:
+            await upsert_message(
+                event,
+                f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```",
+                buttons=back_button("shadowsocks"),
+            )
+
+    chat = event.chat_id
+    sender = await event.get_sender()
+    a = valid(str(sender.id))
+    if a == "true":
+        await renew_shadowsocks_(event)
     else:
         await event.answer("Akses Ditolak",alert=True)
 
@@ -237,13 +301,14 @@ async def shadowsocks(event):
             inline = [
                 [Button.inline("🧪 Trial", "trial-shadowsocks"), Button.inline("➕ Create", "create-shadowsocks")],
                 [Button.inline("👀 Check Login", "cek-shadowsocks"), Button.inline("📋 List User", "list-shadowsocks")],
-                [Button.inline("🗑️ Delete", "delete-shadowsocks")],
+                [Button.inline("🗓️ Renew", "renew-shadowsocks"), Button.inline("🗑️ Delete", "delete-shadowsocks")],
                 [Button.inline("⬅️ Main Menu", "menu")],
             ]
         else:
             inline = [
                 [Button.inline("🧪 Trial", "trial-shadowsocks"), Button.inline("➕ Create", "create-shadowsocks")],
                 [Button.inline("📋 Akun Saya", "list-shadowsocks")],
+                [Button.inline("🗓️ Renew", "renew-shadowsocks"), Button.inline("🗑️ Delete", "delete-shadowsocks")],
                 [Button.inline("📨 Request Kuota", "quota-request")],
                 [Button.inline("⬅️ Main Menu", "menu")],
             ]
