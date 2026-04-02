@@ -248,6 +248,7 @@ fi
 
 for unit in ssh sshd dropbear ws xray cron kyt; do
   if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+    systemctl reset-failed "$unit" >/dev/null 2>&1 || true
     systemctl enable "$unit" >/dev/null 2>&1 || true
     systemctl restart "$unit" >/dev/null 2>&1 || true
   fi
@@ -276,6 +277,57 @@ EOF
 
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl enable --now panelxray-boot-guard >/dev/null 2>&1 || true
+}
+
+ensure_ws_epro_service() {
+  local ws_unit ws_runner ws_script
+  ws_unit="/etc/systemd/system/ws.service"
+  ws_runner="/usr/bin/ws"
+  ws_script="/etc/whoiamluna/ws.py"
+
+  mkdir -p /etc/whoiamluna
+
+  if [ -f "$TMP_DIR/limit/ws.py" ]; then
+    cp -f "$TMP_DIR/limit/ws.py" "$ws_script" 2>/dev/null || true
+    chmod 755 "$ws_script" 2>/dev/null || true
+  fi
+
+  if [ -f "$TMP_DIR/limit/ws" ]; then
+    cp -f "$TMP_DIR/limit/ws" "$ws_runner" 2>/dev/null || true
+    chmod 755 "$ws_runner" 2>/dev/null || true
+  fi
+
+  if [ -f "$TMP_DIR/limit/ws.service" ]; then
+    cp -f "$TMP_DIR/limit/ws.service" "$ws_unit" 2>/dev/null || true
+    chmod 644 "$ws_unit" 2>/dev/null || true
+  fi
+
+  if ! command -v /usr/bin/python3 >/dev/null 2>&1; then
+    apt-get install -y python3 >/dev/null 2>&1 || apt install -y python3 >/dev/null 2>&1 || true
+  fi
+
+  if ! systemctl list-unit-files 2>/dev/null | grep -q '^ws\.service'; then
+    return 0
+  fi
+
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl unmask ws >/dev/null 2>&1 || true
+  systemctl reset-failed ws >/dev/null 2>&1 || true
+  systemctl enable ws >/dev/null 2>&1 || true
+  systemctl restart ws >/dev/null 2>&1 || systemctl start ws >/dev/null 2>&1 || true
+
+  if ! systemctl is-active --quiet ws; then
+    if command -v pkill >/dev/null 2>&1; then
+      pkill -f '/etc/whoiamluna/ws.py' >/dev/null 2>&1 || true
+    fi
+    sleep 1
+    systemctl reset-failed ws >/dev/null 2>&1 || true
+    systemctl start ws >/dev/null 2>&1 || true
+  fi
+
+  if ! systemctl is-active --quiet ws; then
+    echo -e "${yellow}Service ws belum aktif setelah update. Jalankan: journalctl -u ws -n 40 --no-pager${NC}"
+  fi
 }
 
 sync_runtime_configs() {
@@ -426,7 +478,7 @@ sync_runtime_configs() {
   fi
   systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
   systemctl restart dropbear >/dev/null 2>&1 || true
-  systemctl restart ws >/dev/null 2>&1 || true
+  ensure_ws_epro_service
   systemctl restart xray >/dev/null 2>&1 || true
 }
 
