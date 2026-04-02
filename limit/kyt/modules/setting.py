@@ -141,6 +141,65 @@ def _restart_ssh_service() -> tuple:
 	return False, errors[-1]
 
 
+def _run_quiet_command(cmd: list) -> bool:
+	exe = cmd[0] if cmd else ""
+	if not exe:
+		return False
+	if exe.startswith("/"):
+		if not os.path.isfile(exe):
+			return False
+	elif shutil.which(exe) is None:
+		return False
+
+	try:
+		proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+	except Exception:
+		return False
+	return proc.returncode == 0
+
+
+def _prepare_reboot_recovery() -> None:
+	guard = "/usr/local/sbin/panelxray-boot-guard"
+	if os.path.isfile(guard) and os.access(guard, os.X_OK):
+		_run_quiet_command([guard])
+		return
+
+	for cron_file in ("/etc/cron.d/daily_reboot", "/etc/cron.d/reboot_otomatis"):
+		try:
+			if os.path.isfile(cron_file):
+				os.remove(cron_file)
+		except Exception:
+			pass
+
+	if shutil.which("iptables"):
+		for port in ("22", "2222", "2223", "143", "109"):
+			if not _run_quiet_command(["iptables", "-C", "INPUT", "-p", "tcp", "--dport", port, "-j", "ACCEPT"]):
+				_run_quiet_command(["iptables", "-I", "INPUT", "-p", "tcp", "--dport", port, "-j", "ACCEPT"])
+
+	if shutil.which("netfilter-persistent"):
+		_run_quiet_command(["netfilter-persistent", "save"])
+		_run_quiet_command(["netfilter-persistent", "reload"])
+	elif shutil.which("iptables-save"):
+		try:
+			os.makedirs("/etc/iptables", exist_ok=True)
+			with open("/etc/iptables/rules.v4", "w", encoding="utf-8") as rules:
+				subprocess.run(["iptables-save"], stdout=rules, stderr=subprocess.DEVNULL, check=False)
+		except Exception:
+			pass
+
+	for unit in ("ssh", "sshd", "dropbear", "ws", "xray", "cron", "kyt"):
+		if _run_quiet_command(["systemctl", "enable", unit]):
+			_run_quiet_command(["systemctl", "restart", unit])
+
+
+def _trigger_system_reboot() -> None:
+	cmd = "sleep 2; systemctl reboot >/dev/null 2>&1 || reboot >/dev/null 2>&1"
+	try:
+		subprocess.Popen(["/bin/sh", "-c", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+	except Exception:
+		subprocess.Popen(["/bin/sh", "-c", "sleep 2; reboot >/dev/null 2>&1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def _set_root_password(new_password: str) -> tuple:
 	if not new_password:
 		return False, "Password kosong"
@@ -226,41 +285,36 @@ def _render_ssh_auth_status() -> str:
 
 @bot.on(events.CallbackQuery(data=b'reboot'))
 async def rebooot(event):
-	async def rebooot_(event):
-		cmd = f'reboot'
-		await event.edit("Processing.")
-		await event.edit("Processing..")
-		await event.edit("Processing...")
-		await event.edit("Processing....")
-		time.sleep(1)
-		await event.edit("`Processing Restart Service Server...`")
-		time.sleep(1)
-		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒ `")
-		time.sleep(1)
-		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
-		time.sleep(0)
-		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		subprocess.check_output(cmd, shell=True)
-		await event.edit(f"""
-**» REBOOT SERVER**
-**» 🤖@AutoFTbot**
-""",buttons=back_button("setting"))
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
-	if a == "true":
-		await rebooot_(event)
-	else:
+	if a != "true":
 		await event.answer("Access Denied",alert=True)
+		return
+	if not is_admin(sender.id):
+		await event.answer("Menu khusus admin", alert=True)
+		return
+
+	await upsert_message(event, "`Menjalankan preflight reboot aman...`")
+	for step in (
+		"`Cek rule SSH management (22/2222/2223/143/109)...`",
+		"`Menonaktifkan scheduler reboot legacy...`",
+		"`Sinkronisasi service guard...`",
+	):
+		await asyncio.sleep(0.5)
+		await upsert_message(event, step)
+
+	try:
+		_prepare_reboot_recovery()
+	except Exception as exc:
+		await upsert_message(event, f"⚠️ Preflight reboot menemukan error: `{exc}`\nLanjut reboot dengan fallback.")
+
+	await upsert_message(
+		event,
+		"✅ Preflight selesai. Server akan reboot dalam beberapa detik.\n\n"
+		"Jika koneksi bot terputus, tunggu 60-120 detik lalu cek SSH lagi.",
+		buttons=back_button("setting"),
+	)
+	_trigger_system_reboot()
 
 
 @bot.on(events.CallbackQuery(data=b'resx'))

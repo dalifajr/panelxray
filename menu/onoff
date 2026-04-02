@@ -82,6 +82,22 @@ disable_limit_services() {
     systemctl daemon-reload
 }
 
+safe_reboot() {
+    if [ -x /usr/local/sbin/panelxray-boot-guard ]; then
+        /usr/local/sbin/panelxray-boot-guard >/dev/null 2>&1 || true
+    else
+        rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis >/dev/null 2>&1 || true
+        for p in 22 2222 2223 143 109; do
+            iptables -C INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || true
+        done
+        if command -v netfilter-persistent >/dev/null 2>&1; then
+            netfilter-persistent save >/dev/null 2>&1 || true
+            netfilter-persistent reload >/dev/null 2>&1 || true
+        fi
+    fi
+    systemctl reboot >/dev/null 2>&1 || reboot
+}
+
 status_udp1="$(limit_status_label)"
 
 if declare -F thm_title >/dev/null; then
@@ -103,11 +119,11 @@ read -p "Pilih Menu [ 1 - 2 atau 0 ] : " menu
 case $menu in
 1)   clear ;
     disable_limit_services
-    reboot
+    safe_reboot
     ;;
 2) clear ;
     enable_limit_services
-    reboot
+    safe_reboot
     ;;
 0) clear ;
     menu

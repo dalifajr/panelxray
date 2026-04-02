@@ -57,12 +57,27 @@ NC='\e[0m'
 MYIP=$(wget -qO- icanhazip.com);
 echo "Checking VPS"
 clear
+rm -f /etc/cron.d/daily_reboot >/dev/null 2>&1 || true
 if [ ! -e /usr/local/bin/reboot_otomatis ]; then
-echo '#!/bin/bash' > /usr/local/bin/reboot_otomatis 
-echo 'tanggal=$(date +"%m-%d-%Y")' >> /usr/local/bin/reboot_otomatis 
-echo 'waktu=$(date +"%T")' >> /usr/local/bin/reboot_otomatis 
-echo 'echo "Sucsesfully Reboot On $tanggal Time $waktu." >> /root/log-reboot.txt' >> /usr/local/bin/reboot_otomatis 
-echo '/sbin/shutdown -r now' >> /usr/local/bin/reboot_otomatis 
+cat >/usr/local/bin/reboot_otomatis <<'EOF'
+#!/bin/bash
+tanggal=$(date +"%m-%d-%Y")
+waktu=$(date +"%T")
+echo "Sucsesfully Reboot On $tanggal Time $waktu." >> /root/log-reboot.txt
+rm -f /etc/cron.d/daily_reboot >/dev/null 2>&1 || true
+if [ -x /usr/local/sbin/panelxray-boot-guard ]; then
+	/usr/local/sbin/panelxray-boot-guard >/dev/null 2>&1 || true
+else
+	for p in 22 2222 2223 143 109; do
+		iptables -C INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || true
+	done
+	if command -v netfilter-persistent >/dev/null 2>&1; then
+		netfilter-persistent save >/dev/null 2>&1 || true
+		netfilter-persistent reload >/dev/null 2>&1 || true
+	fi
+fi
+/bin/systemctl reboot >/dev/null 2>&1 || /sbin/shutdown -r now
+EOF
 chmod +x /usr/local/bin/reboot_otomatis
 fi
 clear

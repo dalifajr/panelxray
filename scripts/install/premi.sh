@@ -1695,6 +1695,58 @@ exit 0
 EOF
 
     chmod +x /etc/rc.local
+
+cat >/usr/local/sbin/panelxray-boot-guard <<'EOF'
+#!/bin/bash
+set -u
+
+rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis >/dev/null 2>&1 || true
+
+for p in 22 2222 2223 143 109; do
+iptables -C INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || true
+done
+
+if command -v netfilter-persistent >/dev/null 2>&1; then
+netfilter-persistent save >/dev/null 2>&1 || true
+netfilter-persistent reload >/dev/null 2>&1 || true
+elif command -v iptables-save >/dev/null 2>&1; then
+mkdir -p /etc/iptables
+iptables-save >/etc/iptables/rules.v4 2>/dev/null || true
+fi
+
+for unit in ssh sshd dropbear ws xray cron kyt nginx haproxy; do
+if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+systemctl reset-failed "${unit}" >/dev/null 2>&1 || true
+systemctl enable "${unit}" >/dev/null 2>&1 || true
+systemctl restart "${unit}" >/dev/null 2>&1 || true
+fi
+done
+
+if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+systemctl enable ssh.socket >/dev/null 2>&1 || true
+systemctl restart ssh.socket >/dev/null 2>&1 || true
+fi
+
+exit 0
+EOF
+chmod 755 /usr/local/sbin/panelxray-boot-guard
+
+cat >/etc/systemd/system/panelxray-boot-guard.service <<'EOF'
+[Unit]
+Description=PanelXray boot recovery guard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/panelxray-boot-guard
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable --now panelxray-boot-guard >/dev/null 2>&1 || true
     
     AUTOREB=$(cat /home/daily_reboot)
     SETT=11
@@ -1818,4 +1870,7 @@ sudo hostnamectl set-hostname $username
 echo -e "${green} Script Successfull Installed"
 echo ""
 read -p "$( echo -e "Press ${YELLOW}[ ${NC}${YELLOW}Enter${NC} ${YELLOW}]${NC} For Reboot") "
+if [ -x /usr/local/sbin/panelxray-boot-guard ]; then
+    /usr/local/sbin/panelxray-boot-guard >/dev/null 2>&1 || true
+fi
 reboot
