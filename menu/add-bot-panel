@@ -46,23 +46,35 @@ checking_sc
 
 run_kyt_installer() {
   local tmp_script
+  run_installer_candidate() {
+    "$@"
+    if systemctl is-active --quiet kyt; then
+      return 0
+    fi
+
+    echo -e "${RED}Service kyt masih gagal setelah instalasi.${NC}"
+    echo -e "${yell}Log terbaru kyt:${NC}"
+    journalctl -u kyt -n 40 --no-pager || true
+    return 1
+  }
+
   if [[ -x /usr/local/sbin/kyt.sh ]]; then
-    /usr/local/sbin/kyt.sh
+    run_installer_candidate /usr/local/sbin/kyt.sh
     return
   fi
 
   if command -v kyt.sh >/dev/null 2>&1; then
-    kyt.sh
+    run_installer_candidate kyt.sh
     return
   fi
 
   if [[ -r /usr/local/sbin/scripts/maintenance/kyt.sh ]]; then
-    bash /usr/local/sbin/scripts/maintenance/kyt.sh
+    run_installer_candidate bash /usr/local/sbin/scripts/maintenance/kyt.sh
     return
   fi
 
   if [[ -r /root/kyt.sh ]]; then
-    bash /root/kyt.sh
+    run_installer_candidate bash /root/kyt.sh
     return
   fi
 
@@ -75,13 +87,13 @@ run_kyt_installer() {
 
   if [[ -s "$tmp_script" ]]; then
     chmod +x "$tmp_script"
-    bash "$tmp_script"
+    run_installer_candidate bash "$tmp_script"
     rm -f "$tmp_script"
     return
   fi
 
   echo -e "${RED}Installer bot tidak ditemukan.${NC}"
-  echo -e "${YELL}Jalankan update menu lalu coba lagi.${NC}"
+  echo -e "${yell}Jalankan update menu lalu coba lagi.${NC}"
   read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali"
 }
 
