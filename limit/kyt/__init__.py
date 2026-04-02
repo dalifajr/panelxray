@@ -31,8 +31,58 @@ with open(VAR_FILE, "r", encoding="utf-8") as f:
 
 API_ID = int(globals().get("API_ID", 6))
 API_HASH = str(globals().get("API_HASH", "eb06d4abfb49dc3eeb1aeb98ae0f581e"))
+BOT_TOKEN = str(globals().get("BOT_TOKEN", "")).strip()
 
-bot = TelegramClient("ddsdswl", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+if not BOT_TOKEN:
+	raise ValueError("BOT_TOKEN kosong pada var.txt")
+
+
+def _telethon_session_artifacts(session_base: str) -> List[str]:
+	session_db = f"{session_base}.session"
+	return [
+		session_db,
+		f"{session_db}-journal",
+		f"{session_db}-wal",
+		f"{session_db}-shm",
+	]
+
+
+def _cleanup_telethon_session(session_base: str):
+	for path in _telethon_session_artifacts(session_base):
+		try:
+			os.remove(path)
+		except FileNotFoundError:
+			continue
+		except Exception as exc:
+			logging.warning("Gagal hapus session artifact %s: %s", path, exc)
+
+
+def _is_recoverable_session_error(exc: Exception) -> bool:
+	msg = str(exc or "")
+	msg_lower = msg.lower()
+	if isinstance(exc, sqlite3.DatabaseError):
+		return True
+	if isinstance(exc, TypeError) and "none" in msg_lower and "subscriptable" in msg_lower:
+		return True
+	if "sqlite" in msg_lower and "session" in msg_lower:
+		return True
+	return False
+
+
+def _start_bot_client() -> TelegramClient:
+	# Use a fixed absolute session path to avoid collisions with cwd changes.
+	session_base = os.path.join(BASE_DIR, "ddsdswl")
+	try:
+		return TelegramClient(session_base, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+	except Exception as exc:
+		if not _is_recoverable_session_error(exc):
+			raise
+		logging.warning("Session Telethon terdeteksi rusak, mencoba recovery otomatis: %s", exc)
+		_cleanup_telethon_session(session_base)
+		return TelegramClient(session_base, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+
+
+bot = _start_bot_client()
 
 
 def _normalize_tg_id(value) -> str:

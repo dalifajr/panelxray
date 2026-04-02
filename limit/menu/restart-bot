@@ -77,6 +77,8 @@ def what(file, h=None):
 PY
         fi
     fi
+    rm -f /usr/bin/ddsdswl.session /usr/bin/ddsdswl.session-journal /usr/bin/ddsdswl.session-wal /usr/bin/ddsdswl.session-shm >/dev/null 2>&1 || true
+    rm -f /usr/bin/kyt/ddsdswl.session /usr/bin/kyt/ddsdswl.session-journal /usr/bin/kyt/ddsdswl.session-wal /usr/bin/kyt/ddsdswl.session-shm >/dev/null 2>&1 || true
     systemctl reset-failed kyt >/dev/null 2>&1 || true
     systemctl restart kyt
 }

@@ -235,6 +235,10 @@ HOST='${NS}'
 API_ID='6'
 API_HASH='eb06d4abfb49dc3eeb1aeb98ae0f581e'
 EOF
+
+# Clean possibly corrupted Telethon session files from old installs.
+rm -f /usr/bin/ddsdswl.session /usr/bin/ddsdswl.session-journal /usr/bin/ddsdswl.session-wal /usr/bin/ddsdswl.session-shm 2>/dev/null || true
+rm -f /usr/bin/kyt/ddsdswl.session /usr/bin/kyt/ddsdswl.session-journal /usr/bin/kyt/ddsdswl.session-wal /usr/bin/kyt/ddsdswl.session-shm 2>/dev/null || true
 clear
 
 cat > /etc/systemd/system/kyt.service << END
