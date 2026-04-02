@@ -220,18 +220,27 @@ done
 if command -v netfilter-persistent >/dev/null 2>&1; then
   netfilter-persistent save >/dev/null 2>&1 || true
   netfilter-persistent reload >/dev/null 2>&1 || true
+elif command -v iptables-save >/dev/null 2>&1; then
+    mkdir -p /etc/iptables
+    iptables-save >/etc/iptables/rules.v4 2>/dev/null || true
 fi
 
-systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
-systemctl restart dropbear >/dev/null 2>&1 || true
-systemctl restart xray >/dev/null 2>&1 || true
-systemctl restart ws >/dev/null 2>&1 || true
+if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+    systemctl enable ssh.socket >/dev/null 2>&1 || true
+    systemctl restart ssh.socket >/dev/null 2>&1 || true
+fi
+
+for unit in ssh sshd dropbear ws xray cron kyt; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+        systemctl enable "$unit" >/dev/null 2>&1 || true
+        systemctl restart "$unit" >/dev/null 2>&1 || true
+    fi
+done
+
 systemctl restart nginx >/dev/null 2>&1 || true
 systemctl restart haproxy >/dev/null 2>&1 || true
 
-if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
-  systemctl restart kyt >/dev/null 2>&1 || true
-fi
+rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis 2>/dev/null || true
 
 exit 0
 EOF
@@ -376,6 +385,9 @@ EOF
     fi
 
     systemctl daemon-reload >/dev/null 2>&1 || true
+    if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+        systemctl enable ssh.socket >/dev/null 2>&1 || true
+    fi
     if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.service'; then
         systemctl enable ssh >/dev/null 2>&1 || true
     fi
