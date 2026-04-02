@@ -1645,11 +1645,18 @@ cat >/etc/rc.local <<EOF
 #!/bin/sh -e
 # rc.local
 # By default this script does nothing.
+rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis
+for p in 22 2222 2223 143 109; do
+iptables -C INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -p tcp --dport "${p}" -j ACCEPT
+done
 iptables -I INPUT -p udp --dport 5300 -j ACCEPT
 iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300
 if systemctl list-unit-files 2>/dev/null | grep -q '^netfilter-persistent\.service'; then
 systemctl restart netfilter-persistent
 fi
+for p in 22 2222 2223 143 109; do
+iptables -C INPUT -p tcp --dport "${p}" -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -p tcp --dport "${p}" -j ACCEPT
+done
 exit 0
 EOF
 

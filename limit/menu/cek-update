@@ -187,11 +187,25 @@ ensure_ssh_ports_in_iptables_rules() {
   rules_file="/etc/iptables/rules.v4"
   changed=0
 
-  [ -f "$rules_file" ] || return 0
+  mkdir -p /etc/iptables
+  if [ ! -f "$rules_file" ] && command -v iptables-save >/dev/null 2>&1; then
+    iptables-save >"$rules_file" 2>/dev/null || true
+  fi
 
   for port in 22 2222 2223 143 109; do
-    if ! grep -qE "^-A INPUT -p tcp -m tcp --dport ${port} -j ACCEPT$" "$rules_file" 2>/dev/null; then
-      sed -i "/^:OUTPUT /i -A INPUT -p tcp -m tcp --dport ${port} -j ACCEPT" "$rules_file" 2>/dev/null || true
+    if command -v iptables >/dev/null 2>&1; then
+      if ! iptables -C INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1; then
+        iptables -I INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1 || true
+        changed=1
+      fi
+    fi
+
+    if [ -f "$rules_file" ] && ! grep -qE "^-A INPUT .*--dport ${port} .* -j ACCEPT$" "$rules_file" 2>/dev/null; then
+      if grep -q '^:OUTPUT ' "$rules_file" 2>/dev/null; then
+        sed -i "/^:OUTPUT /i -A INPUT -p tcp -m tcp --dport ${port} -j ACCEPT" "$rules_file" 2>/dev/null || true
+      else
+        printf '%s\n' "-A INPUT -p tcp -m tcp --dport ${port} -j ACCEPT" >>"$rules_file"
+      fi
       changed=1
     fi
   done
@@ -199,9 +213,69 @@ ensure_ssh_ports_in_iptables_rules() {
   if [ "$changed" -eq 1 ]; then
     echo -e "${yellow}Menambahkan rule ACCEPT untuk port SSH management di $rules_file${NC}"
     if command -v netfilter-persistent >/dev/null 2>&1; then
+      netfilter-persistent save >/dev/null 2>&1 || true
       netfilter-persistent reload >/dev/null 2>&1 || true
+    elif command -v iptables-save >/dev/null 2>&1; then
+      iptables-save >"$rules_file" 2>/dev/null || true
     fi
   fi
+}
+
+install_boot_recovery_guard() {
+  local guard_script guard_service
+  guard_script="/usr/local/sbin/panelxray-boot-guard"
+  guard_service="/etc/systemd/system/panelxray-boot-guard.service"
+
+  cat >"$guard_script" <<'EOF'
+#!/bin/bash
+set -u
+
+for port in 22 2222 2223 143 109; do
+  if command -v iptables >/dev/null 2>&1; then
+    iptables -C INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1 || true
+  fi
+done
+
+if command -v netfilter-persistent >/dev/null 2>&1; then
+  netfilter-persistent save >/dev/null 2>&1 || true
+  netfilter-persistent reload >/dev/null 2>&1 || true
+fi
+
+if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+  systemctl enable ssh.socket >/dev/null 2>&1 || true
+  systemctl restart ssh.socket >/dev/null 2>&1 || true
+fi
+
+for unit in ssh sshd dropbear ws xray cron kyt; do
+  if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+    systemctl enable "$unit" >/dev/null 2>&1 || true
+    systemctl restart "$unit" >/dev/null 2>&1 || true
+  fi
+done
+
+rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis 2>/dev/null || true
+exit 0
+EOF
+
+  chmod 755 "$guard_script"
+
+  cat >"$guard_service" <<'EOF'
+[Unit]
+Description=PanelXray boot recovery guard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/panelxray-boot-guard
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl enable --now panelxray-boot-guard >/dev/null 2>&1 || true
 }
 
 sync_runtime_configs() {
@@ -249,6 +323,7 @@ sync_runtime_configs() {
   ensure_dropbear_legacy_runtime
   disable_legacy_daily_reboot
   ensure_ssh_ports_in_iptables_rules
+  install_boot_recovery_guard
 
   mkdir -p /etc/systemd/system/dropbear.service.d
   printf '%s\n' \
@@ -323,6 +398,26 @@ sync_runtime_configs() {
   fi
 
   systemctl daemon-reload >/dev/null 2>&1 || true
+  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+    systemctl enable ssh.socket >/dev/null 2>&1 || true
+  fi
+  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.service'; then
+    systemctl enable ssh >/dev/null 2>&1 || true
+  elif systemctl list-unit-files 2>/dev/null | grep -q '^sshd\.service'; then
+    systemctl enable sshd >/dev/null 2>&1 || true
+  fi
+  if systemctl list-unit-files 2>/dev/null | grep -q '^dropbear\.service'; then
+    systemctl enable dropbear >/dev/null 2>&1 || true
+  fi
+  if systemctl list-unit-files 2>/dev/null | grep -q '^ws\.service'; then
+    systemctl enable ws >/dev/null 2>&1 || true
+  fi
+  if systemctl list-unit-files 2>/dev/null | grep -q '^xray\.service'; then
+    systemctl enable xray >/dev/null 2>&1 || true
+  fi
+  if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+    systemctl enable kyt >/dev/null 2>&1 || true
+  fi
   if nginx -t >/dev/null 2>&1; then
     systemctl restart nginx >/dev/null 2>&1 || true
   fi
@@ -361,7 +456,7 @@ sync_kyt_bot_assets() {
 
   if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
     systemctl daemon-reload >/dev/null 2>&1 || true
-    systemctl restart kyt >/dev/null 2>&1 || true
+    systemctl enable --now kyt >/dev/null 2>&1 || systemctl restart kyt >/dev/null 2>&1 || true
     KYT_RESTARTED=1
   fi
 }
