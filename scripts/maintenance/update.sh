@@ -27,7 +27,13 @@ if [[ -z "$BRANCH" ]]; then
     [[ -n "$BRANCH" ]] || BRANCH="main"
 fi
 
-clear
+safe_clear() {
+    if [[ -t 1 && -n "${TERM:-}" ]]; then
+        clear || true
+    fi
+}
+
+safe_clear
 echo -e "\033[1;36m==========================================================\033[0m"
 echo -e "\033[1;33m                 UPDATE PROGRAM (GITHUB)                  \033[0m"
 echo -e "\033[1;36m==========================================================\033[0m"
@@ -138,6 +144,13 @@ disable_legacy_daily_reboot() {
         cp -f "$cron_file" "$backup_file" 2>/dev/null || true
         rm -f "$cron_file"
         echo -e "\033[1;33mLegacy auto reboot dimatikan untuk mencegah lockout SSH. Backup: $backup_file\033[0m"
+    fi
+
+    if [[ -f /etc/cron.d/reboot_otomatis ]]; then
+        backup_file="/etc/cron.d/reboot_otomatis.disabled.$(date +%Y%m%d%H%M%S)"
+        cp -f /etc/cron.d/reboot_otomatis "$backup_file" 2>/dev/null || true
+        rm -f /etc/cron.d/reboot_otomatis
+        echo -e "\033[1;33mLegacy reboot_otomatis dimatikan untuk mencegah reboot tak terduga. Backup: $backup_file\033[0m"
     fi
 
     mkdir -p /home

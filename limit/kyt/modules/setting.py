@@ -1,6 +1,7 @@
 from kyt import *
 import asyncio
-from kyt.modules.ui import manager_banner, back_button, upsert_message, is_admin
+import shutil
+from kyt.modules.ui import manager_banner, back_button, upsert_message, is_admin, ask_text_clean, delete_messages
 
 
 def _progress_bar(percent: int, width: int = 24) -> str:
@@ -47,6 +48,180 @@ def _render_update_panel(percent: int, status: str, logs: list) -> str:
 		f"Status: {status}\n\n"
 		"📜 **Log Updater (terbaru):**\n"
 		f"```\n{log_text}\n```"
+	)
+
+
+def _read_last_sshd_value(key: str, fallback: str) -> str:
+	config_path = "/etc/ssh/sshd_config"
+	if not os.path.isfile(config_path):
+		return "(sshd_config tidak ditemukan)"
+
+	pattern = re.compile(rf"^\s*{re.escape(key)}\s+(.+)$", re.IGNORECASE)
+	value = ""
+	try:
+		with open(config_path, "r", encoding="utf-8", errors="ignore") as handle:
+			for raw in handle:
+				line = raw.strip()
+				if not line or line.startswith("#"):
+					continue
+				match = pattern.match(line)
+				if match:
+					value = match.group(1).split("#", 1)[0].strip()
+	except Exception:
+		return fallback
+
+	return value or fallback
+
+
+def _ensure_sshd_key(lines: list, key: str, value: str) -> list:
+	pattern = re.compile(rf"^\s*#?\s*{re.escape(key)}\b", re.IGNORECASE)
+	updated = []
+	replaced = False
+
+	for raw in lines:
+		if pattern.match(raw):
+			if not replaced:
+				updated.append(f"{key} {value}\n")
+				replaced = True
+			continue
+		updated.append(raw)
+
+	if not replaced:
+		if updated and updated[-1].strip():
+			updated.append("\n")
+		updated.append(f"{key} {value}\n")
+
+	return updated
+
+
+def _validate_sshd_config(config_path: str = "/etc/ssh/sshd_config") -> tuple:
+	candidates = [
+		["sshd", "-t", "-f", config_path],
+		["/usr/sbin/sshd", "-t", "-f", config_path],
+	]
+
+	for cmd in candidates:
+		exe = cmd[0]
+		if exe.startswith("/"):
+			if not os.path.isfile(exe):
+				continue
+		elif shutil.which(exe) is None:
+			continue
+
+		proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+		if proc.returncode == 0:
+			return True, "ok"
+		return False, (proc.stdout or "").strip() or f"exit {proc.returncode}"
+
+	return False, "Perintah sshd tidak ditemukan untuk validasi konfigurasi."
+
+
+def _restart_ssh_service() -> tuple:
+	commands = [
+		["systemctl", "restart", "ssh"],
+		["systemctl", "restart", "sshd"],
+		["service", "ssh", "restart"],
+		["service", "sshd", "restart"],
+	]
+	errors = []
+
+	for cmd in commands:
+		exe = cmd[0]
+		if shutil.which(exe) is None:
+			continue
+
+		proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+		if proc.returncode == 0:
+			return True, " ".join(cmd)
+		err = (proc.stdout or "").strip() or f"exit {proc.returncode}"
+		errors.append(f"{' '.join(cmd)} => {err}")
+
+	if not errors:
+		return False, "Perintah restart SSH tidak ditemukan."
+	return False, errors[-1]
+
+
+def _set_root_password(new_password: str) -> tuple:
+	if not new_password:
+		return False, "Password kosong"
+	if shutil.which("chpasswd") is None:
+		return False, "Perintah chpasswd tidak tersedia"
+
+	proc = subprocess.run(
+		["chpasswd"],
+		input=f"root:{new_password}\n",
+		text=True,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.STDOUT,
+	)
+	if proc.returncode != 0:
+		return False, (proc.stdout or "").strip() or f"exit {proc.returncode}"
+	return True, "ok"
+
+
+def _enable_password_root_login() -> tuple:
+	config_path = "/etc/ssh/sshd_config"
+	if not os.path.isfile(config_path):
+		return False, "File sshd_config tidak ditemukan."
+
+	try:
+		with open(config_path, "r", encoding="utf-8", errors="ignore") as handle:
+			original = handle.readlines()
+	except Exception as exc:
+		return False, f"Gagal membaca sshd_config: {exc}"
+
+	updated = _ensure_sshd_key(original, "PasswordAuthentication", "yes")
+	updated = _ensure_sshd_key(updated, "PermitRootLogin", "yes")
+	changed = updated != original
+	backup_path = ""
+
+	if changed:
+		backup_path = f"{config_path}.bak.bot.{int(time.time())}"
+		try:
+			with open(backup_path, "w", encoding="utf-8") as backup:
+				backup.writelines(original)
+			with open(config_path, "w", encoding="utf-8") as handle:
+				handle.writelines(updated)
+		except Exception as exc:
+			return False, f"Gagal menyimpan sshd_config: {exc}"
+
+	valid, valid_msg = _validate_sshd_config(config_path)
+	if not valid:
+		if changed:
+			try:
+				with open(config_path, "w", encoding="utf-8") as handle:
+					handle.writelines(original)
+			except Exception:
+				pass
+		return False, f"Validasi sshd gagal: {valid_msg}"
+
+	restarted, restart_msg = _restart_ssh_service()
+	if not restarted:
+		return False, f"Config tersimpan tetapi restart SSH gagal: {restart_msg}"
+
+	if changed and backup_path:
+		return True, f"SSH auth diperbarui (backup: {backup_path})"
+	return True, "SSH auth sudah sesuai"
+
+
+def _render_ssh_auth_status() -> str:
+	password_auth = _read_last_sshd_value("PasswordAuthentication", "(default distro)")
+	permit_root = _read_last_sshd_value("PermitRootLogin", "(default distro)")
+
+	ok = str(password_auth).lower().startswith("yes") and str(permit_root).lower().startswith("yes")
+	state = "✅ Aktif penuh" if ok else "⚠️ Belum aktif penuh"
+
+	auto_reboot_daily = "ON" if os.path.isfile("/etc/cron.d/daily_reboot") else "OFF"
+	auto_reboot_legacy = "ON" if os.path.isfile("/etc/cron.d/reboot_otomatis") else "OFF"
+
+	return (
+		"🔐 **Status Login SSH Password**\n"
+		f"• PasswordAuthentication: `{password_auth}`\n"
+		f"• PermitRootLogin: `{permit_root}`\n"
+		f"• Effective status: {state}\n\n"
+		"🧭 **Status Scheduler Reboot (lockout check):**\n"
+		f"• /etc/cron.d/daily_reboot: `{auto_reboot_daily}`\n"
+		f"• /etc/cron.d/reboot_otomatis: `{auto_reboot_legacy}`"
 	)
 
 @bot.on(events.CallbackQuery(data=b'reboot'))
@@ -140,10 +315,17 @@ async def panel_update(event):
 		await upsert_message(event, _render_update_panel(percent, "Menyiapkan updater...", logs), buttons=back_button("setting"))
 
 		try:
+			env = os.environ.copy()
+			if not env.get("TERM"):
+				env["TERM"] = "dumb"
+			env.setdefault("COLUMNS", "120")
+			env.setdefault("LINES", "40")
+			env.setdefault("DEBIAN_FRONTEND", "noninteractive")
 			proc = await asyncio.create_subprocess_shell(
 				cmd,
 				stdout=asyncio.subprocess.PIPE,
 				stderr=asyncio.subprocess.STDOUT,
+				env=env,
 			)
 		except Exception as exc:
 			await upsert_message(
@@ -182,12 +364,103 @@ async def panel_update(event):
 		await panel_update_(event)
 	else:
 		await event.answer("Access Denied",alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'ssh-auth-status'))
+async def ssh_auth_status(event):
+	async def ssh_auth_status_(event):
+		if not is_admin(sender.id):
+			await event.answer("Menu khusus admin", alert=True)
+			return
+		await upsert_message(event, _render_ssh_auth_status(), buttons=back_button("setting"))
+
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await ssh_auth_status_(event)
+	else:
+		await event.answer("Access Denied", alert=True)
+
+
+@bot.on(events.CallbackQuery(data=b'root-passwd'))
+async def root_password(event):
+	async def root_password_(event):
+		if not is_admin(sender.id):
+			await event.answer("Menu khusus admin", alert=True)
+			return
+
+		chat = event.chat_id
+		password, msgs = await ask_text_clean(
+			event,
+			chat,
+			sender.id,
+			"🔐 **Masukkan password root baru** (minimal 8 karakter):",
+			[],
+		)
+		confirm, msgs = await ask_text_clean(
+			event,
+			chat,
+			sender.id,
+			"🔁 **Konfirmasi password root baru:**",
+			msgs,
+		)
+		await delete_messages(chat, msgs)
+
+		if not password or not confirm:
+			await upsert_message(event, "❌ Password kosong. Proses dibatalkan.", buttons=back_button("setting"))
+			return
+		if len(password) < 8:
+			await upsert_message(event, "❌ Password minimal 8 karakter.", buttons=back_button("setting"))
+			return
+		if password != confirm:
+			await upsert_message(event, "❌ Konfirmasi password tidak cocok.", buttons=back_button("setting"))
+			return
+
+		await upsert_message(event, "⏳ Mengatur password root dan konfigurasi SSH password login...")
+
+		ok_pw, pw_msg = _set_root_password(password)
+		password = ""
+		confirm = ""
+		if not ok_pw:
+			await upsert_message(event, f"❌ Gagal set password root.\n```\n{pw_msg}\n```", buttons=back_button("setting"))
+			return
+
+		ok_ssh, ssh_msg = _enable_password_root_login()
+		status_panel = _render_ssh_auth_status()
+		if not ok_ssh:
+			await upsert_message(
+				event,
+				"⚠️ Password root berhasil diubah, tetapi pengaturan login SSH belum aktif penuh.\n\n"
+				f"{status_panel}\n\n"
+				f"Detail:\n```\n{ssh_msg}\n```",
+				buttons=back_button("setting"),
+			)
+			return
+
+		await upsert_message(
+			event,
+			"✅ Password root berhasil diperbarui dan login password SSH sudah diaktifkan.\n\n"
+			f"{status_panel}\n\n"
+			f"Detail: `{ssh_msg}`",
+			buttons=back_button("setting"),
+		)
+
+	sender = await event.get_sender()
+	a = valid(str(sender.id))
+	if a == "true":
+		await root_password_(event)
+	else:
+		await event.answer("Access Denied", alert=True)
 		
 @bot.on(events.CallbackQuery(data=b'speedtest'))
 async def speedtest(event):
 	async def speedtest_(event):
 		cmd = 'speedtest-cli --share'.strip()
-		z = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
+		try:
+			z = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
+		except Exception as exc:
+			await upsert_message(event, f"❌ Speedtest gagal dijalankan.\n```\n{exc}\n```", buttons=back_button("setting"))
+			return
 		time.sleep(0)
 		await event.edit("`Processing... 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ `")
 		time.sleep(0)
@@ -204,7 +477,7 @@ async def speedtest(event):
 		await event.edit("`Processing... 84%\n█████████████████████▒▒▒▒ `")
 		time.sleep(0)
 		await event.edit("`Processing... 100%\n█████████████████████████ `")
-		await event.respond(f"""
+		await upsert_message(event, f"""
 **
 {z}
 **
@@ -221,15 +494,28 @@ async def speedtest(event):
 @bot.on(events.CallbackQuery(data=b'backup'))
 async def backup(event):
 	async def backup_(event):
-		async with bot.conversation(chat) as user:
-			await event.respond('**Input Email:**')
-			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
-			user = (await user).raw_text
-		cmd = f'printf "%s\n" "{user}" | bot-backup'
+		user_input, msgs = await ask_text_clean(event, chat, sender.id, "📧 **Input Email Backup:**", [])
+		await delete_messages(chat, msgs)
+		if not user_input:
+			await upsert_message(event, "❌ Input email kosong. Proses dibatalkan.", buttons=back_button("backer"))
+			return
+
 		try:
-			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		except:
-			await event.respond("**Not Exist**")
+			proc = subprocess.run(
+				["bot-backup"],
+				input=f"{user_input}\n",
+				text=True,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.STDOUT,
+				timeout=180,
+			)
+		except Exception as exc:
+			await upsert_message(event, f"❌ Gagal menjalankan backup.\n```\n{exc}\n```", buttons=back_button("backer"))
+			return
+
+		a = (proc.stdout or "").strip()
+		if proc.returncode != 0:
+			await upsert_message(event, f"❌ Backup gagal.\n```\n{a or 'Not Exist'}\n```", buttons=back_button("backer"))
 		else:
 			msg = f"""
 ```
@@ -237,7 +523,7 @@ async def backup(event):
 ```
 **» 🤖@AutoFTbot**
 """
-			await event.respond(msg, buttons=back_button("backer"))
+			await upsert_message(event, msg, buttons=back_button("backer"))
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -249,20 +535,33 @@ async def backup(event):
 @bot.on(events.CallbackQuery(data=b'restore'))
 async def restsore(event):
 	async def rssestore_(event):
-		async with bot.conversation(chat) as user:
-			await event.respond('**Input Link Backup:**')
-			user = user.wait_event(events.NewMessage(incoming=True, from_users=sender.id))
-			user = (await user).raw_text
-		cmd = f'printf "%s\n" "{user}" | bot-restore'
+		user_input, msgs = await ask_text_clean(event, chat, sender.id, "🔗 **Input Link Backup:**", [])
+		await delete_messages(chat, msgs)
+		if not user_input:
+			await upsert_message(event, "❌ Input link kosong. Proses dibatalkan.", buttons=back_button("backer"))
+			return
+
 		try:
-			a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-		except:
-			await event.respond("**Link Not Exist**")
+			proc = subprocess.run(
+				["bot-restore"],
+				input=f"{user_input}\n",
+				text=True,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.STDOUT,
+				timeout=180,
+			)
+		except Exception as exc:
+			await upsert_message(event, f"❌ Gagal menjalankan restore.\n```\n{exc}\n```", buttons=back_button("backer"))
+			return
+
+		a = (proc.stdout or "").strip()
+		if proc.returncode != 0:
+			await upsert_message(event, f"❌ Restore gagal.\n```\n{a or 'Link Not Exist'}\n```", buttons=back_button("backer"))
 		else:
 			msg = f"""```{a}```
 **🤖@AutoFTbot**
 """
-			await event.respond(msg, buttons=back_button("backer"))
+			await upsert_message(event, msg, buttons=back_button("backer"))
 	chat = event.chat_id
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
@@ -279,7 +578,7 @@ async def backers(event):
 Button.inline(" RESTORE","restore")],
 [Button.inline("⬅️ Kembali","setting")]]
 		msg = f"{manager_banner('Backup & Restore', 'UTILITY')}\n\n📦 Pilih aksi backup atau restore."
-		await event.edit(msg,buttons=inline)
+		await upsert_message(event, msg, buttons=inline)
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":
@@ -294,12 +593,14 @@ async def settings(event):
 		inline = [
 [Button.inline(" SPEEDTEST","speedtest"),
 Button.inline(" BACKUP & RESTORE","backer")],
+[Button.inline(" SSH AUTH STATUS","ssh-auth-status"),
+Button.inline(" SET ROOT PASSWORD","root-passwd")],
 [Button.inline(" UPDATE PANEL","panel-update")],
 [Button.inline(" REBOOT SERVER","reboot"),
 Button.inline(" RESTART SERVICE","resx")],
 [Button.inline("⬅️ Kembali","menu")]]
 		msg = f"{manager_banner('Settings & Utilities', 'UTILITY')}\n\n⚙️ Pilih aksi maintenance server."
-		await event.edit(msg,buttons=inline)
+		await upsert_message(event, msg, buttons=inline)
 	sender = await event.get_sender()
 	a = valid(str(sender.id))
 	if a == "true":

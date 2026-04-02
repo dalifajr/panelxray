@@ -45,7 +45,13 @@ back_to_menu() {
   fi
 }
 
-clear
+safe_clear() {
+  if [ -t 1 ] && [ -n "${TERM:-}" ]; then
+    clear || true
+  fi
+}
+
+safe_clear
 echo -e "${cyan}==========================================================${NC}"
 echo -e "${yellow}                 UPDATE PROGRAM (GITHUB)                  ${NC}"
 echo -e "${cyan}==========================================================${NC}"
@@ -154,6 +160,28 @@ ensure_dropbear_legacy_runtime() {
   fi
 }
 
+disable_legacy_daily_reboot() {
+  local cron_file backup_file
+  cron_file="/etc/cron.d/daily_reboot"
+
+  if [ -f "$cron_file" ] && grep -q '/sbin/reboot' "$cron_file" 2>/dev/null; then
+    backup_file="${cron_file}.disabled.$(date +%Y%m%d%H%M%S)"
+    cp -f "$cron_file" "$backup_file" 2>/dev/null || true
+    rm -f "$cron_file"
+    echo -e "${yellow}Legacy auto reboot dimatikan untuk mencegah lockout SSH. Backup: $backup_file${NC}"
+  fi
+
+  if [ -f /etc/cron.d/reboot_otomatis ]; then
+    backup_file="/etc/cron.d/reboot_otomatis.disabled.$(date +%Y%m%d%H%M%S)"
+    cp -f /etc/cron.d/reboot_otomatis "$backup_file" 2>/dev/null || true
+    rm -f /etc/cron.d/reboot_otomatis
+    echo -e "${yellow}Legacy reboot_otomatis dimatikan untuk mencegah reboot tak terduga. Backup: $backup_file${NC}"
+  fi
+
+  mkdir -p /home
+  echo "0" >/home/daily_reboot 2>/dev/null || true
+}
+
 sync_runtime_configs() {
   local domain
   domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
@@ -197,6 +225,7 @@ sync_runtime_configs() {
   fi
 
   ensure_dropbear_legacy_runtime
+  disable_legacy_daily_reboot
 
   mkdir -p /etc/systemd/system/dropbear.service.d
   printf '%s\n' \

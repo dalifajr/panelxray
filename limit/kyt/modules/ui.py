@@ -162,7 +162,7 @@ async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_t
             )
             msgs_to_del.append(reply.id)
         except asyncio.TimeoutError:
-            await event.respond("⏱️ Waktu input habis. Silakan ulangi dari menu.")
+            await upsert_message(event, "⏱️ Waktu input habis. Silakan ulangi dari menu.")
             return "", msgs_to_del
 
         return (reply.raw_text or "").strip(), msgs_to_del
@@ -170,16 +170,17 @@ async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_t
 
 async def ask_text(event, chat_id: int, sender_id: int, prompt: str) -> str:
     async with bot.conversation(chat_id, timeout=180) as conv:
-        await event.respond(prompt)
+        await upsert_message(event, prompt)
         try:
             reply = await conv.wait_event(
                 events.NewMessage(incoming=True, from_users=sender_id),
                 timeout=180,
             )
         except asyncio.TimeoutError:
-            await event.respond("⏱️ Waktu input habis. Silakan ulangi dari menu.")
+            await upsert_message(event, "⏱️ Waktu input habis. Silakan ulangi dari menu.")
             return ""
 
+        await delete_messages(chat_id, [reply.id])
         return (reply.raw_text or "").strip()
 
 
@@ -187,17 +188,18 @@ async def ask_choice(event, chat_id: int, sender_id: int, prompt: str, options):
     options = [str(x).strip() for x in options]
     option_label = ", ".join(options)
     async with bot.conversation(chat_id, timeout=180) as conv:
-        await event.respond(f"{prompt}\nKetik salah satu: {option_label}")
+        await upsert_message(event, f"{prompt}\nKetik salah satu: {option_label}")
         try:
             reply = await conv.wait_event(
                 events.NewMessage(incoming=True, from_users=sender_id),
                 timeout=180,
             )
         except asyncio.TimeoutError:
-            await event.respond("⏱️ Waktu input habis. Dipilih default.")
+            await upsert_message(event, "⏱️ Waktu input habis. Dipilih default.")
             return options[0]
 
         picked = (reply.raw_text or "").strip()
+        await delete_messages(chat_id, [reply.id])
         if picked not in options:
             return options[0]
     return picked

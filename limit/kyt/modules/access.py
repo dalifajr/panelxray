@@ -22,6 +22,8 @@ _ADMIN_ONLY_EXACT = {
     "speedtest",
     "login-ssh",
     "regis",
+    "ssh-auth-status",
+    "root-passwd",
 }
 
 _ADMIN_ONLY_PREFIXES = (
