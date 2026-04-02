@@ -43,6 +43,15 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/xray/config.json")
     if [ -z $user ]; then
     menu
     else
+    if ! grep -qwE "^### $user " "/etc/xray/config.json"; then
+      if [[ -f "/etc/kyt/suspended/vmess/$user" ]]; then
+        unsuspws --user "$user" >/dev/null 2>&1 || true
+      fi
+    fi
+    if ! grep -qwE "^### $user " "/etc/xray/config.json"; then
+      echo "User not found"
+      exit 1
+    fi
     read -p "Expired (days): " masaaktif
     rm -f /etc/kyt/limit/vmess/ip/${user}
     rm -f /etc/vmess/$user

@@ -1,0 +1,52 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+SERVICE="ssh"
+STATE_DIR="/etc/kyt/suspended/${SERVICE}"
+
+user=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)
+      user="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$user" ]]; then
+  clear
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo " Unsuspend SSH Account"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  ls "$STATE_DIR" 2>/dev/null | sort
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  read -rp "Input Username : " user
+fi
+
+user="$(echo "$user" | tr -d '\r' | xargs)"
+
+[[ -z "$user" ]] && exit 0
+id "$user" >/dev/null 2>&1 || { echo "User not found"; exit 1; }
+
+if [[ ! -f "$STATE_DIR/$user" ]]; then
+  status="$(passwd -S "$user" 2>/dev/null | awk '{print $2}')"
+  if [[ "$status" != "L" ]]; then
+    echo "User not suspended"
+    exit 1
+  fi
+fi
+
+passwd -u "$user" >/dev/null 2>&1 || { echo "Failed to unsuspend user"; exit 1; }
+rm -f "$STATE_DIR/$user"
+
+echo "SSH account unsuspended: $user"

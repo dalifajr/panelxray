@@ -1,0 +1,70 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+SERVICE="ssh"
+STATE_DIR="/etc/kyt/suspended/${SERVICE}"
+
+user=""
+reason="manual"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)
+      user="$2"
+      shift 2
+      ;;
+    --reason)
+      reason="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$user" ]]; then
+  clear
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo " Suspend SSH Account"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | sort
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  read -rp "Input Username : " user
+fi
+
+user="$(echo "$user" | tr -d '\r' | xargs)"
+
+[[ -z "$user" ]] && exit 0
+id "$user" >/dev/null 2>&1 || { echo "User not found"; exit 1; }
+
+uid_num=$(id -u "$user" 2>/dev/null)
+if [[ -z "$uid_num" || "$uid_num" -lt 1000 ]]; then
+  echo "System account cannot be suspended"
+  exit 1
+fi
+
+mkdir -p "$STATE_DIR"
+if [[ -f "$STATE_DIR/$user" ]]; then
+  echo "User already suspended"
+  exit 1
+fi
+
+exp_raw=$(chage -l "$user" 2>/dev/null | awk -F": " '/Account expires/ {print $2}')
+if [[ -z "$exp_raw" ]]; then
+  exp="unknown"
+elif [[ "${exp_raw,,}" == "never" ]]; then
+  exp="never"
+else
+  exp=$(date -d "$exp_raw" +%Y-%m-%d 2>/dev/null || echo "unknown")
+fi
+
+passwd -l "$user" >/dev/null 2>&1 || { echo "Failed to suspend user"; exit 1; }
+printf '%s %s %s\n' "$exp" "locked" "$reason" > "$STATE_DIR/$user"
+
+echo "SSH account suspended: $user"

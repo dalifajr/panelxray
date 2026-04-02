@@ -31,6 +31,8 @@ SCRIPT_NAME_MAP = {
         "renew": "renewssh",
         "delete": "delssh",
         "trial": "trial",
+        "suspend": "suspssh",
+        "unsuspend": "unsuspssh",
     },
     "vless": {
         "create": "addvless",
@@ -61,6 +63,8 @@ SCRIPT_NAME_MAP = {
         "renew": "renewss",
         "delete": "delss",
         "trial": "trialss",
+        "suspend": "suspss",
+        "unsuspend": "unsuspss",
     },
 }
 
@@ -370,7 +374,7 @@ def _build_create_input(protocol: str, payload: dict[str, Any]) -> str:
         return "\n".join(lines) + "\n"
 
     if protocol == "shadowsocks":
-        lines = [username, str(days), str(max(0, quota_gb))]
+        lines = [username, str(days), str(max(0, quota_gb)), str(max(0, ip_limit))]
         return "\n".join(lines) + "\n"
 
     sni_choice = _normalize_choice(payload.get("sni_profile"))
@@ -394,10 +398,12 @@ def _build_renew_input(protocol: str, payload: dict[str, Any]) -> str:
         raise MutationError("Expired days harus lebih dari 0.")
 
     if protocol == "ssh":
-        return f"{username}\n{days}\n"
+        ip_limit = _safe_int(payload.get("ip_limit"), 0)
+        return f"{username}\n{days}\n{max(0, ip_limit)}\n"
 
     if protocol == "shadowsocks":
-        return f"{username}\n{days}\n"
+        ip_limit = _safe_int(payload.get("ip_limit"), 0)
+        return f"{username}\n{days}\n{max(0, ip_limit)}\n"
 
     quota_gb = _safe_int(payload.get("quota_gb"), 0)
     ip_limit = _safe_int(payload.get("ip_limit"), 0)

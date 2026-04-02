@@ -95,6 +95,10 @@ cipher="aes-128-gcm"
 uuid=$(cat /proc/sys/kernel/random/uuid)
 read -p "Expired (days): " masaaktif
 read -p "Limit User (GB): " Quota
+read -p "Limit User (IP): " iplimit
+if [ -z "${iplimit}" ]; then
+  iplimit="1"
+fi
 tgl=$(date -d "$masaaktif days" +"%d")
 bln=$(date -d "$masaaktif days" +"%b")
 thn=$(date -d "$masaaktif days" +"%Y")
@@ -355,6 +359,12 @@ d=$((${c} * 1024 * 1024 * 1024))
 if [[ ${c} != "0" ]]; then
   echo "${d}" >/etc/shadowsocks/${user}
 fi
+mkdir -p /etc/kyt/limit/shadowsocks/ip
+if [[ "${iplimit}" =~ ^[0-9]+$ ]] && [[ "${iplimit}" -gt 0 ]]; then
+  echo "${iplimit}" > /etc/kyt/limit/shadowsocks/ip/${user}
+else
+  rm -f /etc/kyt/limit/shadowsocks/ip/${user}
+fi
 DATADB=$(cat /etc/shadowsocks/.shadowsocks.db | grep "^###" | grep -w "${user}" | awk '{print $2}')
 if [[ "${DATADB}" != '' ]]; then
   sed -i "/\b${user}\b/d" /etc/shadowsocks/.shadowsocks.db
@@ -369,6 +379,7 @@ echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Remarks     : ${user}"
 echo -e "Domain      : ${domain}"
 echo -e "User Quota  : ${Quota} GB"
+echo -e "Limit IP    : ${iplimit}"
 echo -e "Port TLS    : 443-900"
 echo -e "Password    : ${uuid}"
 echo -e "Cipers      : aes-128-gcm"

@@ -78,6 +78,14 @@ async def renew_ssh(event):
 			return
 
 		days = await ask_choice(event, chat, sender.id, "📅 **Tambah masa aktif (hari):**", ["3", "7", "30", "60"])
+		iplim, msgs = await ask_text_clean(event, chat, sender.id, "🌐 **Limit IP baru (kosong=1):**", [])
+		msgs_to_del.extend(msgs)
+		iplim = iplim if iplim else "1"
+		if not str(iplim).isdigit():
+			await delete_messages(chat, msgs_to_del)
+			await upsert_message(event, "❌ Limit IP harus angka.", buttons=back_button("ssh"))
+			return
+
 		await delete_messages(chat, msgs_to_del)
 
 		try:
@@ -115,12 +123,18 @@ async def renew_ssh(event):
 			await upsert_message(event, "❌ Gagal renew akun SSH.", buttons=back_button("ssh"))
 			return
 
+		if int(iplim) > 0:
+			subprocess.call(f'mkdir -p /etc/kyt/limit/ssh/ip; echo "{iplim}" > /etc/kyt/limit/ssh/ip/{user}', shell=True)
+		else:
+			subprocess.call(f'rm -f /etc/kyt/limit/ssh/ip/{user}', shell=True)
+
 		refresh_account_expiry("ssh", user, new_exp)
 		msg = build_result(
 			"SSH Account Renewed",
 			[
 				("Username", user),
 				("Added Days", days),
+				("Limit IP", iplim),
 				("Expired", new_exp),
 			],
 			[],
@@ -155,11 +169,11 @@ async def suspend_ssh(event):
 			return
 
 		await delete_messages(chat, msgs_to_del)
-		code = subprocess.call(f'passwd -l "{user}" >/dev/null 2>&1', shell=True)
+		code, out = run_command("suspssh", [user])
 		if code != 0:
-			await upsert_message(event, "❌ Gagal suspend akun SSH.", buttons=back_button("ssh"))
+			await upsert_message(event, f"❌ Gagal suspend akun SSH.\n```\n{out or 'Tidak ada output'}\n```", buttons=back_button("ssh"))
 		else:
-			await upsert_message(event, f"⛔ Akun SSH `{user}` berhasil disuspend.", buttons=back_button("ssh"))
+			await upsert_message(event, f"⛔ {(out or 'Akun SSH berhasil disuspend').strip()}", buttons=back_button("ssh"))
 
 	chat = event.chat_id
 	sender = await event.get_sender()
@@ -189,11 +203,11 @@ async def unsuspend_ssh(event):
 			return
 
 		await delete_messages(chat, msgs_to_del)
-		code = subprocess.call(f'passwd -u "{user}" >/dev/null 2>&1', shell=True)
+		code, out = run_command("unsuspssh", [user])
 		if code != 0:
-			await upsert_message(event, "❌ Gagal unsuspend akun SSH.", buttons=back_button("ssh"))
+			await upsert_message(event, f"❌ Gagal unsuspend akun SSH.\n```\n{out or 'Tidak ada output'}\n```", buttons=back_button("ssh"))
 		else:
-			await upsert_message(event, f"✅ Akun SSH `{user}` berhasil di-unsuspend.", buttons=back_button("ssh"))
+			await upsert_message(event, f"✅ {(out or 'Akun SSH berhasil di-unsuspend').strip()}", buttons=back_button("ssh"))
 
 	chat = event.chat_id
 	sender = await event.get_sender()
@@ -223,6 +237,14 @@ async def create_ssh(event):
 		if not pw:
 			await delete_messages(chat, msgs_to_del)
 			await upsert_message(event, "❌ Password tidak boleh kosong.", buttons=back_button("ssh"))
+			return
+
+		iplim, msgs = await ask_text_clean(event, chat, sender.id, "🌐 **Limit IP (kosong=1):**", [])
+		msgs_to_del.extend(msgs)
+		iplim = iplim if iplim else "1"
+		if not str(iplim).isdigit():
+			await delete_messages(chat, msgs_to_del)
+			await upsert_message(event, "❌ Limit IP harus angka.", buttons=back_button("ssh"))
 			return
 
 		exp, msgs = await ask_expiry(event, chat, sender.id, is_trial=False)
@@ -269,11 +291,17 @@ async def create_ssh(event):
 			return
 
 		register_account_creation(str(sender.id), "ssh", user, str(later), is_trial=False)
+		if int(iplim) > 0:
+			subprocess.call(f'mkdir -p /etc/kyt/limit/ssh/ip; echo "{iplim}" > /etc/kyt/limit/ssh/ip/{user}', shell=True)
+		else:
+			subprocess.call(f'rm -f /etc/kyt/limit/ssh/ip/{user}', shell=True)
+
 		msg = build_result(
 			"SSH Account Created",
 			[
 				("Username", user),
 				("Password", pw),
+				("Limit IP", iplim),
 				("Host", DOMAIN),
 				("SlowDNS", HOST),
 				("OpenSSH Port", "443,80,22"),

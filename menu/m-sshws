@@ -26,6 +26,8 @@ if declare -F thm_title >/dev/null; then
     thm_menu_item 8 "Atur Auto Kill SSH"
     thm_menu_item 9 "Cek Multi Login SSH"
     thm_menu_item 10 "Lihat Konfigurasi SSH"
+    thm_menu_item 11 "Suspend Akun SSH"
+    thm_menu_item 12 "Unsuspend Akun SSH"
   thm_section "NAVIGATION"
     thm_menu_item 0 "Kembali Ke Menu Utama"
     thm_footer
@@ -41,14 +43,16 @@ else
     echo "8) Atur Auto Kill SSH"
     echo "9) Cek Multi Login SSH"
     echo "10) Lihat Konfigurasi SSH"
+    echo "11) Suspend Akun SSH"
+    echo "12) Unsuspend Akun SSH"
     echo "0) Kembali Ke Menu Utama"
 fi
 
 if declare -F thm_prompt >/dev/null; then
-  thm_prompt "Pilih Menu [ 0 - 10 ] : "
+  thm_prompt "Pilih Menu [ 0 - 12 ] : "
   read -r menu
 else
-  read -p "Pilih Menu [ 0 - 10 ] : " menu
+  read -p "Pilih Menu [ 0 - 12 ] : " menu
 fi
 echo
 
@@ -63,6 +67,8 @@ case $menu in
 8) autokill ;;
 9) ceklim ;;
 10) user-ssh ;;
+11) suspssh ;;
+12) unsuspssh ;;
 0) menu ;;
 *) menu ;;
 esac

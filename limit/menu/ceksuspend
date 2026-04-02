@@ -8,15 +8,15 @@ if [[ -r "$THEME_FILE" ]]; then
 fi
 
 service_arg="$1"
-services=("vmess" "vless" "trojan")
+services=("vmess" "vless" "trojan" "shadowsocks" "ssh")
 
 if [[ -n "$service_arg" ]]; then
   case "$service_arg" in
-    vmess|vless|trojan)
+    vmess|vless|trojan|shadowsocks|ssh)
       services=("$service_arg")
       ;;
     *)
-      echo "Usage: ceksuspend [vmess|vless|trojan]"
+      echo "Usage: ceksuspend [vmess|vless|trojan|shadowsocks|ssh]"
       exit 1
       ;;
   esac

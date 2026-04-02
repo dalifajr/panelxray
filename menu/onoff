@@ -10,15 +10,79 @@ fi
 clear
 
 RED='\033[0;31m'
+YELLOW='\033[0;33m'
 
-badvpn1=$(systemctl status vmip | grep running | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+LIMIT_SERVICES=(vmip vlip trip ssip sship)
 
-# STATUS SERVICE LIMIT IP
-if [[ $badvpn1 == "running" ]]; then 
-     status_udp1="${GREEN}AKTIF${NC}"
-else
-     status_udp1="${RED}TIDAK AKTIF${NC}"
-fi
+service_running() {
+    systemctl is-active --quiet "$1"
+}
+
+limit_status_label() {
+    local active=0
+    local total=${#LIMIT_SERVICES[@]}
+    local svc
+
+    for svc in "${LIMIT_SERVICES[@]}"; do
+        if service_running "$svc"; then
+            active=$((active + 1))
+        fi
+    done
+
+    if [[ "$active" -eq "$total" ]]; then
+        echo "${GREEN}AKTIF${NC}"
+    elif [[ "$active" -gt 0 ]]; then
+        echo "${YELLOW}SEBAGIAN AKTIF (${active}/${total})${NC}"
+    else
+        echo "${RED}TIDAK AKTIF${NC}"
+    fi
+}
+
+create_limit_service() {
+    local unit_name="$1"
+    local mode="$2"
+
+    cat >"/etc/systemd/system/${unit_name}.service" << EOF
+[Unit]
+Description=VPNXray Limit Monitor (${mode})
+After=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/bin/limit-ip ${mode}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+enable_limit_services() {
+    create_limit_service vmip vmip
+    create_limit_service vlip vlip
+    create_limit_service trip trip
+    create_limit_service ssip ssip
+    create_limit_service sship sship
+
+    systemctl daemon-reload
+    for svc in "${LIMIT_SERVICES[@]}"; do
+        systemctl enable "$svc" >/dev/null 2>&1
+        systemctl restart "$svc" >/dev/null 2>&1
+    done
+}
+
+disable_limit_services() {
+    local svc
+    for svc in "${LIMIT_SERVICES[@]}"; do
+        systemctl stop "$svc" >/dev/null 2>&1
+        systemctl disable "$svc" >/dev/null 2>&1
+        rm -f "/etc/systemd/system/${svc}.service"
+    done
+    systemctl daemon-reload
+}
+
+status_udp1="$(limit_status_label)"
 
 if declare -F thm_title >/dev/null; then
     thm_title "MENU LIMIT IP"
@@ -38,66 +102,12 @@ fi
 read -p "Pilih Menu [ 1 - 2 atau 0 ] : " menu
 case $menu in
 1)   clear ;
-    cd /etc/systemd/system/
-    rm -rf /etc/systemd/system/vmip.service
-    rm -rf /etc/systemd/system/vlip.service
-    rm -rf /etc/systemd/system/trip.service
-    systemctl daemon-reload
+    disable_limit_services
     reboot
     ;;
 2) clear ;
-    cat >/etc/systemd/system/vmip.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip vmip
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart vmip
-systemctl enable vmip
-
-cat >/etc/systemd/system/vlip.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip vlip
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart vlip
-systemctl enable vlip
-
-cat >/etc/systemd/system/trip.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip trip
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart trip
-systemctl enable trip
-#SERVICE LIMIT QUOTA
-reboot
+    enable_limit_services
+    reboot
     ;;
 0) clear ;
     menu

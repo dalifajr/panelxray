@@ -30,7 +30,7 @@ fi
 
 services=(
   xray nginx haproxy dropbear openvpn ws kyt
-  vmip vlip trip
+  vmip vlip trip ssip sship
   udp-mini-1 udp-mini-2 udp-mini-3
   limitvmess limitvless limittrojan limitshadowsocks
   rc-local netfilter-persistent
@@ -52,6 +52,8 @@ rm -f /etc/systemd/system/limitvmess.service
 rm -f /etc/systemd/system/limitvless.service
 rm -f /etc/systemd/system/limittrojan.service
 rm -f /etc/systemd/system/limitshadowsocks.service
+rm -f /etc/systemd/system/ssip.service
+rm -f /etc/systemd/system/sship.service
 rm -f /etc/systemd/system/runn.service
 rm -f /etc/systemd/system/kyt.service
 rm -f /etc/cron.d/xp_all /etc/cron.d/logclean /etc/cron.d/daily_reboot

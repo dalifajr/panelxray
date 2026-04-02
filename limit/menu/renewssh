@@ -48,15 +48,27 @@ read -p "Username : " User
 egrep "^$User" /etc/passwd >/dev/null
 if [ $? -eq 0 ]; then
 read -p "Day Extend : " Days
+read -p "Limit User (IP): " iplim
+if [ -z "${iplim}" ]; then
+iplim="1"
+fi
 Today=`date +%s`
 Days_Detailed=$(( $Days * 86400 ))
 Expire_On=$(($Today + $Days_Detailed))
 Expiration=$(date -u --date="1970-01-01 $Expire_On sec GMT" +%Y/%m/%d)
 Expiration_Display=$(date -u --date="1970-01-01 $Expire_On sec GMT" '+%d %b %Y')
+if [[ -f "/etc/kyt/suspended/ssh/$User" ]]; then
+unsuspssh --user "$User" >/dev/null 2>&1 || true
+fi
 passwd -u $User
 usermod -e  $Expiration $User
 egrep "^$User" /etc/passwd >/dev/null
-echo -e "$Pass\n$Pass\n"|passwd $User &> /dev/null
+mkdir -p /etc/kyt/limit/ssh/ip
+if [[ "${iplim}" =~ ^[0-9]+$ ]] && [[ "${iplim}" -gt 0 ]]; then
+echo "${iplim}" > /etc/kyt/limit/ssh/ip/$User
+else
+rm -f /etc/kyt/limit/ssh/ip/$User
+fi
 clear
 echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e "        Perpanjang Masa Aktif SSH             "
@@ -64,6 +76,7 @@ echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━�
 echo -e ""
 echo -e " Username   : $User"
 echo -e " Days Added : $Days Days"
+echo -e " Limit IP   : $iplim"
 echo -e " Expires on :  $Expiration_Display"
 echo -e ""
 echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"

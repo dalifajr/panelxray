@@ -22,6 +22,9 @@ if declare -F thm_title >/dev/null; then
   thm_section "MONITORING"
     thm_menu_item 5 "Cek Login Akun Shadowsocks"
     thm_menu_item 6 "Lihat Konfigurasi Shadowsocks"
+  thm_section "SECURITY"
+    thm_menu_item 7 "Suspend Akun Shadowsocks"
+    thm_menu_item 8 "Unsuspend Akun Shadowsocks"
   thm_section "NAVIGATION"
     thm_menu_item 0 "Kembali Ke Menu Utama"
     thm_footer
@@ -33,14 +36,16 @@ else
     echo "4) Perpanjang Akun Shadowsocks"
     echo "5) Cek Login Akun Shadowsocks"
     echo "6) Lihat Konfigurasi Shadowsocks"
+    echo "7) Suspend Akun Shadowsocks"
+    echo "8) Unsuspend Akun Shadowsocks"
     echo "0) Kembali Ke Menu Utama"
 fi
 
 if declare -F thm_prompt >/dev/null; then
-  thm_prompt "Pilih Menu [ 0 - 6 ] : "
+  thm_prompt "Pilih Menu [ 0 - 8 ] : "
   read -r menu
 else
-  read -p "Pilih Menu [ 0 - 6 ] : " menu
+  read -p "Pilih Menu [ 0 - 8 ] : " menu
 fi
 case $menu in
 1) addss ;;
@@ -49,6 +54,8 @@ case $menu in
 4) renewss ;;
 5) cekss ;;
 6) user-ss ;;
+7) suspss ;;
+8) unsuspss ;;
 0) menu ;;
 *) menu ;;
 esac

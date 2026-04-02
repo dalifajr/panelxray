@@ -1,0 +1,57 @@
+#!/bin/bash
+THEME_FILE="$(dirname "$0")/_theme.sh"
+if [[ ! -r "$THEME_FILE" && -r /usr/local/sbin/_theme.sh ]]; then
+  THEME_FILE="/usr/local/sbin/_theme.sh"
+fi
+if [[ -r "$THEME_FILE" ]]; then
+  . "$THEME_FILE"
+fi
+
+SERVICE="shadowsocks"
+STATE_DIR="/etc/kyt/suspended/${SERVICE}"
+CONFIG="/etc/xray/config.json"
+
+user=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)
+      user="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$user" ]]; then
+  clear
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo " Unsuspend Shadowsocks Account"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  ls "$STATE_DIR" 2>/dev/null | sort
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  read -rp "Input Username : " user
+fi
+
+user="$(echo "$user" | tr -d '\r' | xargs)"
+
+[[ -z "$user" ]] && exit 0
+[[ ! -f "$STATE_DIR/$user" ]] && { echo "User not suspended"; exit 1; }
+if grep -qwE "^#!# $user " "$CONFIG"; then
+  echo "User already active"
+  exit 1
+fi
+
+read -r exp uuid reason < "$STATE_DIR/$user"
+[[ -z "$exp" || -z "$uuid" ]] && { echo "Suspend state invalid"; exit 1; }
+
+sed -i '/#ssws$/a\#!# '"$user $exp"'\
+},{"password": "'""$uuid""'","method": "aes-128-gcm","email": "'""$user""'"' "$CONFIG"
+sed -i '/#ssgrpc$/a\#!# '"$user $exp"'\
+},{"password": "'""$uuid""'","method": "aes-128-gcm","email": "'""$user""'"' "$CONFIG"
+
+rm -f "$STATE_DIR/$user"
+systemctl restart xray >/dev/null 2>&1
+
+echo "Shadowsocks account unsuspended: $user"

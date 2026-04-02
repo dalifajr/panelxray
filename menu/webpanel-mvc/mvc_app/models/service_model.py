@@ -32,7 +32,7 @@ SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             {
                 "label": "Kelola SHADOWSOCKS",
                 "service": "shadowsocks",
-                "description": "CRUD, trial, dan konfigurasi akun Shadowsocks.",
+                "description": "CRUD, trial, suspend, dan unsuspend akun Shadowsocks.",
             },
         ],
         "operations": [],
@@ -106,6 +106,14 @@ SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
                         "min": 1,
                         "value": 30,
                     },
+                    {
+                        "name": "ip_limit",
+                        "label": "Limit IP Baru",
+                        "type": "number",
+                        "required": True,
+                        "min": 0,
+                        "value": 1,
+                    },
                 ],
             },
             {
@@ -133,6 +141,39 @@ SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
                         "required": True,
                         "min": 1,
                         "value": 60,
+                    }
+                ],
+            },
+            {
+                "name": "suspend",
+                "label": "Suspend SSH",
+                "tone": "warning",
+                "fields": [
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "type": "text",
+                        "required": True,
+                    },
+                    {
+                        "name": "reason",
+                        "label": "Reason",
+                        "type": "text",
+                        "required": False,
+                        "placeholder": "manual",
+                    },
+                ],
+            },
+            {
+                "name": "unsuspend",
+                "label": "Unsuspend SSH",
+                "tone": "secondary",
+                "fields": [
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "type": "text",
+                        "required": True,
                     }
                 ],
             },
@@ -651,6 +692,14 @@ SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
                         "min": 0,
                         "value": 0,
                     },
+                    {
+                        "name": "ip_limit",
+                        "label": "Limit IP",
+                        "type": "number",
+                        "required": True,
+                        "min": 0,
+                        "value": 1,
+                    },
                 ],
             },
             {
@@ -672,6 +721,14 @@ SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
                         "min": 1,
                         "value": 30,
                     },
+                    {
+                        "name": "ip_limit",
+                        "label": "Limit IP Baru",
+                        "type": "number",
+                        "required": True,
+                        "min": 0,
+                        "value": 1,
+                    },
                 ],
             },
             {
@@ -692,6 +749,39 @@ SERVICE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
                 "label": "Trial SS",
                 "tone": "accent",
                 "fields": [],
+            },
+            {
+                "name": "suspend",
+                "label": "Suspend SS",
+                "tone": "warning",
+                "fields": [
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "type": "text",
+                        "required": True,
+                    },
+                    {
+                        "name": "reason",
+                        "label": "Reason",
+                        "type": "text",
+                        "required": False,
+                        "placeholder": "manual",
+                    },
+                ],
+            },
+            {
+                "name": "unsuspend",
+                "label": "Unsuspend SS",
+                "tone": "secondary",
+                "fields": [
+                    {
+                        "name": "username",
+                        "label": "Username",
+                        "type": "text",
+                        "required": True,
+                    }
+                ],
             },
         ],
     },

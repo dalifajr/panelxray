@@ -1165,6 +1165,40 @@ EOF
 systemctl daemon-reload
 systemctl restart trip
 systemctl enable trip
+
+cat >/etc/systemd/system/ssip.service << EOF
+[Unit]
+Description=My
+After=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/bin/limit-ip ssip
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl restart ssip
+systemctl enable ssip
+
+cat >/etc/systemd/system/sship.service << EOF
+[Unit]
+Description=My
+After=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/bin/limit-ip sship
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl restart sship
+systemctl enable sship
 #SERVICE LIMIT QUOTA
 
 #SERVICE VMESS

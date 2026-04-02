@@ -45,7 +45,26 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
     if [ -z $user ]; then
     menu
     else
+    if ! grep -qwE "^#!# $user " "/etc/xray/config.json"; then
+      if [[ -f "/etc/kyt/suspended/shadowsocks/$user" ]]; then
+        unsuspss --user "$user" >/dev/null 2>&1 || true
+      fi
+    fi
+    if ! grep -qwE "^#!# $user " "/etc/xray/config.json"; then
+      echo "User not found"
+      exit 1
+    fi
     read -p "Expired (days): " masaaktif
+    read -p "Limit User (IP): " iplim
+    if [ -z "${iplim}" ]; then
+      iplim="1"
+    fi
+    mkdir -p /etc/kyt/limit/shadowsocks/ip
+    if [[ "${iplim}" =~ ^[0-9]+$ ]] && [[ "${iplim}" -gt 0 ]]; then
+      echo "${iplim}" > /etc/kyt/limit/shadowsocks/ip/${user}
+    else
+      rm -f /etc/kyt/limit/shadowsocks/ip/${user}
+    fi
     exp=$(grep -wE "^#!# $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
     now=$(date +%Y-%m-%d)
     d1=$(date -d "$exp" +%s)
@@ -63,6 +82,7 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
     echo ""
     echo " Client Name : $user"
     echo " Expired On  : $exp4"
+    echo " User Limit IP: $iplim"
     echo ""
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo ""

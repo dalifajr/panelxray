@@ -1,103 +1,423 @@
 #!/bin/bash
 
-function send_log(){
-CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
-KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
-TIME="10"
-URL="https://api.telegram.org/bot$KEY/sendMessage"
-TEXT="
-<code>────────────────────</code>
-<b>⚠️ NOTIFICATIONS MULTI LOGIN ⚠️</b>
-<code>────────────────────</code>
-<code>Username  : </code><code>$user</code>
-<code>Limit Ip    : </code><code>$iplimit</code>
-<code>────────────────────</code>
-"
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+set -u
+shopt -s nullglob
+
+LIMIT_ROOT="/etc/kyt/limit"
+SUSPEND_ROOT="/etc/kyt/suspended"
+STATE_ROOT="${LIMIT_ROOT}/.state"
+ACCESS_LOG="/var/log/xray/access.log"
+KYT_DB="/usr/bin/kyt/database.db"
+KYT_VAR="/usr/bin/kyt/var.txt"
+LEGACY_BOT_DB="/etc/bot/.bot.db"
+VIOLATION_LOG="/root/log-limit.txt"
+
+CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-180}"
+LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-900}"
+REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-3}"
+MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-2}"
+
+mkdir -p "$STATE_ROOT"
+touch "$VIOLATION_LOG" 2>/dev/null || true
+
+trim() {
+    local value="$*"
+    value="${value//$'\r'/}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
 }
-function vmip(){
-#LIMITVMESSIP
-echo -n > /var/log/xray/access.log
-sleep 1
-data=( `ls /etc/kyt/limit/vmess/ip`);
-#dancok
-    for user in "${data[@]}"
-    do
-        iplimit=$(cat /etc/kyt/limit/vmess/ip/$user)
-        ehh=$(cat /var/log/xray/access.log | grep "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq);
-        cekcek=$(echo -e "$ehh" | wc -l);
-        if [[ $cekcek -gt $iplimit ]]; then
-            exp=$(grep -w "^### $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  sed -i "/^### $user $exp/,/^},{/d" /etc/xray/config.json
-                  sed -i "/^### $user $exp/d" /etc/vmess/.vmess.db
-                  systemctl restart xray >> /dev/null 2>&1
-                  jum2=$(cat /tmp/ipvmess.txt | wc -l)
-                  rm -rf /etc/kyt/limit/vmess/ip/$user
-                  send_log
-                else
-            echo ""
+
+safe_int() {
+    local value
+    value="$(trim "$1")"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$value"
+    else
+        printf '0'
+    fi
+}
+
+read_kyt_var() {
+    local key="$1"
+    [[ -f "$KYT_VAR" ]] || return 0
+    sed -n "s/^${key}=//p" "$KYT_VAR" | head -n1 | sed "s/^'//;s/'$//;s/^\"//;s/\"$//" | tr -d '\r'
+}
+
+sql_escape() {
+    printf '%s' "$1" | sed "s/'/''/g"
+}
+
+read_legacy_bot_field() {
+    local index="$1"
+    [[ -f "$LEGACY_BOT_DB" ]] || return 0
+    grep -E "^#bot# " "$LEGACY_BOT_DB" | awk -v idx="$index" '{print $idx}' | head -n1 | tr -d '\r'
+}
+
+send_bot_message() {
+    local token="$1"
+    local chat_id="$2"
+    local message="$3"
+
+    token="$(trim "$token")"
+    chat_id="$(trim "$chat_id")"
+    [[ -n "$token" && -n "$chat_id" && -n "$message" ]] || return 0
+
+    curl -fsS --max-time 10 "https://api.telegram.org/bot${token}/sendMessage" \
+        -d "chat_id=${chat_id}" \
+        --data-urlencode "text=${message}" \
+        -d "disable_web_page_preview=1" >/dev/null 2>&1 || true
+}
+
+collect_admin_chat_ids() {
+    local kyt_admin
+    local legacy_chat
+    local escaped
+
+    kyt_admin="$(trim "$(read_kyt_var ADMIN)")"
+    legacy_chat="$(trim "$(read_legacy_bot_field 3)")"
+
+    {
+        [[ -n "$kyt_admin" ]] && echo "$kyt_admin"
+        if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$KYT_DB" ]]; then
+            sqlite3 "$KYT_DB" "SELECT tg_id FROM telegram_users WHERE role='admin' AND status='approved';" 2>/dev/null
         fi
-        sleep 0.1
+        [[ -n "$legacy_chat" ]] && echo "$legacy_chat"
+    } | awk 'NF && !seen[$0]++'
+}
+
+collect_owner_chat_ids() {
+    local service="$1"
+    local user="$2"
+    local esc_service
+    local esc_user
+
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    [[ -f "$KYT_DB" ]] || return 0
+
+    esc_service="$(sql_escape "$service")"
+    esc_user="$(sql_escape "$user")"
+
+    sqlite3 "$KYT_DB" "
+        SELECT tg_id
+        FROM account_registry
+        WHERE service='${esc_service}'
+            AND LOWER(username)=LOWER('${esc_user}')
+            AND active=1
+        ORDER BY id DESC
+        LIMIT 3;
+    " 2>/dev/null | awk 'NF && !seen[$0]++'
+}
+
+notify_auto_suspend() {
+    local service="$1"
+    local user="$2"
+    local iplimit="$3"
+    local ipcount="$4"
+    local ips="$5"
+
+    local kyt_token
+    local legacy_token
+    local token
+    local message
+
+    kyt_token="$(trim "$(read_kyt_var BOT_TOKEN)")"
+    legacy_token="$(trim "$(read_legacy_bot_field 2)")"
+    token="$kyt_token"
+    [[ -z "$token" ]] && token="$legacy_token"
+    [[ -n "$token" ]] || return 0
+
+    message="[AUTO SUSPEND LIMIT IP]\n"
+    message+="Service: ${service^^}\n"
+    message+="Username: ${user}\n"
+    message+="Limit IP: ${iplimit}\n"
+    message+="IP terdeteksi: ${ipcount}\n"
+    message+="Daftar IP: ${ips}\n\n"
+    message+="Akun disuspend otomatis untuk mencegah abuse.\n"
+    message+="Lanjutkan dengan unsuspend atau renew + limit IP baru."
+
+    {
+        collect_admin_chat_ids
+        collect_owner_chat_ids "$service" "$user"
+    } | awk 'NF && !seen[$0]++' | while IFS= read -r chat_id; do
+        send_bot_message "$token" "$chat_id" "$message"
     done
+
+    if [[ -n "$legacy_token" ]]; then
+        local legacy_chat
+        legacy_chat="$(trim "$(read_legacy_bot_field 3)")"
+        send_bot_message "$legacy_token" "$legacy_chat" "$message"
+    fi
 }
-function vlip(){
-#LIMITVLESSIP
-echo -n > /var/log/xray/access.log
-sleep 1
-data=( `ls /etc/kyt/limit/vless/ip`);
-#ASU
-    for user in "${data[@]}"
-    do
-        iplimit=$(cat /etc/kyt/limit/vless/ip/$user)
-        ehh=$(cat /var/log/xray/access.log | grep "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq);
-        cekcek=$(echo -e "$ehh" | wc -l);
-        if [[ $cekcek -gt $iplimit ]]; then
-            exp=$(grep -w "^#& $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  sed -i "/^#& $user $exp/,/^},{/d" /etc/xray/config.json
-                  sed -i "/^### $user $exp/d" /etc/vless/.vless.db
-                  systemctl restart xray >> /dev/null 2>&1
-                  jum2=$(cat /tmp/ipvless.txt | wc -l)
-                  rm -rf /etc/kyt/limit/vless/ip/$user
-                  send_log
-                else
-            echo ""
+
+state_file() {
+    local service="$1"
+    local user="$2"
+    printf '%s/%s/%s.state' "$STATE_ROOT" "$service" "$user"
+}
+
+clear_strike() {
+    local service="$1"
+    local user="$2"
+    rm -f "$(state_file "$service" "$user")"
+}
+
+next_strike() {
+    local service="$1"
+    local user="$2"
+    local file
+    local strikes=0
+
+    file="$(state_file "$service" "$user")"
+    mkdir -p "$(dirname "$file")"
+
+    if [[ -f "$file" ]]; then
+        strikes="$(awk '{print $1}' "$file" 2>/dev/null)"
+        strikes="$(safe_int "$strikes")"
+    fi
+
+    strikes=$((strikes + 1))
+    printf '%s %s\n' "$strikes" "$(date +%s)" > "$file"
+    printf '%s' "$strikes"
+}
+
+is_suspended() {
+    local service="$1"
+    local user="$2"
+
+    if [[ -f "${SUSPEND_ROOT}/${service}/${user}" ]]; then
+        return 0
+    fi
+
+    if [[ "$service" == "ssh" ]]; then
+        local status
+        status="$(passwd -S "$user" 2>/dev/null | awk '{print $2}')"
+        [[ "$status" == "L" ]] && return 0
+    fi
+
+    return 1
+}
+
+resolve_cmd() {
+    local cmd="$1"
+    local fallback_root
+
+    if command -v "$cmd" >/dev/null 2>&1; then
+        command -v "$cmd"
+        return 0
+    fi
+
+    fallback_root="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+    for p in "/usr/local/sbin" "/usr/bin" "/usr/sbin" "${fallback_root}/menu"; do
+        if [[ -x "${p}/${cmd}" ]]; then
+            printf '%s\n' "${p}/${cmd}"
+            return 0
         fi
-        sleep 0.1
     done
+
+    return 1
 }
-function trip(){
-#LIMITIPTROJAN
-echo -n > /var/log/xray/access.log
-sleep 1
-data=( `ls /etc/kyt/limit/trojan/ip`);
-#ASU
-    for user in "${data[@]}"
-    do
-        iplimit=$(cat /etc/kyt/limit/trojan/ip/$user)
-        ehh=$(cat /var/log/xray/access.log | grep "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq);
-        cekcek=$(echo -e "$ehh" | wc -l);
-        if [[ $cekcek -gt $iplimit ]]; then
-            exp=$(grep -w "^#! $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  sed -i "/^#! $user $exp/,/^},{/d" /etc/xray/config.json
-                  sed -i "/^### $user $exp/d" /etc/trojan/.trojan.db
-                  systemctl restart xray >> /dev/null 2>&1
-                  jum2=$(cat /tmp/iptrojan.txt | wc -l)
-                  rm -rf /etc/kyt/limit/trojan/ip/$user
-                  send_log
-                else
-            echo ""
+
+suspend_account() {
+    local service="$1"
+    local user="$2"
+    local reason="$3"
+    local script_name=""
+    local script_path=""
+
+    case "$service" in
+        vmess) script_name="suspws" ;;
+        vless) script_name="suspvless" ;;
+        trojan) script_name="susptr" ;;
+        shadowsocks) script_name="suspss" ;;
+        ssh) script_name="suspssh" ;;
+        *) return 1 ;;
+    esac
+
+    script_path="$(resolve_cmd "$script_name")" || return 1
+    "$script_path" --user "$user" --reason "$reason" >/dev/null 2>&1 || true
+
+    is_suspended "$service" "$user"
+}
+
+collect_xray_ip_stats() {
+    local user="$1"
+    local cutoff
+    cutoff="$(date -d "@$(( $(date +%s) - LOOKBACK_SECONDS ))" '+%Y/%m/%d %H:%M:%S' 2>/dev/null || date '+%Y/%m/%d %H:%M:%S')"
+
+    [[ -f "$ACCESS_LOG" ]] || return 0
+
+    awk -v user="$user" -v cutoff="$cutoff" -v min_hits="$MIN_HITS_PER_IP" '
+        function clean_ip(raw, ip) {
+            ip = raw
+            sub(/^(tcp|udp):/, "", ip)
+            sub(/:[0-9]+$/, "", ip)
+            return ip
+        }
+        {
+            if (index($0, user) == 0) {
+                next
+            }
+
+            if ($1 ~ /^[0-9]{4}\/[0-9]{2}\/[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+                ts = $1 " " $2
+                if (ts < cutoff) {
+                    next
+                }
+            }
+
+            ip = clean_ip($3)
+            if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+                hits[ip]++
+            }
+        }
+        END {
+            for (ip in hits) {
+                if (hits[ip] >= min_hits) {
+                    printf "%s %d\n", ip, hits[ip]
+                }
+            }
+        }
+    ' "$ACCESS_LOG" 2>/dev/null | sort -k1,1
+}
+
+collect_ssh_ip_stats() {
+    local user="$1"
+
+    {
+        who 2>/dev/null | awk -v u="$user" '
+            $1 == u {
+                ip = $5
+                gsub(/[()]/, "", ip)
+                if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+                    print ip
+                }
+            }
+        '
+
+        if [[ -f /etc/openvpn/server/openvpn-tcp.log ]]; then
+            awk -F',' -v u="$user" '$1=="CLIENT_LIST" && $2==u {split($3,a,":"); if (a[1] != "") print a[1]}' /etc/openvpn/server/openvpn-tcp.log
         fi
-        sleep 0.1
+
+        if [[ -f /etc/openvpn/server/openvpn-udp.log ]]; then
+            awk -F',' -v u="$user" '$1=="CLIENT_LIST" && $2==u {split($3,a,":"); if (a[1] != "") print a[1]}' /etc/openvpn/server/openvpn-udp.log
+        fi
+    } | awk 'NF {hits[$1]++} END {for (ip in hits) printf "%s %d\n", ip, hits[ip]}' | sort -k1,1
+}
+
+stats_to_ip_summary() {
+    awk '{printf (NR==1 ? "%s(%s)" : ", %s(%s)"), $1, $2} END {if (NR==0) printf "-"}'
+}
+
+count_stats_lines() {
+    awk 'NF {count++} END {print count+0}'
+}
+
+append_violation_log() {
+    local service="$1"
+    local user="$2"
+    local limit="$3"
+    local count="$4"
+    local strikes="$5"
+    local ips="$6"
+
+    printf '%s | %s | %s | ip=%s/%s | strikes=%s | %s\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" \
+        "$service" \
+        "$user" \
+        "$count" \
+        "$limit" \
+        "$strikes" \
+        "$ips" >> "$VIOLATION_LOG"
+}
+
+process_limit_entry() {
+    local service="$1"
+    local detector="$2"
+    local user="$3"
+    local iplimit="$4"
+    local stats=""
+    local ipcount=0
+    local ips="-"
+    local strikes=0
+    local reason
+
+    iplimit="$(safe_int "$iplimit")"
+    (( iplimit > 0 )) || { clear_strike "$service" "$user"; return 0; }
+
+    if is_suspended "$service" "$user"; then
+        clear_strike "$service" "$user"
+        return 0
+    fi
+
+    if [[ "$detector" == "xray" ]]; then
+        stats="$(collect_xray_ip_stats "$user")"
+    else
+        stats="$(collect_ssh_ip_stats "$user")"
+    fi
+
+    ipcount="$(printf '%s\n' "$stats" | count_stats_lines)"
+    ips="$(printf '%s\n' "$stats" | stats_to_ip_summary)"
+
+    if (( ipcount > iplimit )); then
+        strikes="$(next_strike "$service" "$user")"
+        append_violation_log "$service" "$user" "$iplimit" "$ipcount" "$strikes" "$ips"
+
+        if (( strikes >= REQUIRED_STRIKES )); then
+            reason="auto-limit:${service}:ip=${ipcount}/${iplimit}:strike=${strikes}"
+            if suspend_account "$service" "$user" "$reason"; then
+                notify_auto_suspend "$service" "$user" "$iplimit" "$ipcount" "$ips"
+            fi
+            clear_strike "$service" "$user"
+        fi
+    else
+        clear_strike "$service" "$user"
+    fi
+}
+
+monitor_service() {
+    local service="$1"
+    local detector="$2"
+    local dir="$3"
+    local file
+    local user
+    local iplimit
+
+    while true; do
+        if [[ -d "$dir" ]]; then
+            for file in "$dir"/*; do
+                [[ -f "$file" ]] || continue
+                user="$(basename "$file")"
+                iplimit="$(cat "$file" 2>/dev/null | tr -d '\r')"
+                process_limit_entry "$service" "$detector" "$user" "$iplimit"
+            done
+        fi
+        sleep "$CHECK_INTERVAL"
     done
 }
 
-if [[ ${1} == "vmip" ]]; then
-vmip
-elif [[ ${1} == "vlip" ]]; then
-vlip
-elif [[ ${1} == "trip" ]]; then
-trip
-fi
+MODE="$(trim "${1:-}")"
+case "$MODE" in
+    vmip)
+        monitor_service "vmess" "xray" "${LIMIT_ROOT}/vmess/ip"
+        ;;
+    vlip)
+        monitor_service "vless" "xray" "${LIMIT_ROOT}/vless/ip"
+        ;;
+    trip)
+        monitor_service "trojan" "xray" "${LIMIT_ROOT}/trojan/ip"
+        ;;
+    ssip)
+        monitor_service "shadowsocks" "xray" "${LIMIT_ROOT}/shadowsocks/ip"
+        ;;
+    sship)
+        monitor_service "ssh" "ssh" "${LIMIT_ROOT}/ssh/ip"
+        ;;
+    *)
+        echo "Usage: $0 {vmip|vlip|trip|ssip|sship}"
+        exit 1
+        ;;
+esac
 
 
 
