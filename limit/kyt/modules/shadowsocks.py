@@ -3,7 +3,7 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     send_account_with_qr, short_progress, run_command,
     ask_expiry, upsert_message, notify_then_back, back_button,
-    ensure_creation_quota, is_admin, sanitize_username
+    ensure_creation_quota, is_admin, sanitize_username, ask_renew_account
 )
 
 @bot.on(events.CallbackQuery(data=b'create-shadowsocks'))
@@ -183,13 +183,15 @@ async def delete_shadowsocks(event):
         await event.answer("Akses Ditolak",alert=True)
 
 
-@bot.on(events.CallbackQuery(data=b'renew-shadowsocks'))
+@bot.on(events.CallbackQuery(pattern=b"^renew-shadowsocks(?::.+)?$"))
 async def renew_shadowsocks(event):
     async def renew_shadowsocks_(event):
         msgs_to_del = []
 
-        user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Masukkan Username SHADOWSOCKS:**")
+        user, msgs = await ask_renew_account(event, chat, sender.id, "shadowsocks", "SHADOWSOCKS", "shadowsocks")
         msgs_to_del.extend(msgs)
+        if not user and not msgs_to_del:
+            return
         user = sanitize_username(user)
         if not user:
             await delete_messages(chat, msgs_to_del)

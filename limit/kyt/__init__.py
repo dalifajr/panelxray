@@ -327,10 +327,23 @@ def _bootstrap_db():
 		)
 		"""
 	)
+	c.execute(
+		"""
+		CREATE TABLE IF NOT EXISTS expiry_notifications (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			account_id INTEGER NOT NULL,
+			target_id TEXT NOT NULL,
+			notice_date TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(account_id, target_id, notice_date)
+		)
+		"""
+	)
 	_migrate_legacy_schema(c)
 	c.execute("CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status, created_at)")
 	c.execute("CREATE INDEX IF NOT EXISTS idx_quota_requests_status ON quota_requests(status, created_at)")
 	c.execute("CREATE INDEX IF NOT EXISTS idx_account_registry_owner ON account_registry(tg_id, category, service)")
+	c.execute("CREATE INDEX IF NOT EXISTS idx_expiry_notifications_target ON expiry_notifications(target_id, notice_date)")
 
 	admin_id = _normalize_tg_id(globals().get("ADMIN", ""))
 	if admin_id:
@@ -974,6 +987,121 @@ def user_owns_account(tg_id, service: str, username: str, active_only: bool = Tr
 	try:
 		row = db.execute(query, tuple(params)).fetchone()
 		return row is not None
+	finally:
+		db.close()
+
+
+def parse_account_expiry_date(value) -> Optional[DT.date]:
+	text = str(value or "").strip()
+	if not text:
+		return None
+
+	if " " in text and re.match(r"^\d{4}-\d{2}-\d{2}\s+", text):
+		text = text.split()[0]
+
+	formats = (
+		"%Y-%m-%d",
+		"%Y/%m/%d",
+		"%d %b, %Y",
+		"%d %b %Y",
+		"%d %B, %Y",
+		"%d %B %Y",
+		"%b %d, %Y",
+		"%B %d, %Y",
+	)
+	for fmt in formats:
+		try:
+			return DT.datetime.strptime(text, fmt).date()
+		except ValueError:
+			continue
+	return None
+
+
+def list_expiring_accounts(days_before: int = 3) -> List[Dict]:
+	window = max(0, int(days_before))
+	today = DT.date.today()
+
+	db = get_db()
+	try:
+		rows = db.execute(
+			"""
+			SELECT
+				ar.*,
+				tu.username AS telegram_username,
+				tu.full_name AS telegram_full_name,
+				tu.role AS telegram_role,
+				tu.status AS telegram_status
+			FROM account_registry ar
+			LEFT JOIN telegram_users tu ON tu.tg_id = ar.tg_id
+			WHERE ar.active = 1
+			  AND ar.service IN ('ssh', 'vmess', 'vless', 'trojan', 'shadowsocks')
+			ORDER BY ar.expires_at ASC, ar.service ASC, ar.username ASC
+			"""
+		).fetchall()
+	finally:
+		db.close()
+
+	accounts = []
+	for row in rows:
+		item = _row_to_dict(row)
+		expiry = parse_account_expiry_date(item.get("expires_at"))
+		if expiry is None:
+			continue
+		days_left = (expiry - today).days
+		if 0 <= days_left <= window:
+			item["expiry_date"] = expiry.isoformat()
+			item["days_left"] = days_left
+			accounts.append(item)
+	return accounts
+
+
+def expiry_notification_sent(account_id, target_id, notice_date: str = "") -> bool:
+	try:
+		aid = int(account_id)
+	except Exception:
+		return True
+
+	target = _normalize_tg_id(target_id)
+	if not target:
+		return True
+
+	day = str(notice_date or DT.date.today().isoformat()).strip()
+	db = get_db()
+	try:
+		row = db.execute(
+			"""
+			SELECT 1
+			FROM expiry_notifications
+			WHERE account_id = ? AND target_id = ? AND notice_date = ?
+			""",
+			(aid, target, day),
+		).fetchone()
+		return row is not None
+	finally:
+		db.close()
+
+
+def mark_expiry_notification_sent(account_id, target_id, notice_date: str = ""):
+	try:
+		aid = int(account_id)
+	except Exception:
+		return
+
+	target = _normalize_tg_id(target_id)
+	if not target:
+		return
+
+	day = str(notice_date or DT.date.today().isoformat()).strip()
+	db = get_db()
+	try:
+		db.execute(
+			"""
+			INSERT OR IGNORE INTO expiry_notifications (account_id, target_id, notice_date, created_at)
+			VALUES (?, ?, ?, ?)
+			""",
+			(aid, target, day, _now()),
+		)
+		db.commit()
 	finally:
 		db.close()
 

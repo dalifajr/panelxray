@@ -4,7 +4,7 @@ from kyt.modules.ui import (
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
     ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
-    ensure_creation_quota, is_admin
+    ensure_creation_quota, is_admin, ask_renew_account
 )
 
 @bot.on(events.CallbackQuery(data=b'create-vless'))
@@ -180,23 +180,25 @@ async def list_vless(event):
         await event.answer("Access Denied",alert=True)
 
 
-@bot.on(events.CallbackQuery(data=b'renew-vless'))
+@bot.on(events.CallbackQuery(pattern=b"^renew-vless(?::.+)?$"))
 async def renew_vless(event):
     async def renew_vless_(event):
         msgs_to_del = []
         
         # Username
-        user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Masukkan Username VLESS:**")
+        user, msgs = await ask_renew_account(event, chat, sender.id, "vless", "VLESS", "vless")
         msgs_to_del.extend(msgs)
+        if not user and not msgs_to_del:
+            return
         user = sanitize_username(user)
         if not user:
             await delete_messages(chat, msgs_to_del)
-            await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/._-")
+            await upsert_message(event, "❌ Username tidak valid. Gunakan huruf/angka/._-", buttons=back_button("vless"))
             return
 
         if not is_admin(sender.id) and not user_owns_account(str(sender.id), "vless", user, active_only=True):
             await delete_messages(chat, msgs_to_del)
-            await upsert_message(event, "⛔ Anda hanya bisa renew akun VLESS milik Anda sendiri.")
+            await upsert_message(event, "⛔ Anda hanya bisa renew akun VLESS milik Anda sendiri.", buttons=back_button("vless"))
             return
 
         # Expiry (dengan tombol + custom)

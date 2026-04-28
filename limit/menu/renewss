@@ -17,6 +17,27 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
 clear
+IS_INTERACTIVE=0
+if [ -t 0 ]; then
+    IS_INTERACTIVE=1
+fi
+
+return_to_menu() {
+    local code="${1:-0}"
+    if [[ "${IS_INTERACTIVE}" == "1" ]]; then
+        read -n 1 -s -r -p "Press any key to back on menu"
+        menu
+    fi
+    exit "$code"
+}
+
+update_db_expiry() {
+    local db_file="$1"
+    local tmp_file
+    [[ -f "$db_file" ]] || return 0
+    tmp_file="${db_file}.tmp.$$"
+    awk -v user="$user" -v exp="$exp4" '{ if ($1 == "###" && $2 == user) { $3 = exp } print }' "$db_file" > "$tmp_file" && mv "$tmp_file" "$db_file"
+}
 
 NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
 	if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
@@ -29,8 +50,7 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
 		echo ""
 		echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
         echo ""
-        read -n 1 -s -r -p "Press any key to back on menu"
-        menu
+        return_to_menu 1
 	fi
 
 	clear
@@ -42,8 +62,8 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
     echo ""
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	read -rp "Input Username : " user
-    if [ -z $user ]; then
-    menu
+    if [ -z "$user" ]; then
+    return_to_menu 1
     else
     if ! grep -qwE "^#!# $user " "/etc/xray/config.json"; then
       if [[ -f "/etc/kyt/suspended/shadowsocks/$user" ]]; then
@@ -73,7 +93,8 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
     exp3=$(($exp2 + $masaaktif))
     exp4=`date -d "$exp3 days" +"%Y-%m-%d"`
     sed -i "/#!# $user/c\#!# $user $exp4" /etc/xray/config.json
-    sed -i "/#!# $user/c\#!# $user $exp4" /root/akun/shadowsocks/.shadowsocks.conf
+    [[ -f /root/akun/shadowsocks/.shadowsocks.conf ]] && sed -i "/#!# $user/c\#!# $user $exp4" /root/akun/shadowsocks/.shadowsocks.conf
+    update_db_expiry /etc/shadowsocks/.shadowsocks.db
     systemctl restart xray > /dev/null 2>&1
     clear
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -86,6 +107,5 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
     echo ""
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo ""
-    read -n 1 -s -r -p "Press any key to back on menu"
-    menu
+    return_to_menu 0
     fi

@@ -476,6 +476,73 @@ def back_button(target: str):
     return [[Button.inline("⬅️ Kembali", target)]]
 
 
+def callback_payload(event, prefix: str) -> str:
+    """Return the text after '<prefix>:' from callback data, if present."""
+    try:
+        data = (event.data or b"").decode("utf-8", errors="ignore").strip()
+    except Exception:
+        return ""
+
+    marker = f"{prefix}:"
+    if not data.startswith(marker):
+        return ""
+    return data[len(marker):].strip()
+
+
+def renew_callback(service: str, username: str) -> bytes:
+    return f"renew-{service}:{str(username or '').strip()}".encode()
+
+
+async def ask_renew_account(event, chat_id: int, sender_id: int, service: str, label: str, back_target: str) -> tuple:
+    """
+    Resolve the account selected for renew.
+    Admins may type any username; members select from their registered active accounts.
+    """
+    prefix = f"renew-{service}"
+    selected = sanitize_username(callback_payload(event, prefix))
+    if selected:
+        return selected, []
+
+    if is_admin(sender_id):
+        return await ask_text_clean(event, chat_id, sender_id, f"👤 **Masukkan Username {label}:**")
+
+    accounts = get_user_accounts(str(sender_id), service=service, active_only=True, limit=50)
+    if not accounts:
+        await upsert_message(
+            event,
+            f"📭 Anda belum memiliki akun {label} aktif yang tercatat.",
+            buttons=back_button(back_target),
+        )
+        return "", []
+
+    if len(accounts) == 1:
+        username = sanitize_username(str(accounts[0].get("username") or ""))
+        return username, []
+
+    buttons = []
+    for account in accounts:
+        username = sanitize_username(str(account.get("username") or ""))
+        if not username:
+            continue
+        expires = str(account.get("expires_at") or "-")
+        button_text = f"{username} | exp {expires}"
+        if len(button_text) > 60:
+            button_text = button_text[:57] + "..."
+        buttons.append([Button.inline(button_text, renew_callback(service, username))])
+
+    if not buttons:
+        await upsert_message(
+            event,
+            f"📭 Data akun {label} Anda belum valid untuk proses renew.",
+            buttons=back_button(back_target),
+        )
+        return "", []
+
+    buttons.append([Button.inline("⬅️ Kembali", back_target)])
+    await upsert_message(event, f"📋 **Pilih akun {label} yang akan di-renew:**", buttons=buttons)
+    return "", []
+
+
 def manager_banner(title: str, service: str) -> str:
     isp, country = get_geo()
     server = globals().get("DOMAIN", "-")

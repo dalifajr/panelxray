@@ -14,6 +14,7 @@ from kyt.modules.ui import (
 	ensure_creation_quota,
 	is_admin,
 	run_command,
+	ask_renew_account,
 )
 
 
@@ -59,12 +60,14 @@ async def delete_ssh(event):
 		await event.answer("Akses Ditolak",alert=True)
 
 
-@bot.on(events.CallbackQuery(data=b'renew-ssh'))
+@bot.on(events.CallbackQuery(pattern=b"^renew-ssh(?::.+)?$"))
 async def renew_ssh(event):
 	async def renew_ssh_(event):
 		msgs_to_del = []
-		user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Masukkan Username SSH:**")
+		user, msgs = await ask_renew_account(event, chat, sender.id, "ssh", "SSH", "ssh")
 		msgs_to_del.extend(msgs)
+		if not user and not msgs_to_del:
+			return
 		user = sanitize_username(user)
 
 		if not user:

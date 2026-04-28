@@ -33,7 +33,6 @@ _ADMIN_ONLY_PREFIXES = (
     "q-appr:",
     "q-rej:",
     "delete-",
-    "renew-",
     "suspend-",
     "unsuspend-",
     "cek-",
