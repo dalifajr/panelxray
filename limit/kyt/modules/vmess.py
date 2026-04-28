@@ -237,8 +237,8 @@ async def cek_vmess(event):
 async def list_vmess(event):
     async def list_vmess_(event):
         if is_admin(sender.id):
-            cmd = "grep -E '^### ' /etc/vmess/.vmess.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
-            _, out = run_command(cmd)
+            rows = list_xray_system_accounts("vmess")
+            out = "\n".join(f"{row['username']:<20} {row['expires_at']}" for row in rows)
             if not out:
                 out = "Tidak ada user VMESS."
             await upsert_message(event, f"📋 **Daftar User VMESS**\n```\n{out}\n```", buttons=back_button("vmess"))
@@ -310,10 +310,10 @@ async def renew_vmess(event):
         await delete_messages(chat, msgs_to_del)
         
         await upsert_message(event, "⏳ Memperpanjang akun VMESS...")
-        _, out = run_command("renewws", [user, days, quota, iplim])
-        _, exp = run_command(f"grep -wE '^### {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
+        result = renew_xray_account("vmess", user, days, quota, iplim)
+        exp = str(result.get("expires_at") or "")
         
-        if exp:
+        if result.get("ok") and exp:
             refresh_account_expiry("vmess", user, exp)
             msg = build_result(
                 "VMESS Account Renewed",
@@ -326,9 +326,12 @@ async def renew_vmess(event):
                 ],
                 [("OpenClash", f"https://{BOT_DOMAIN}:81/vmess-{user}.txt")],
             )
+            warning = str(result.get("message") or "").strip()
+            if warning:
+                msg += f"\n\n⚠️ `{warning}`"
             await upsert_message(event, msg, buttons=back_button("vmess"))
         else:
-            await upsert_message(event, f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```", buttons=back_button("vmess"))
+            await upsert_message(event, f"❌ Gagal renew VMESS.\n```\n{result.get('message') or 'Tidak ada output'}\n```", buttons=back_button("vmess"))
 
     chat = event.chat_id
     sender = await event.get_sender()
@@ -358,14 +361,12 @@ async def delete_vmess(event):
         
         await delete_messages(chat, msgs_to_del)
         
-        cmd = f'printf "%s\n" "{user}" | delws'
-        try:
-            a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-        except:
-            await upsert_message(event, "**User Not Found**")
-        else:
+        result = delete_xray_account("vmess", user)
+        if result.get("ok"):
             mark_account_inactive("vmess", user)
             await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", vmess, delay=3)
+        else:
+            await upsert_message(event, f"❌ {result.get('message') or 'User Not Found'}", buttons=back_button("vmess"))
     
     chat = event.chat_id
     sender = await event.get_sender()

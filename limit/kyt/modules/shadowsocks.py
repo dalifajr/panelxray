@@ -116,8 +116,8 @@ async def cek_shadowsocks(event):
 async def list_shadowsocks(event):
     async def list_shadowsocks_(event):
         if is_admin(sender.id):
-            cmd = "grep -E '^### ' /etc/shadowsocks/.shadowsocks.db 2>/dev/null | awk '{printf \"%-20s %s\\n\",$2,$3}'"
-            _, out = run_command(cmd)
+            rows = list_xray_system_accounts("shadowsocks")
+            out = "\n".join(f"{row['username']:<20} {row['expires_at']}" for row in rows)
             if not out:
                 out = "Tidak ada user SHADOWSOCKS."
             await upsert_message(event, f"📋 **Daftar User SHADOWSOCKS**\n```\n{out}\n```", buttons=back_button("shadowsocks"))
@@ -165,14 +165,12 @@ async def delete_shadowsocks(event):
         
         await delete_messages(chat, msgs_to_del)
         
-        cmd = f'printf "%s\n" "{user}" | del-ss'
-        try:
-            a = subprocess.check_output(cmd, shell=True).decode("utf-8")
-        except:
-            await upsert_message(event, "**User Not Found**", buttons=back_button("shadowsocks"))
-        else:
+        result = delete_xray_account("shadowsocks", user)
+        if result.get("ok"):
             mark_account_inactive("shadowsocks", user)
             await notify_then_back(event, f"✅ **User `{user}` berhasil dihapus.**", shadowsocks, delay=3)
+        else:
+            await upsert_message(event, f"❌ {result.get('message') or 'User Not Found'}", buttons=back_button("shadowsocks"))
     
     chat = event.chat_id
     sender = await event.get_sender()
@@ -216,10 +214,10 @@ async def renew_shadowsocks(event):
 
         await delete_messages(chat, msgs_to_del)
         await upsert_message(event, "⏳ Memperpanjang akun SHADOWSOCKS...")
-        _, out = run_command("renewss", [user, days, iplim])
-        _, exp = run_command(f"grep -wE '^#!# {user} ' /etc/xray/config.json | awk '{{print $3}}' | head -n1")
+        result = renew_xray_account("shadowsocks", user, days, 0, iplim)
+        exp = str(result.get("expires_at") or "")
 
-        if exp:
+        if result.get("ok") and exp:
             refresh_account_expiry("shadowsocks", user, exp)
             msg = build_result(
                 "Shadowsocks Account Renewed",
@@ -231,11 +229,14 @@ async def renew_shadowsocks(event):
                 ],
                 [("JSON", f"https://{DOMAIN}:81/ss-{user}.txt")],
             )
+            warning = str(result.get("message") or "").strip()
+            if warning:
+                msg += f"\n\n⚠️ `{warning}`"
             await upsert_message(event, msg, buttons=back_button("shadowsocks"))
         else:
             await upsert_message(
                 event,
-                f"⚠️ Perpanjangan diproses, cek output:\n```\n{out or 'Tidak ada output'}\n```",
+                f"❌ Gagal renew SHADOWSOCKS.\n```\n{result.get('message') or 'Tidak ada output'}\n```",
                 buttons=back_button("shadowsocks"),
             )
 

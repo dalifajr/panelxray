@@ -923,6 +923,329 @@ def mark_account_inactive(service: str, username: str):
 		db.close()
 
 
+XRAY_ACCOUNT_MARKERS = {
+	"vmess": "###",
+	"vless": "#&",
+	"trojan": "#!",
+	"shadowsocks": "#!#",
+}
+
+XRAY_DB_FILES = {
+	"vmess": "/etc/vmess/.vmess.db",
+	"vless": "/etc/vless/.vless.db",
+	"trojan": "/etc/trojan/.trojan.db",
+	"shadowsocks": "/etc/shadowsocks/.shadowsocks.db",
+}
+
+XRAY_CONF_FILES = {
+	"vmess": [],
+	"vless": ["/root/akun/vless/.vless.conf"],
+	"trojan": ["/root/akun/trojan/.trojan.conf"],
+	"shadowsocks": ["/root/akun/shadowsocks/.shadowsocks.conf"],
+}
+
+XRAY_UNSUSPEND_COMMANDS = {
+	"vmess": "unsuspws",
+	"vless": "unsuspvless",
+	"trojan": "unsusptr",
+	"shadowsocks": "unsuspss",
+}
+
+
+def _xray_line_parts(line: str) -> List[str]:
+	return str(line or "").strip().split()
+
+
+def _xray_marker_matches(line: str, marker: str, username: str) -> bool:
+	parts = _xray_line_parts(line)
+	return len(parts) >= 3 and parts[0] == marker and parts[1] == username
+
+
+def _read_text_lines(path: str) -> List[str]:
+	try:
+		with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+			return fh.readlines()
+	except FileNotFoundError:
+		return []
+
+
+def _write_text_lines(path: str, lines: List[str]):
+	with open(path, "w", encoding="utf-8") as fh:
+		fh.writelines(lines)
+
+
+def _find_xray_expiry(service: str, username: str) -> str:
+	marker = XRAY_ACCOUNT_MARKERS.get(service)
+	if not marker:
+		return ""
+
+	for line in _read_text_lines("/etc/xray/config.json"):
+		if _xray_marker_matches(line, marker, username):
+			parts = _xray_line_parts(line)
+			return parts[2]
+	return ""
+
+
+def list_xray_system_accounts(service: str) -> List[Dict]:
+	service_name = str(service or "").strip().lower()
+	marker = XRAY_ACCOUNT_MARKERS.get(service_name)
+	if not marker:
+		return []
+
+	seen = set()
+	accounts = []
+	for line in _read_text_lines("/etc/xray/config.json"):
+		parts = _xray_line_parts(line)
+		if len(parts) < 3 or parts[0] != marker:
+			continue
+		username = parts[1]
+		key = username.lower()
+		if key in seen:
+			continue
+		seen.add(key)
+		accounts.append({"service": service_name, "username": username, "expires_at": parts[2]})
+
+	accounts.sort(key=lambda item: (str(item.get("username") or "").lower(), str(item.get("expires_at") or "")))
+	return accounts
+
+
+def _update_marker_expiry_file(path: str, marker: str, username: str, expires_at: str) -> bool:
+	lines = _read_text_lines(path)
+	if not lines:
+		return False
+
+	changed = False
+	next_lines = []
+	for line in lines:
+		if _xray_marker_matches(line, marker, username):
+			next_lines.append(f"{marker} {username} {expires_at}\n")
+			changed = True
+		else:
+			next_lines.append(line)
+
+	if changed:
+		_write_text_lines(path, next_lines)
+	return changed
+
+
+def _update_db_expiry_file(path: str, username: str, expires_at: str) -> bool:
+	lines = _read_text_lines(path)
+	if not lines:
+		return False
+
+	changed = False
+	next_lines = []
+	for line in lines:
+		parts = _xray_line_parts(line)
+		if len(parts) >= 3 and parts[0] == "###" and parts[1] == username:
+			parts[2] = expires_at
+			next_lines.append(" ".join(parts) + "\n")
+			changed = True
+		else:
+			next_lines.append(line)
+
+	if changed:
+		_write_text_lines(path, next_lines)
+	return changed
+
+
+def _delete_marker_blocks_file(path: str, marker: str, username: str) -> bool:
+	lines = _read_text_lines(path)
+	if not lines:
+		return False
+
+	changed = False
+	next_lines = []
+	skip_next_client = False
+	for line in lines:
+		if skip_next_client:
+			if line.lstrip().startswith("},{"):
+				changed = True
+				skip_next_client = False
+				continue
+			skip_next_client = False
+
+		if _xray_marker_matches(line, marker, username):
+			changed = True
+			skip_next_client = True
+			continue
+
+		next_lines.append(line)
+
+	if changed:
+		_write_text_lines(path, next_lines)
+	return changed
+
+
+def _delete_db_entry_file(path: str, username: str) -> bool:
+	lines = _read_text_lines(path)
+	if not lines:
+		return False
+
+	changed = False
+	next_lines = []
+	for line in lines:
+		parts = _xray_line_parts(line)
+		if len(parts) >= 2 and parts[0] == "###" and parts[1] == username:
+			changed = True
+			continue
+		next_lines.append(line)
+
+	if changed:
+		_write_text_lines(path, next_lines)
+	return changed
+
+
+def _remove_file(path: str):
+	try:
+		os.remove(path)
+	except FileNotFoundError:
+		return
+	except IsADirectoryError:
+		return
+
+
+def _write_limit_file(path: str, value: int):
+	os.makedirs(os.path.dirname(path), exist_ok=True)
+	with open(path, "w", encoding="utf-8") as fh:
+		fh.write(f"{int(value)}\n")
+
+
+def _restart_xray() -> str:
+	try:
+		proc = subprocess.run(
+			"systemctl restart xray",
+			shell=True,
+			text=True,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.STDOUT,
+			timeout=60,
+		)
+	except subprocess.TimeoutExpired:
+		return "Restart xray timeout."
+
+	if proc.returncode != 0:
+		return (proc.stdout or "Restart xray gagal.").strip()
+	return ""
+
+
+def _try_unsuspend_xray_account(service: str, username: str):
+	cmd = XRAY_UNSUSPEND_COMMANDS.get(service)
+	if not cmd:
+		return
+	suspended_path = f"/etc/kyt/suspended/{service}/{username}"
+	if not os.path.isfile(suspended_path):
+		return
+	try:
+		subprocess.run(
+			[cmd, "--user", username],
+			stdout=subprocess.DEVNULL,
+			stderr=subprocess.DEVNULL,
+			timeout=60,
+		)
+	except Exception:
+		return
+
+
+def renew_xray_account(service: str, username: str, days, quota_gb=0, ip_limit=1) -> Dict:
+	service_name = str(service or "").strip().lower()
+	account_name = str(username or "").strip()
+	marker = XRAY_ACCOUNT_MARKERS.get(service_name)
+	if not marker or not account_name:
+		return {"ok": False, "message": "Service atau username tidak valid."}
+
+	try:
+		add_days = int(str(days).strip())
+	except Exception:
+		return {"ok": False, "message": "Jumlah hari harus angka."}
+	if add_days <= 0:
+		return {"ok": False, "message": "Jumlah hari harus lebih dari 0."}
+
+	try:
+		ip_value = max(0, int(str(ip_limit or "0").strip()))
+	except Exception:
+		return {"ok": False, "message": "Limit IP harus angka."}
+
+	try:
+		quota_value = max(0, int(str(quota_gb or "0").strip()))
+	except Exception:
+		return {"ok": False, "message": "Quota harus angka."}
+
+	current_exp = _find_xray_expiry(service_name, account_name)
+	if not current_exp:
+		_try_unsuspend_xray_account(service_name, account_name)
+		current_exp = _find_xray_expiry(service_name, account_name)
+	if not current_exp:
+		return {"ok": False, "message": f"User `{account_name}` tidak ditemukan di /etc/xray/config.json."}
+
+	today = DT.date.today()
+	base_expiry = parse_account_expiry_date(current_exp) or today
+	if base_expiry < today:
+		base_expiry = today
+	new_expiry = (base_expiry + DT.timedelta(days=add_days)).isoformat()
+
+	config_changed = _update_marker_expiry_file("/etc/xray/config.json", marker, account_name, new_expiry)
+	for conf_file in XRAY_CONF_FILES.get(service_name, []):
+		_update_marker_expiry_file(conf_file, marker, account_name, new_expiry)
+	db_changed = _update_db_expiry_file(XRAY_DB_FILES.get(service_name, ""), account_name, new_expiry)
+
+	ip_path = f"/etc/kyt/limit/{service_name}/ip/{account_name}"
+	if ip_value > 0:
+		_write_limit_file(ip_path, ip_value)
+	else:
+		_remove_file(ip_path)
+
+	if service_name != "shadowsocks":
+		quota_path = f"/etc/{service_name}/{account_name}"
+		_remove_file(quota_path)
+		if quota_value > 0:
+			_write_limit_file(quota_path, quota_value * 1024 * 1024 * 1024)
+
+	restart_warning = _restart_xray()
+	return {
+		"ok": config_changed,
+		"message": restart_warning,
+		"expires_at": new_expiry,
+		"db_changed": db_changed,
+	}
+
+
+def delete_xray_account(service: str, username: str) -> Dict:
+	service_name = str(service or "").strip().lower()
+	account_name = str(username or "").strip()
+	marker = XRAY_ACCOUNT_MARKERS.get(service_name)
+	if not marker or not account_name:
+		return {"ok": False, "message": "Service atau username tidak valid."}
+
+	current_exp = _find_xray_expiry(service_name, account_name)
+	config_changed = _delete_marker_blocks_file("/etc/xray/config.json", marker, account_name)
+	for conf_file in XRAY_CONF_FILES.get(service_name, []):
+		_delete_marker_blocks_file(conf_file, marker, account_name)
+	db_changed = _delete_db_entry_file(XRAY_DB_FILES.get(service_name, ""), account_name)
+
+	_remove_file(f"/etc/{service_name}/{account_name}")
+	_remove_file(f"/etc/kyt/limit/{service_name}/ip/{account_name}")
+	_remove_file(f"/etc/funny/limit/{service_name}/ip/{account_name}")
+	_remove_file(f"/etc/limit/{service_name}/{account_name}")
+	_remove_file(f"/etc/limit/{service_name}/quota/{account_name}")
+
+	if config_changed:
+		restart_warning = _restart_xray()
+	else:
+		restart_warning = ""
+
+	if config_changed or db_changed:
+		return {
+			"ok": True,
+			"message": restart_warning,
+			"expires_at": current_exp,
+			"config_changed": config_changed,
+			"db_changed": db_changed,
+		}
+
+	return {"ok": False, "message": f"User `{account_name}` tidak ditemukan."}
+
+
 def get_user_accounts(
 	tg_id,
 	category: str = "",
