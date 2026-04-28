@@ -32,9 +32,6 @@ _ADMIN_ONLY_PREFIXES = (
     "acc-rej:",
     "q-appr:",
     "q-rej:",
-    "delete-",
-    "suspend-",
-    "unsuspend-",
     "cek-",
 )
 

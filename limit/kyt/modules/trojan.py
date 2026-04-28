@@ -4,7 +4,7 @@ from kyt.modules.ui import (
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
     ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
-    ensure_creation_quota, is_admin, ask_renew_account
+    ensure_creation_quota, is_admin, ask_renew_account, show_account_browser
 )
 
 @bot.on(events.CallbackQuery(data=b'create-trojan'))
@@ -150,6 +150,8 @@ async def cek_trojan(event):
 @bot.on(events.CallbackQuery(data=b'list-trojan'))
 async def list_trojan(event):
     async def list_trojan_(event):
+        await show_account_browser(event, "trojan", "list")
+        return
         if is_admin(sender.id):
             rows = list_xray_system_accounts("trojan")
             out = "\n".join(f"{row['username']:<20} {row['expires_at']}" for row in rows)
@@ -184,6 +186,9 @@ async def list_trojan(event):
 @bot.on(events.CallbackQuery(pattern=b"^renew-trojan(?::.+)?$"))
 async def renew_trojan(event):
     async def renew_trojan_(event):
+        if (event.data or b"") == b"renew-trojan":
+            await show_account_browser(event, "trojan", "renew")
+            return
         msgs_to_del = []
         
         # Username
@@ -341,6 +346,8 @@ async def trial_trojan(event):
 @bot.on(events.CallbackQuery(data=b'delete-trojan'))
 async def delete_trojan(event):
     async def delete_trojan_(event):
+        await show_account_browser(event, "trojan", "delete")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
@@ -376,6 +383,8 @@ async def delete_trojan(event):
 @bot.on(events.CallbackQuery(data=b'suspend-trojan'))
 async def suspend_trojan(event):
     async def suspend_trojan_(event):
+        await show_account_browser(event, "trojan", "suspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan disuspend:**")
         msgs_to_del.extend(msgs)
@@ -412,6 +421,8 @@ async def suspend_trojan(event):
 @bot.on(events.CallbackQuery(data=b'unsuspend-trojan'))
 async def unsuspend_trojan(event):
     async def unsuspend_trojan_(event):
+        await show_account_browser(event, "trojan", "unsuspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan di-unsuspend:**")
         msgs_to_del.extend(msgs)

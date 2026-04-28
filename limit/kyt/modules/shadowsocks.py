@@ -3,7 +3,7 @@ from kyt.modules.ui import (
     ask_text_clean, build_result, delete_messages, manager_banner, 
     send_account_with_qr, short_progress, run_command,
     ask_expiry, upsert_message, notify_then_back, back_button,
-    ensure_creation_quota, is_admin, sanitize_username, ask_renew_account
+    ensure_creation_quota, is_admin, sanitize_username, ask_renew_account, show_account_browser
 )
 
 @bot.on(events.CallbackQuery(data=b'create-shadowsocks'))
@@ -115,6 +115,8 @@ async def cek_shadowsocks(event):
 @bot.on(events.CallbackQuery(data=b'list-shadowsocks'))
 async def list_shadowsocks(event):
     async def list_shadowsocks_(event):
+        await show_account_browser(event, "shadowsocks", "list")
+        return
         if is_admin(sender.id):
             rows = list_xray_system_accounts("shadowsocks")
             out = "\n".join(f"{row['username']:<20} {row['expires_at']}" for row in rows)
@@ -148,6 +150,8 @@ async def list_shadowsocks(event):
 @bot.on(events.CallbackQuery(data=b'delete-shadowsocks'))
 async def delete_shadowsocks(event):
     async def delete_shadowsocks_(event):
+        await show_account_browser(event, "shadowsocks", "delete")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
@@ -184,6 +188,9 @@ async def delete_shadowsocks(event):
 @bot.on(events.CallbackQuery(pattern=b"^renew-shadowsocks(?::.+)?$"))
 async def renew_shadowsocks(event):
     async def renew_shadowsocks_(event):
+        if (event.data or b"") == b"renew-shadowsocks":
+            await show_account_browser(event, "shadowsocks", "renew")
+            return
         msgs_to_del = []
 
         user, msgs = await ask_renew_account(event, chat, sender.id, "shadowsocks", "SHADOWSOCKS", "shadowsocks")
@@ -252,6 +259,8 @@ async def renew_shadowsocks(event):
 @bot.on(events.CallbackQuery(data=b'suspend-shadowsocks'))
 async def suspend_shadowsocks(event):
     async def suspend_shadowsocks_(event):
+        await show_account_browser(event, "shadowsocks", "suspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan disuspend:**")
         msgs_to_del.extend(msgs)
@@ -287,6 +296,8 @@ async def suspend_shadowsocks(event):
 @bot.on(events.CallbackQuery(data=b'unsuspend-shadowsocks'))
 async def unsuspend_shadowsocks(event):
     async def unsuspend_shadowsocks_(event):
+        await show_account_browser(event, "shadowsocks", "unsuspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan di-unsuspend:**")
         msgs_to_del.extend(msgs)

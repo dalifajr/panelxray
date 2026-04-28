@@ -4,7 +4,7 @@ from kyt.modules.ui import (
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
     ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
-    ensure_creation_quota, is_admin, ask_renew_account
+    ensure_creation_quota, is_admin, ask_renew_account, show_account_browser
 )
 
 BOT_DOMAIN = str(globals().get("DOMAIN", globals().get("domain", "-")))
@@ -236,6 +236,8 @@ async def cek_vmess(event):
 @bot.on(events.CallbackQuery(data=b'list-vmess'))
 async def list_vmess(event):
     async def list_vmess_(event):
+        await show_account_browser(event, "vmess", "list")
+        return
         if is_admin(sender.id):
             rows = list_xray_system_accounts("vmess")
             out = "\n".join(f"{row['username']:<20} {row['expires_at']}" for row in rows)
@@ -270,6 +272,9 @@ async def list_vmess(event):
 @bot.on(events.CallbackQuery(pattern=b"^renew-vmess(?::.+)?$"))
 async def renew_vmess(event):
     async def renew_vmess_(event):
+        if (event.data or b"") == b"renew-vmess":
+            await show_account_browser(event, "vmess", "renew")
+            return
         msgs_to_del = []
         
         # Username
@@ -344,6 +349,8 @@ async def renew_vmess(event):
 @bot.on(events.CallbackQuery(data=b'delete-vmess'))
 async def delete_vmess(event):
     async def delete_vmess_(event):
+        await show_account_browser(event, "vmess", "delete")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
@@ -379,6 +386,8 @@ async def delete_vmess(event):
 @bot.on(events.CallbackQuery(data=b'suspend-vmess'))
 async def suspend_vmess(event):
     async def suspend_vmess_(event):
+        await show_account_browser(event, "vmess", "suspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan disuspend:**")
         msgs_to_del.extend(msgs)
@@ -415,6 +424,8 @@ async def suspend_vmess(event):
 @bot.on(events.CallbackQuery(data=b'unsuspend-vmess'))
 async def unsuspend_vmess(event):
     async def unsuspend_vmess_(event):
+        await show_account_browser(event, "vmess", "unsuspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan di-unsuspend:**")
         msgs_to_del.extend(msgs)

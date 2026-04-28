@@ -951,6 +951,21 @@ XRAY_UNSUSPEND_COMMANDS = {
 	"shadowsocks": "unsuspss",
 }
 
+XRAY_SUSPEND_COMMANDS = {
+	"vmess": "suspws",
+	"vless": "suspvless",
+	"trojan": "susptr",
+	"shadowsocks": "suspss",
+}
+
+SERVICE_LABELS = {
+	"ssh": "SSH",
+	"vmess": "VMESS",
+	"vless": "VLESS",
+	"trojan": "TROJAN",
+	"shadowsocks": "SHADOWSOCKS",
+}
+
 
 def _xray_line_parts(line: str) -> List[str]:
 	return str(line or "").strip().split()
@@ -1007,6 +1022,173 @@ def list_xray_system_accounts(service: str) -> List[Dict]:
 
 	accounts.sort(key=lambda item: (str(item.get("username") or "").lower(), str(item.get("expires_at") or "")))
 	return accounts
+
+
+def _ssh_user_expiry(username: str) -> str:
+	try:
+		out = subprocess.check_output(
+			f'chage -l "{username}" | awk -F": " \'/Account expires/ {{print $2}}\'',
+			shell=True,
+			stderr=subprocess.DEVNULL,
+		).decode("utf-8", errors="ignore").strip()
+	except Exception:
+		return "-"
+
+	if not out:
+		return "-"
+	if out.lower() == "never":
+		return "never"
+
+	try:
+		return subprocess.check_output(
+			f'date -d "{out}" +%Y-%m-%d',
+			shell=True,
+			stderr=subprocess.DEVNULL,
+		).decode("utf-8", errors="ignore").strip() or out
+	except Exception:
+		return out
+
+
+def _ssh_user_status(username: str) -> str:
+	try:
+		return subprocess.check_output(
+			f'passwd -S "{username}" | awk \'{{print $2}}\'',
+			shell=True,
+			stderr=subprocess.DEVNULL,
+		).decode("utf-8", errors="ignore").strip()
+	except Exception:
+		return ""
+
+
+def _ssh_uid(username: str) -> int:
+	try:
+		return int(subprocess.check_output(["id", "-u", username], stderr=subprocess.DEVNULL).decode().strip())
+	except Exception:
+		return -1
+
+
+def _ssh_user_exists(username: str) -> bool:
+	return _ssh_uid(username) >= 1000
+
+
+def list_ssh_system_accounts() -> List[Dict]:
+	accounts = []
+	for line in _read_text_lines("/etc/passwd"):
+		parts = line.rstrip("\n").split(":")
+		if len(parts) < 3:
+			continue
+		username = parts[0]
+		try:
+			uid = int(parts[2])
+		except Exception:
+			continue
+		if uid < 1000 or username == "nobody":
+			continue
+		accounts.append(
+			{
+				"service": "ssh",
+				"username": username,
+				"expires_at": _ssh_user_expiry(username),
+				"status": _ssh_user_status(username),
+			}
+		)
+	accounts.sort(key=lambda item: str(item.get("username") or "").lower())
+	return accounts
+
+
+def list_suspended_accounts(service: str) -> List[Dict]:
+	service_name = str(service or "").strip().lower()
+	if service_name not in SERVICE_LABELS:
+		return []
+
+	state_dir = f"/etc/kyt/suspended/{service_name}"
+	try:
+		names = sorted(os.listdir(state_dir), key=lambda item: item.lower())
+	except Exception:
+		names = []
+
+	accounts = []
+	for username in names:
+		if not re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", username or ""):
+			continue
+		exp = "-"
+		lines = _read_text_lines(os.path.join(state_dir, username))
+		if lines:
+			parts = _xray_line_parts(lines[0])
+			if parts:
+				exp = parts[0]
+		accounts.append(
+			{
+				"service": service_name,
+				"username": username,
+				"expires_at": exp,
+				"status": "suspended",
+			}
+		)
+	return accounts
+
+
+def _account_exists_in_system(service: str, username: str) -> bool:
+	service_name = str(service or "").strip().lower()
+	account_name = str(username or "").strip()
+	if service_name == "ssh":
+		return _ssh_user_exists(account_name)
+	return bool(_find_xray_expiry(service_name, account_name))
+
+
+def list_account_menu_accounts(
+	tg_id,
+	service: str,
+	action: str,
+	admin_mode: bool = False,
+	query: str = "",
+) -> List[Dict]:
+	service_name = str(service or "").strip().lower()
+	action_name = str(action or "").strip().lower()
+	search = str(query or "").strip().lower()
+	if service_name not in SERVICE_LABELS:
+		return []
+
+	if action_name == "unsuspend":
+		base = list_suspended_accounts(service_name)
+		if service_name == "ssh":
+			seen = {str(item.get("username") or "").lower() for item in base}
+			for item in list_ssh_system_accounts():
+				if str(item.get("status") or "") != "L":
+					continue
+				key = str(item.get("username") or "").lower()
+				if key not in seen:
+					item["status"] = "suspended"
+					base.append(item)
+					seen.add(key)
+	elif service_name == "ssh":
+		base = list_ssh_system_accounts()
+	else:
+		base = list_xray_system_accounts(service_name)
+
+	if action_name == "delete":
+		seen = {str(item.get("username") or "").lower() for item in base}
+		for item in list_suspended_accounts(service_name):
+			key = str(item.get("username") or "").lower()
+			if key not in seen:
+				base.append(item)
+				seen.add(key)
+
+	if not admin_mode:
+		owned = get_user_accounts(
+			str(tg_id),
+			service=service_name,
+			active_only=False if action_name in {"delete", "unsuspend"} else True,
+			limit=500,
+		)
+		owned_names = {str(item.get("username") or "").strip().lower() for item in owned}
+		base = [item for item in base if str(item.get("username") or "").strip().lower() in owned_names]
+
+	if search:
+		base = [item for item in base if search in str(item.get("username") or "").lower()]
+
+	base.sort(key=lambda item: (str(item.get("username") or "").lower(), str(item.get("expires_at") or "")))
+	return base
 
 
 def _update_marker_expiry_file(path: str, marker: str, username: str, expires_at: str) -> bool:
@@ -1228,22 +1410,242 @@ def delete_xray_account(service: str, username: str) -> Dict:
 	_remove_file(f"/etc/funny/limit/{service_name}/ip/{account_name}")
 	_remove_file(f"/etc/limit/{service_name}/{account_name}")
 	_remove_file(f"/etc/limit/{service_name}/quota/{account_name}")
+	state_path = f"/etc/kyt/suspended/{service_name}/{account_name}"
+	state_removed = os.path.isfile(state_path)
+	_remove_file(state_path)
 
 	if config_changed:
 		restart_warning = _restart_xray()
 	else:
 		restart_warning = ""
 
-	if config_changed or db_changed:
+	if config_changed or db_changed or state_removed:
 		return {
 			"ok": True,
 			"message": restart_warning,
 			"expires_at": current_exp,
 			"config_changed": config_changed,
 			"db_changed": db_changed,
+			"state_removed": state_removed,
 		}
 
 	return {"ok": False, "message": f"User `{account_name}` tidak ditemukan."}
+
+
+def _xray_db_fields(service: str, username: str) -> Dict:
+	path = XRAY_DB_FILES.get(service, "")
+	for line in _read_text_lines(path):
+		parts = _xray_line_parts(line)
+		if len(parts) >= 3 and parts[0] == "###" and parts[1] == username:
+			return {
+				"expires_at": parts[2] if len(parts) > 2 else "",
+				"uuid": parts[3] if len(parts) > 3 else "",
+				"quota": parts[4] if len(parts) > 4 else "",
+				"ip_limit": parts[5] if len(parts) > 5 else "",
+			}
+	return {}
+
+
+def _xray_identifier_from_config(service: str, username: str) -> str:
+	marker = XRAY_ACCOUNT_MARKERS.get(service, "")
+	lines = _read_text_lines("/etc/xray/config.json")
+	for idx, line in enumerate(lines):
+		if not _xray_marker_matches(line, marker, username):
+			continue
+		for next_line in lines[idx + 1 : idx + 3]:
+			key = "password" if service in {"trojan", "shadowsocks"} else "id"
+			match = re.search(rf'"{key}"\s*:\s*"([^"]+)"', next_line)
+			if match:
+				return match.group(1)
+	return ""
+
+
+def _file_int_text(path: str) -> str:
+	try:
+		with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+			return fh.read().strip()
+	except Exception:
+		return ""
+
+
+def _quota_label(service: str, username: str, db_fields: Dict = None) -> str:
+	if service == "shadowsocks":
+		return "-"
+	raw = _file_int_text(f"/etc/{service}/{username}")
+	if raw.isdigit():
+		gb = int(raw) / (1024 * 1024 * 1024)
+		return str(int(gb)) if gb.is_integer() else f"{gb:.2f}"
+	db_quota = str((db_fields or {}).get("quota") or "").strip()
+	return db_quota or "0"
+
+
+def _ip_limit_label(service: str, username: str, db_fields: Dict = None) -> str:
+	raw = _file_int_text(f"/etc/kyt/limit/{service}/ip/{username}")
+	if raw:
+		return raw
+	db_ip = str((db_fields or {}).get("ip_limit") or "").strip()
+	return db_ip or "-"
+
+
+def _link_lines_for_account(service: str, username: str) -> List[str]:
+	domain = str(globals().get("DOMAIN", globals().get("domain", "-")) or "-")
+	if service == "ssh":
+		return [
+			f"• Payload WSS: `GET wss://BUG.COM/ HTTP/1.1[crlf]Host: {domain}[crlf]Upgrade: websocket[crlf][crlf]`",
+			f"• OVPN WS SSL: `https://{domain}:81/ws-ssl.ovpn`",
+			f"• OVPN SSL: `https://{domain}:81/ssl.ovpn`",
+			f"• OVPN TCP: `https://{domain}:81/tcp.ovpn`",
+			f"• OVPN UDP: `https://{domain}:81/udp.ovpn`",
+			f"• Save Link: `https://{domain}:81/ssh-{username}.txt`",
+		]
+	if service == "vmess":
+		return [
+			f"• OpenClash: `https://{domain}:81/vmess-{username}.txt`",
+			f"• QR TLS: `https://{domain}:81/vmess-{username}-tls.png`",
+		]
+	if service == "vless":
+		return [
+			f"• OpenClash: `https://{domain}:81/vless-{username}.txt`",
+			f"• QR TLS: `https://{domain}:81/vless-{username}-tls.png`",
+		]
+	if service == "trojan":
+		return [
+			f"• OpenClash: `https://{domain}:81/trojan-{username}.txt`",
+			f"• QR WS TLS: `https://{domain}:81/trojan-{username}-ws.png`",
+		]
+	if service == "shadowsocks":
+		return [
+			f"• JSON WS: `https://{domain}:81/sodosokws-{username}.txt`",
+			f"• JSON gRPC: `https://{domain}:81/sodosokgrpc-{username}.txt`",
+		]
+	return []
+
+
+def account_detail_text(service: str, username: str) -> str:
+	service_name = str(service or "").strip().lower()
+	account_name = str(username or "").strip()
+	label = SERVICE_LABELS.get(service_name, service_name.upper())
+	status = "aktif"
+	exp = "-"
+	identifier = ""
+	quota = "-"
+	ip_limit = "-"
+
+	if service_name == "ssh":
+		if _ssh_user_exists(account_name):
+			exp = _ssh_user_expiry(account_name)
+			status_raw = _ssh_user_status(account_name)
+			status = "suspended" if status_raw == "L" else "aktif"
+			ip_limit = _file_int_text(f"/etc/kyt/limit/ssh/ip/{account_name}") or "-"
+		else:
+			suspended = {item["username"]: item for item in list_suspended_accounts("ssh")}
+			if account_name in suspended:
+				exp = suspended[account_name].get("expires_at", "-")
+				status = "suspended"
+			else:
+				return f"❌ Akun `{account_name}` tidak ditemukan."
+	else:
+		exp = _find_xray_expiry(service_name, account_name)
+		if not exp:
+			suspended = {item["username"]: item for item in list_suspended_accounts(service_name)}
+			if account_name in suspended:
+				exp = suspended[account_name].get("expires_at", "-")
+				status = "suspended"
+			else:
+				return f"❌ Akun `{account_name}` tidak ditemukan."
+		db_fields = _xray_db_fields(service_name, account_name)
+		identifier = db_fields.get("uuid") or _xray_identifier_from_config(service_name, account_name)
+		quota = _quota_label(service_name, account_name, db_fields)
+		ip_limit = _ip_limit_label(service_name, account_name, db_fields)
+
+	lines = [
+		f"📄 **Detail Konfigurasi {label}**",
+		"",
+		f"• Username: `{account_name}`",
+		f"• Status: `{status}`",
+		f"• Expired: `{exp}`",
+	]
+	if service_name != "ssh":
+		lines.append(f"• Quota: `{quota} GB`")
+	lines.append(f"• Limit IP: `{ip_limit}`")
+	if identifier:
+		id_label = "Password" if service_name in {"trojan", "shadowsocks"} else "UUID"
+		lines.append(f"• {id_label}: `{identifier}`")
+
+	links = _link_lines_for_account(service_name, account_name)
+	if links:
+		lines.append("")
+		lines.append("🔗 **Konfigurasi**")
+		lines.extend(links)
+
+	return "\n".join(lines)
+
+
+def delete_ssh_account(username: str) -> Dict:
+	account_name = str(username or "").strip()
+	if not _ssh_user_exists(account_name):
+		return {"ok": False, "message": f"User `{account_name}` tidak ditemukan."}
+
+	try:
+		proc = subprocess.run(
+			["userdel", account_name],
+			text=True,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.STDOUT,
+			timeout=60,
+		)
+	except subprocess.TimeoutExpired:
+		return {"ok": False, "message": "Delete SSH timeout."}
+	if proc.returncode != 0:
+		return {"ok": False, "message": (proc.stdout or "Gagal menghapus SSH user.").strip()}
+
+	_remove_file(f"/etc/ssh/{account_name}")
+	_delete_db_entry_file("/etc/ssh/.ssh.db", account_name)
+	_remove_file(f"/etc/kyt/limit/ssh/ip/{account_name}")
+	_remove_file(f"/etc/kyt/suspended/ssh/{account_name}")
+	_remove_file(f"/var/www/html/ssh-{account_name}.txt")
+	return {"ok": True, "message": f"SSH account deleted: {account_name}"}
+
+
+def execute_account_action(service: str, action: str, username: str) -> Dict:
+	service_name = str(service or "").strip().lower()
+	action_name = str(action or "").strip().lower()
+	account_name = str(username or "").strip()
+
+	if service_name not in SERVICE_LABELS or not account_name:
+		return {"ok": False, "message": "Service atau username tidak valid."}
+
+	if action_name == "delete":
+		return delete_ssh_account(account_name) if service_name == "ssh" else delete_xray_account(service_name, account_name)
+
+	if action_name not in {"suspend", "unsuspend"}:
+		return {"ok": False, "message": "Aksi tidak valid."}
+
+	if service_name == "ssh":
+		cmd = "suspssh" if action_name == "suspend" else "unsuspssh"
+	else:
+		cmd = XRAY_SUSPEND_COMMANDS.get(service_name) if action_name == "suspend" else XRAY_UNSUSPEND_COMMANDS.get(service_name)
+
+	if not cmd:
+		return {"ok": False, "message": "Command service tidak ditemukan."}
+
+	try:
+		proc = subprocess.run(
+			[cmd, "--user", account_name],
+			text=True,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.STDOUT,
+			timeout=120,
+		)
+	except subprocess.TimeoutExpired:
+		return {"ok": False, "message": "Command timeout."}
+	except Exception as exc:
+		return {"ok": False, "message": str(exc)}
+
+	return {
+		"ok": proc.returncode == 0,
+		"message": (proc.stdout or "").strip() or ("Berhasil." if proc.returncode == 0 else "Gagal."),
+	}
 
 
 def get_user_accounts(

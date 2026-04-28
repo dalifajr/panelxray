@@ -15,6 +15,7 @@ from kyt.modules.ui import (
 	is_admin,
 	run_command,
 	ask_renew_account,
+	show_account_browser,
 )
 
 
@@ -27,6 +28,8 @@ def _progress_bar(percent: int, width: int = 24) -> str:
 @bot.on(events.CallbackQuery(data=b'delete-ssh'))
 async def delete_ssh(event):
 	async def delete_ssh_(event):
+		await show_account_browser(event, "ssh", "delete")
+		return
 		msgs_to_del = []
 		user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username SSH yang akan dihapus:**")
 		msgs_to_del.extend(msgs)
@@ -63,6 +66,9 @@ async def delete_ssh(event):
 @bot.on(events.CallbackQuery(pattern=b"^renew-ssh(?::.+)?$"))
 async def renew_ssh(event):
 	async def renew_ssh_(event):
+		if (event.data or b"") == b"renew-ssh":
+			await show_account_browser(event, "ssh", "renew")
+			return
 		msgs_to_del = []
 		user, msgs = await ask_renew_account(event, chat, sender.id, "ssh", "SSH", "ssh")
 		msgs_to_del.extend(msgs)
@@ -156,6 +162,8 @@ async def renew_ssh(event):
 @bot.on(events.CallbackQuery(data=b'suspend-ssh'))
 async def suspend_ssh(event):
 	async def suspend_ssh_(event):
+		await show_account_browser(event, "ssh", "suspend")
+		return
 		msgs_to_del = []
 		user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username SSH yang akan disuspend:**")
 		msgs_to_del.extend(msgs)
@@ -190,6 +198,8 @@ async def suspend_ssh(event):
 @bot.on(events.CallbackQuery(data=b'unsuspend-ssh'))
 async def unsuspend_ssh(event):
 	async def unsuspend_ssh_(event):
+		await show_account_browser(event, "ssh", "unsuspend")
+		return
 		msgs_to_del = []
 		user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username SSH yang akan di-unsuspend:**")
 		msgs_to_del.extend(msgs)
@@ -333,6 +343,8 @@ async def create_ssh(event):
 @bot.on(events.CallbackQuery(data=b'show-ssh'))
 async def show_ssh(event):
 	async def show_ssh_(event):
+		await show_account_browser(event, "ssh", "list")
+		return
 		if is_admin(sender.id):
 			_, out = run_command("bot-member-ssh")
 			if not out:

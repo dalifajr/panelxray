@@ -4,7 +4,7 @@ from kyt.modules.ui import (
     run_command, sanitize_panel_username, sanitize_username, 
     send_account_with_qr, short_progress, upsert_message,
     ask_expiry, ask_config_mode, ask_sni_profile, notify_then_back, back_button,
-    ensure_creation_quota, is_admin, ask_renew_account
+    ensure_creation_quota, is_admin, ask_renew_account, show_account_browser
 )
 
 @bot.on(events.CallbackQuery(data=b'create-vless'))
@@ -149,6 +149,8 @@ async def cek_vless(event):
 @bot.on(events.CallbackQuery(data=b'list-vless'))
 async def list_vless(event):
     async def list_vless_(event):
+        await show_account_browser(event, "vless", "list")
+        return
         if is_admin(sender.id):
             rows = list_xray_system_accounts("vless")
             out = "\n".join(f"{row['username']:<20} {row['expires_at']}" for row in rows)
@@ -183,6 +185,9 @@ async def list_vless(event):
 @bot.on(events.CallbackQuery(pattern=b"^renew-vless(?::.+)?$"))
 async def renew_vless(event):
     async def renew_vless_(event):
+        if (event.data or b"") == b"renew-vless":
+            await show_account_browser(event, "vless", "renew")
+            return
         msgs_to_del = []
         
         # Username
@@ -257,6 +262,8 @@ async def renew_vless(event):
 @bot.on(events.CallbackQuery(data=b'delete-vless'))
 async def delete_vless(event):
     async def delete_vless_(event):
+        await show_account_browser(event, "vless", "delete")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan dihapus:**")
         msgs_to_del.extend(msgs)
@@ -292,6 +299,8 @@ async def delete_vless(event):
 @bot.on(events.CallbackQuery(data=b'suspend-vless'))
 async def suspend_vless(event):
     async def suspend_vless_(event):
+        await show_account_browser(event, "vless", "suspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan disuspend:**")
         msgs_to_del.extend(msgs)
@@ -328,6 +337,8 @@ async def suspend_vless(event):
 @bot.on(events.CallbackQuery(data=b'unsuspend-vless'))
 async def unsuspend_vless(event):
     async def unsuspend_vless_(event):
+        await show_account_browser(event, "vless", "unsuspend")
+        return
         msgs_to_del = []
         user, msgs = await ask_text_clean(event, chat, sender.id, "👤 **Username yang akan di-unsuspend:**")
         msgs_to_del.extend(msgs)

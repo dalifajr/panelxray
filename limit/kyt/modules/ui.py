@@ -493,6 +493,138 @@ def renew_callback(service: str, username: str) -> bytes:
     return f"renew-{service}:{str(username or '').strip()}".encode()
 
 
+ACCOUNT_SERVICE_CODES = {
+    "ssh": "h",
+    "vmess": "m",
+    "vless": "l",
+    "trojan": "t",
+    "shadowsocks": "s",
+}
+ACCOUNT_SERVICE_BY_CODE = {v: k for k, v in ACCOUNT_SERVICE_CODES.items()}
+ACCOUNT_ACTION_CODES = {
+    "list": "l",
+    "delete": "d",
+    "suspend": "s",
+    "unsuspend": "u",
+    "renew": "r",
+}
+ACCOUNT_ACTION_BY_CODE = {v: k for k, v in ACCOUNT_ACTION_CODES.items()}
+ACCOUNT_ACTION_LABELS = {
+    "list": "List Akun",
+    "delete": "Delete Akun",
+    "suspend": "Suspend Akun",
+    "unsuspend": "Unsuspend Akun",
+    "renew": "Renew Akun",
+}
+
+
+def _browser_state_key(chat_id: int, sender_id: int, action: str, service: str) -> str:
+    return f"acct_browser_{chat_id}_{sender_id}_{action}_{service}"
+
+
+def save_account_browser_state(chat_id: int, sender_id: int, action: str, service: str, page: int, query: str):
+    _callback_data[_browser_state_key(chat_id, sender_id, action, service)] = {
+        "page": max(0, int(page or 0)),
+        "query": str(query or "").strip()[:24],
+    }
+
+
+def get_account_browser_state(chat_id: int, sender_id: int, action: str, service: str) -> dict:
+    return _callback_data.get(_browser_state_key(chat_id, sender_id, action, service), {"page": 0, "query": ""})
+
+
+def account_page_callback(action: str, service: str, page: int = 0, query: str = "") -> bytes:
+    action_code = ACCOUNT_ACTION_CODES.get(action, "l")
+    service_code = ACCOUNT_SERVICE_CODES.get(service, service)
+    q = re.sub(r"[^A-Za-z0-9_.-]", "", str(query or ""))[:24]
+    return f"a:{action_code}:{service_code}:{max(0, int(page or 0))}:{q}".encode()
+
+
+def account_search_callback(action: str, service: str) -> bytes:
+    return f"as:{ACCOUNT_ACTION_CODES.get(action, 'l')}:{ACCOUNT_SERVICE_CODES.get(service, service)}".encode()
+
+
+def account_item_callback(action: str, service: str, username: str, page: int = 0) -> bytes:
+    return f"b:{ACCOUNT_ACTION_CODES.get(action, 'l')}:{ACCOUNT_SERVICE_CODES.get(service, service)}:{max(0, int(page or 0))}:{username}".encode()
+
+
+def account_confirm_callback(action: str, service: str, username: str) -> bytes:
+    return f"c:{ACCOUNT_ACTION_CODES.get(action, 'l')}:{ACCOUNT_SERVICE_CODES.get(service, service)}:{username}".encode()
+
+
+def decode_account_action(code: str) -> str:
+    return ACCOUNT_ACTION_BY_CODE.get(str(code or "").strip(), "")
+
+
+def decode_account_service(code: str) -> str:
+    return ACCOUNT_SERVICE_BY_CODE.get(str(code or "").strip(), "")
+
+
+def _account_button_label(account: dict) -> str:
+    username = str(account.get("username") or "-")
+    exp = str(account.get("expires_at") or "-")
+    text = f"{username} | exp {exp}"
+    return text[:60]
+
+
+async def show_account_browser(event, service: str, action: str, page: int = 0, query: str = ""):
+    sender = await event.get_sender()
+    service = str(service or "").strip().lower()
+    action = str(action or "").strip().lower()
+    page = max(0, int(page or 0))
+    query = str(query or "").strip()[:24]
+    per_page = 10
+
+    accounts = list_account_menu_accounts(str(sender.id), service, action, is_admin(sender.id), query)
+    total = len(accounts)
+    max_page = max(0, (total - 1) // per_page)
+    if page > max_page:
+        page = max_page
+    save_account_browser_state(event.chat_id, sender.id, action, service, page, query)
+
+    label = SERVICE_LABELS.get(service, service.upper())
+    title = ACCOUNT_ACTION_LABELS.get(action, "Akun")
+    lines = [
+        f"📋 **{title} {label}**",
+        f"Total: `{total}`",
+    ]
+    if query:
+        lines.append(f"Search: `{query}`")
+    lines.append("")
+
+    buttons = []
+    if not accounts:
+        lines.append("Tidak ada akun yang cocok.")
+    else:
+        start = page * per_page
+        page_items = accounts[start:start + per_page]
+        lines.append(f"Halaman `{page + 1}/{max_page + 1}`")
+        for account in page_items:
+            username = sanitize_username(str(account.get("username") or ""))
+            if not username:
+                continue
+            if action == "renew":
+                callback = renew_callback(service, username)
+            else:
+                callback = account_item_callback(action, service, username, page)
+            buttons.append([Button.inline(_account_button_label(account), callback)])
+
+    nav = []
+    if page > 0:
+        nav.append(Button.inline("◀️ Prev", account_page_callback(action, service, page - 1, query)))
+    if page < max_page:
+        nav.append(Button.inline("Next ▶️", account_page_callback(action, service, page + 1, query)))
+    if nav:
+        buttons.append(nav)
+
+    buttons.append([Button.inline("🔎 Cari Akun", account_search_callback(action, service))])
+    if query:
+        buttons.append([Button.inline("Reset Search", account_page_callback(action, service, 0, ""))])
+    buttons.append([Button.inline("⬅️ Kembali", service)])
+
+    await upsert_message(event, "\n".join(lines), buttons=buttons)
+
+
 async def ask_renew_account(event, chat_id: int, sender_id: int, service: str, label: str, back_target: str) -> tuple:
     """
     Resolve the account selected for renew.
