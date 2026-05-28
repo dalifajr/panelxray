@@ -93,3 +93,9 @@ systemctl restart php8.2-fpm
 
 echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses melalui port 81 (http://$DOMAIN:81)."
 echo -e "[\e[32mINFO\e[0m] Pastikan Bot Telegram Anda sedang berjalan untuk proses otentikasi."
+
+
+echo "" 
+read -n 1 -s -r -p "Press any key to back on menu"
+echo ""
+menu
