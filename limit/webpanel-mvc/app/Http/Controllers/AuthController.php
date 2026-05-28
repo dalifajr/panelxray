@@ -84,8 +84,6 @@ class AuthController extends Controller
                 'password' => bcrypt(Str::random(16)),
             ]
         );
-        $user->tg_id = $tokenData['tg_id'];
-        $user->save();
 
         Auth::login($user);
         
