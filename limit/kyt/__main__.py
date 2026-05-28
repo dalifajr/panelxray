@@ -44,9 +44,9 @@ async def start_web_api():
     
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '127.0.0.1', 8080)
+    site = web.TCPSite(runner, '127.0.0.1', 1014)
     await site.start()
-    logging.info("Local Web API started on 127.0.0.1:8080")
+    logging.info("Local Web API started on 127.0.0.1:1014")
 
 async def main():
     for module_name in ALL_MODULES:
