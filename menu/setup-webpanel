@@ -10,12 +10,12 @@ fi
 
 echo -e "[\e[32mINFO\e[0m] Memulai instalasi dependensi Web Panel..."
 
-# 1. Install PHP 8.2 & Composer
+# 1. Install PHP 8.3 & Composer
 apt-get update
 apt-get install -y software-properties-common curl
 add-apt-repository ppa:ondrej/php -y
 apt-get update
-apt-get install -y php8.2-fpm php8.2-cli php8.2-curl php8.2-mysql php8.2-sqlite3 php8.2-mbstring php8.2-xml php8.2-zip unzip nginx
+apt-get install -y php8.3-fpm php8.3-cli php8.3-curl php8.3-mysql php8.3-sqlite3 php8.3-mbstring php8.3-xml php8.3-zip unzip nginx
 
 if ! command -v composer &> /dev/null; then
     curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
@@ -50,46 +50,37 @@ chown -R www-data:www-data $WEB_DIR
 chmod -R 775 $WEB_DIR/storage
 chmod -R 775 $WEB_DIR/bootstrap/cache
 
-# 3. Setup Nginx Configuration
+# 3. Setup Nginx Configuration (Integrate with Xray)
 DOMAIN=$(cat /etc/xray/domain)
-NGINX_CONF="/etc/nginx/conf.d/webpanel.conf"
+XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
-cat > $NGINX_CONF <<EOF
-server {
-    listen 81;
-    server_name _;
-    root $WEB_DIR/public;
-
-    add_header X-Frame-Options "SAMEORIGIN";
-    add_header X-Content-Type-Options "nosniff";
-
-    index index.php;
-
-    charset utf-8;
-
-    location / {
-        try_files \$uri \$uri/ /index.php?\$query_string;
-    }
-
-    location = /favicon.ico { access_log off; log_not_found off; }
-    location = /robots.txt  { access_log off; log_not_found off; }
-
-    error_page 404 /index.php;
-
-    location ~ \.php\$ {
-        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
-}
-EOF
+if [ -f "$XRAY_CONF" ]; then
+    # Ubah root direktori pada block listen 81
+    sed -i "s|root /var/www/html;|root $WEB_DIR/public;|g" "$XRAY_CONF"
+    
+    # Tambahkan konfigurasi PHP ke dalam blok server listen 81 jika belum ada
+    if ! grep -q "location ~ \\.php\$" "$XRAY_CONF"; then
+        sed -i "/root $WEB_DIR\/public;/a \\
+    index index.php index.html;\\
+    location / {\\
+        try_files \$uri \$uri/ /index.php?\$query_string;\\
+    }\\
+    location ~ \\\\.php\$ {\\
+        include fastcgi_params;\\
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;\\
+        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;\\
+    }" "$XRAY_CONF"
+    fi
+fi
 
 systemctl restart nginx
-systemctl restart php8.2-fpm
+systemctl restart php8.3-fpm
 
-echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses melalui port 81 (http://$DOMAIN:81)."
+echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses langsung melalui https://$DOMAIN"
 echo -e "[\e[32mINFO\e[0m] Pastikan Bot Telegram Anda sedang berjalan untuk proses otentikasi."
+
+
+echo "" 
+read -n 1 -s -r -p "Press any key to back on menu"
+echo ""
+menu
