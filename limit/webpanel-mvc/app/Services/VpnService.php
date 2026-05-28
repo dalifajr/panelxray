@@ -84,7 +84,7 @@ class VpnService
     public function runPython($script)
     {
         $b64 = base64_encode($script);
-        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; echo $b64 | base64 -d | /usr/bin/kyt/.venv/bin/python3'";
+        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; echo $b64 | base64 -d | /usr/bin/kyt/.venv/bin/python'";
         
         $output = [];
         $returnCode = 0;
