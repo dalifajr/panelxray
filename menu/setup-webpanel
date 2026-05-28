@@ -55,34 +55,13 @@ DOMAIN=$(cat /etc/xray/domain)
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
 if [ -f "$XRAY_CONF" ]; then
-    python3 -c '
-import sys, re
-conf_path = "'"$XRAY_CONF"'"
-web_dir = "'"$WEB_DIR"'"
-try:
-    with open(conf_path, "r") as f:
-        content = f.read()
+    # Ubah root direktori pada block listen 81
+    sed -i "s|root /var/www/html;|root $WEB_DIR/public;|g" "$XRAY_CONF"
     
-    content = re.sub(r"root /var/www/html;", f"root {web_dir}/public;", content)
-    
-    if "location ~ \\.php$" not in content:
-        insert_text = f"""
-    index index.php index.html;
-    location / {{
-        try_files $uri $uri/ /index.php?$query_string;
-    }}
-    location ~ \\.php$ {{
-        include fastcgi_params;
-        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-    }}"""
-        content = re.sub(rf"(root {web_dir}/public;)", r"\1" + insert_text, content)
-        
-    with open(conf_path, "w") as f:
-        f.write(content)
-except Exception as e:
-    print(f"Failed to update Nginx config: {e}")
-'
+    # Tambahkan konfigurasi PHP ke dalam blok server listen 81 jika belum ada
+    if ! grep -q "location ~ \\.php\$" "$XRAY_CONF"; then
+        awk -v text="    index index.php index.html;\n    location / {\n        try_files \$uri \$uri/ /index.php?\$query_string;\n    }\n    location ~ \\\\.php$ {\n        include fastcgi_params;\n        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;\n        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;\n    }" '1; /root \/etc\/kyt\/limit\/webpanel-mvc\/public;/ {print text}' "$XRAY_CONF" > "${XRAY_CONF}.tmp" && mv "${XRAY_CONF}.tmp" "$XRAY_CONF"
+    fi
 fi
 
 systemctl restart nginx
