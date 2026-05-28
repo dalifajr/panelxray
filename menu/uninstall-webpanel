@@ -1,0 +1,63 @@
+#!/bin/bash
+# Script Uninstall Laravel Web Panel untuk Xray VPN
+# ==========================================
+
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 
+   exit 1
+fi
+
+echo -e "[\e[31mWARNING\e[0m] Memulai proses uninstall Web Panel Laravel..."
+read -p "Apakah Anda yakin ingin menghapus seluruh data Web Panel? [y/N]: " confirm
+if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+    echo "Proses dibatalkan."
+    exit 0
+fi
+
+WEB_DIR="/var/www/webpanel-mvc"
+OLD_WEB_DIR="/etc/kyt/limit/webpanel-mvc"
+XRAY_CONF="/etc/nginx/conf.d/xray.conf"
+
+echo -e "[\e[33mINFO\e[0m] Menghapus direktori Laravel Web Panel..."
+rm -rf "$WEB_DIR"
+rm -rf "$OLD_WEB_DIR"
+
+if [ -f "$XRAY_CONF" ]; then
+    echo -e "[\e[33mINFO\e[0m] Mengembalikan konfigurasi Nginx (xray.conf)..."
+    
+    # Python script for regex replacement to avoid Bash escaping issues
+    cat << 'EOF' > /tmp/revert_nginx.py
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r') as f:
+        config = f.read()
+
+    # Hapus blok PHP
+    php_block_pattern = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \$uri \$uri/ /index\.php\?\$query_string;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.4-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;\s*\}'
+    config = re.sub(php_block_pattern, '', config)
+
+    # Kembalikan root ke default
+    config = re.sub(r'root\s+/(var/www/webpanel-mvc/public|etc/kyt/limit/webpanel-mvc/public);', 'root /var/www/html;', config)
+
+    with open(path, 'w') as f:
+        f.write(config)
+except Exception as e:
+    print(f"Error: {e}")
+EOF
+    python3 /tmp/revert_nginx.py "$XRAY_CONF"
+    rm -f /tmp/revert_nginx.py
+fi
+
+echo -e "[\e[33mINFO\e[0m] Membersihkan sistem cache dan service..."
+rm -f /etc/systemd/system/php8.4-fpm.service.d/override.conf
+systemctl daemon-reload
+
+systemctl restart nginx
+systemctl restart php8.4-fpm
+
+echo -e "[\e[32mSUCCESS\e[0m] Web Panel Laravel telah berhasil dihapus sepenuhnya!"
+sleep 3
+menu
