@@ -42,6 +42,21 @@ if [ ! -f .env ]; then
     sed -i 's/APP_DEBUG=true/APP_DEBUG=false/' .env
 fi
 
+# Auto-detect Telegram Bot Username
+BOT_USERNAME="vpnxray_bot"
+if [ -f "/usr/bin/kyt/var.txt" ]; then
+    BOT_TOKEN=$(grep -E "^BOT_TOKEN=" /usr/bin/kyt/var.txt | cut -d"'" -f2 | cut -d'"' -f2)
+    if [ -n "$BOT_TOKEN" ]; then
+        BOT_INFO=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe")
+        EXTRACTED_USERNAME=$(echo "$BOT_INFO" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
+        if [ -n "$EXTRACTED_USERNAME" ]; then
+            BOT_USERNAME="$EXTRACTED_USERNAME"
+            echo -e "[\e[32mINFO\e[0m] Mendeteksi Bot Telegram: @$BOT_USERNAME"
+        fi
+    fi
+fi
+grep -q "^TELEGRAM_BOT_USERNAME=" .env && sed -i "s/^TELEGRAM_BOT_USERNAME=.*/TELEGRAM_BOT_USERNAME=${BOT_USERNAME}/" .env || echo "TELEGRAM_BOT_USERNAME=${BOT_USERNAME}" >> .env
+
 # Setup Database SQLite
 touch database/database.sqlite
 php artisan migrate --force
