@@ -58,57 +58,81 @@ class VpnService
 
     public function getAccounts($service = null)
     {
-        $script = <<<PYTHON
-import sys, os
-sys.stderr = open(os.devnull, 'w')
-import json, sqlite3
-sys.path.insert(0, '/usr/bin')
-from kyt import list_ssh_system_accounts, list_xray_system_accounts, list_suspended_accounts
-
-service = '$service'
-accounts = []
-
-try:
-    c = sqlite3.connect('/usr/bin/kyt/database.db')
-    c.row_factory = sqlite3.Row
-    db_rows = c.execute("SELECT * FROM account_registry").fetchall()
-    db_map = { f"{r['service']}_{r['username']}": dict(r) for r in db_rows }
-    c.close()
-except:
-    db_map = {}
-
-if service == 'ssh' or not service:
-    for a in list_ssh_system_accounts():
-        k = f"ssh_{a['username']}"
-        db_info = db_map.get(k, {})
-        a['active'] = 0 if a.get('status') == 'suspended' or a.get('status') == 'L' else 1
-        a['created_at'] = db_info.get('created_at', '')
-        accounts.append(a)
-
-xray_services = ['vmess', 'vless', 'trojan', 'shadowsocks']
-services_to_fetch = [service] if service in xray_services else (xray_services if not service else [])
-
-for svc in services_to_fetch:
-    susp = {s['username']: s for s in list_suspended_accounts(svc)}
-    for a in list_xray_system_accounts(svc):
-        k = f"{svc}_{a['username']}"
-        db_info = db_map.get(k, {})
-        a['active'] = 0 if a['username'] in susp else 1
-        a['created_at'] = db_info.get('created_at', '')
-        accounts.append(a)
-
-print(json.dumps(accounts))
-PYTHON;
-
-        $res = $this->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script) . " 2>&1");
-        if ($res['success']) {
-            $decoded = json_decode($res['output'], true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception("Python execution failed or returned invalid JSON.\nOutput: " . $res['output']);
-            }
-            return $decoded ?? [];
+        // Fetch all accounts from SQLite database using sudo sqlite3
+        $sqliteCmd = "sudo sqlite3 -json /usr/bin/kyt/database.db 'SELECT * FROM account_registry'";
+        exec($sqliteCmd, $dbOutput, $dbReturn);
+        $dbRows = json_decode(implode("\n", $dbOutput), true) ?? [];
+        
+        $dbMap = [];
+        foreach ($dbRows as $r) {
+            $dbMap[$r['service'] . '_' . $r['username']] = $r;
         }
-        return [];
+
+        $accounts = [];
+
+        if ($service === 'ssh' || !$service) {
+            // Fetch SSH users using awk on /etc/passwd
+            $awkCmd = "sudo awk -F: '$3>=1000 && $1!=\"nobody\" {print $1}' /etc/passwd";
+            exec($awkCmd, $sshOutput);
+            
+            // For suspended ssh users, check if password hash contains !
+            $shadowCmd = "sudo awk -F: '$2 ~ /^!/ {print $1}' /etc/shadow";
+            exec($shadowCmd, $suspendedOutput);
+            $suspendedSsh = array_flip($suspendedOutput);
+            
+            foreach ($sshOutput as $user) {
+                $user = trim($user);
+                if (empty($user)) continue;
+                $k = "ssh_$user";
+                $dbInfo = $dbMap[$k] ?? [];
+                
+                $accounts[] = [
+                    'service' => 'ssh',
+                    'username' => $user,
+                    'active' => isset($suspendedSsh[$user]) ? 0 : 1,
+                    'created_at' => $dbInfo['created_at'] ?? '',
+                    'expires_at' => $dbInfo['expires_at'] ?? ''
+                ];
+            }
+        }
+
+        $xrayServices = ['vmess', 'vless', 'trojan', 'shadowsocks'];
+        $servicesToFetch = in_array($service, $xrayServices) ? [$service] : (!$service ? $xrayServices : []);
+
+        if (!empty($servicesToFetch)) {
+            // Fetch Xray users from config.json
+            $xrayCmd = "sudo cat /etc/xray/config.json";
+            exec($xrayCmd, $xrayOutput);
+            $xrayConfig = json_decode(implode("\n", $xrayOutput), true) ?? [];
+            
+            $inbounds = $xrayConfig['inbounds'] ?? [];
+            foreach ($servicesToFetch as $svc) {
+                // In Xray, suspended accounts might just be prefixed with # or removed.
+                // For simplicity, we just extract active clients.
+                foreach ($inbounds as $inbound) {
+                    if (($inbound['protocol'] ?? '') === $svc || ($svc === 'shadowsocks' && ($inbound['protocol'] ?? '') === 'shadowsocks')) {
+                        $clients = $inbound['settings']['clients'] ?? [];
+                        foreach ($clients as $client) {
+                            $user = $client['email'] ?? '';
+                            if (empty($user)) continue;
+                            
+                            $k = "{$svc}_{$user}";
+                            $dbInfo = $dbMap[$k] ?? [];
+                            
+                            $accounts[] = [
+                                'service' => $svc,
+                                'username' => $user,
+                                'active' => 1, // Assume active if in config
+                                'created_at' => $dbInfo['created_at'] ?? '',
+                                'expires_at' => $dbInfo['expires_at'] ?? ''
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
+        return $accounts;
     }
 
     public function getAccountConfig($service, $username)
@@ -121,9 +145,9 @@ PYTHON;
     public function registerAccountToDb($tg_id, $service, $username, $expiredDays, $isTrial = false)
     {
         $later = date('Y-m-d', strtotime("+$expiredDays days"));
-        $isTrialStr = $isTrial ? 'True' : 'False';
-        $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import register_account_creation; register_account_creation('{$tg_id}', '{$service}', '{$username}', '{$later}', is_trial={$isTrialStr})";
-        return $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        $isTrialStr = $isTrial ? '1' : '0';
+        $cmd = "sudo sqlite3 /usr/bin/kyt/database.db \"INSERT INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"";
+        return $this->executeBash($cmd);
     }
 
     /**

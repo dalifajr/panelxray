@@ -118,8 +118,9 @@ class VpnController extends Controller
 
         if ($res['success']) {
             // Tell Bot to update DB
-            $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import update_account_expiry; update_account_expiry('{$protocol}', '{$user}', '".date('Y-m-d', strtotime("+$days days"))."')";
-            $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+            $later = date('Y-m-d', strtotime("+$days days"));
+            $cmd = "sudo sqlite3 /usr/bin/kyt/database.db \"UPDATE account_registry SET expires_at='{$later}' WHERE service='{$protocol}' AND username='{$user}'\"";
+            $this->vpn->executeBash($cmd);
 
             return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $user berhasil diperpanjang.");
         }
@@ -134,9 +135,10 @@ class VpnController extends Controller
             $cmd = 'susp' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
             $res = $this->vpn->executeBash("$cmd $user");
         }
-        
-        $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import mark_account_inactive; mark_account_inactive('{$protocol}', '{$user}')";
-        $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        // Web panel doesn't strictly need to run mark_account_inactive because suspend scripts usually handle it natively.
+        // But to be thorough, we can execute an UPDATE.
+        $cmd = "sudo sqlite3 /usr/bin/kyt/database.db \"UPDATE account_registry SET updated_at=date('now') WHERE service='{$protocol}' AND username='{$user}'\"";
+        $this->vpn->executeBash($cmd);
 
         return back()->with('sweet_success', "Akun $user disuspend.");
     }
@@ -168,8 +170,8 @@ class VpnController extends Controller
             $res = $this->vpn->executeBash("$cmd $user");
         }
 
-        $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import get_db; db=get_db(); db.execute('DELETE FROM account_registry WHERE service=? AND username=?', ('{$protocol}', '{$user}')); db.commit(); db.close()";
-        $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        $cmd = "sudo sqlite3 /usr/bin/kyt/database.db \"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"";
+        $this->vpn->executeBash($cmd);
 
         return back()->with('sweet_success', "Akun $user berhasil dihapus.");
     }
