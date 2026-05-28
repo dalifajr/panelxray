@@ -22,10 +22,11 @@ if ! command -v composer &> /dev/null; then
 fi
 
 # 2. Setup Laravel Project Directory
-WEB_DIR="/etc/kyt/limit/webpanel-mvc"
-mkdir -p /etc/kyt/limit
+WEB_DIR="/var/www/webpanel-mvc"
+mkdir -p /var/www
 if [ -d "/root/vpnxray-main/limit/webpanel-mvc" ]; then
-    cp -r /root/vpnxray-main/limit/webpanel-mvc /etc/kyt/limit/
+    rm -rf /var/www/webpanel-mvc
+    cp -r /root/vpnxray-main/limit/webpanel-mvc /var/www/
 fi
 
 cd $WEB_DIR
@@ -78,7 +79,7 @@ try:
     config = re.sub(broken_pattern_83, '', config)
 
     # Ganti root (mendukung variasi spasi)
-    config = re.sub(r'root\s+/var/www/html;', 'root /etc/kyt/limit/webpanel-mvc/public;', config)
+    config = re.sub(r'root\s+/(var/www/html|etc/kyt/limit/webpanel-mvc/public);', 'root /var/www/webpanel-mvc/public;', config)
 
     # Tambahkan block PHP jika belum ada
     if r'location ~ \.php$' not in config:
@@ -91,7 +92,7 @@ try:
         fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
     }"""
-        config = re.sub(r'(root\s+/etc/kyt/limit/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block, config)
+        config = re.sub(r'(root\s+/var/www/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block, config)
 
     with open(path, 'w') as f:
         f.write(config)

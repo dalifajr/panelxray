@@ -705,10 +705,11 @@ detect_bot_asset_changes() {
 
 
 sync_laravel_webpanel() {
-  local web_dir="/etc/kyt/limit/webpanel-mvc"
+  local web_dir="/var/www/webpanel-mvc"
   if [ -d "$TMP_DIR/limit/webpanel-mvc" ]; then
-    mkdir -p /etc/kyt/limit
-    cp -rf "$TMP_DIR/limit/webpanel-mvc" /etc/kyt/limit/
+    mkdir -p /var/www
+    rm -rf "$web_dir"
+    cp -rf "$TMP_DIR/limit/webpanel-mvc" /var/www/
     chown -R www-data:www-data "$web_dir" 2>/dev/null || true
     if command -v composer >/dev/null 2>&1; then
       echo -e "${yellow}Menjalankan composer install untuk Laravel Web Panel...${NC}"
