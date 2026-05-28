@@ -508,7 +508,8 @@ sync_kyt_bot_assets() {
 
   if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
     systemctl daemon-reload >/dev/null 2>&1 || true
-    systemctl enable --now kyt >/dev/null 2>&1 || systemctl restart kyt >/dev/null 2>&1 || true
+    systemctl enable kyt >/dev/null 2>&1 || true
+    systemctl restart kyt >/dev/null 2>&1 || true
     KYT_RESTARTED=1
   fi
 }

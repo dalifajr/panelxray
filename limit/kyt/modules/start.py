@@ -4,10 +4,13 @@ from kyt.modules.ui import require_access, menu_credit
 @bot.on(events.NewMessage(pattern=r"(?i)^(?:[./](?:start|mulai)(?:@\w+)?)(?:\s+(login_[a-zA-Z0-9_]+))?\s*$"))
 @bot.on(events.CallbackQuery(data=b'start'))
 async def start(event):
-	match = event.pattern_match
+	logging.info("Received /start command! Sender: %s, Text: %s", event.sender_id, getattr(event, 'text', 'Callback'))
+	match = event.pattern_match if hasattr(event, 'pattern_match') else None
 	if match and match.lastindex and match.group(1):
 		token_str = match.group(1).strip()
+		logging.info("Matched token_str: %s", token_str)
 		if token_str.startswith("login_"):
+			logging.info("Delegating to handle_login_token for %s", token_str)
 			return await handle_login_token(event, token_str)
             
 	inline = [
@@ -39,23 +42,37 @@ async def start(event):
 		await event.reply(msg, buttons=inline)
 
 async def handle_login_token(event, token):
-    if not is_admin_user(str(event.sender_id)):
+    logging.info("Entering handle_login_token with token: %s for sender_id: %s", token, event.sender_id)
+    try:
+        is_admin = is_admin_user(str(event.sender_id))
+        logging.info("is_admin_user returned: %s", is_admin)
+    except Exception as e:
+        logging.error("is_admin_user crashed: %s", e)
+        is_admin = False
+
+    if not is_admin:
         await event.reply("⛔ Hanya admin yang dapat login ke Web Panel.")
         return
         
     try:
         domain = globals().get("DOMAIN", "localhost")
+        logging.info("Using domain: %s", domain)
         # Call Laravel API to approve token
         import urllib.request
         import json
+        import ssl
         req = urllib.request.Request(
-            "http://127.0.0.1:81/api/internal/approve-token",
+            "https://127.0.0.1:81/api/internal/approve-token",
             data=json.dumps({"token": token.replace('login_', ''), "tg_id": str(event.sender_id)}).encode('utf-8'),
             headers={'Content-Type': 'application/json', 'X-Internal-Secret': 'secret123'},
             method='POST'
         )
-        with urllib.request.urlopen(req, timeout=5) as response:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
             res_data = json.loads(response.read().decode())
+            logging.info("API response: %s", res_data)
             
         await event.reply(
             f"✅ **Login Berhasil!**\n\n"
@@ -64,6 +81,7 @@ async def handle_login_token(event, token):
             buttons=[[Button.url("Buka Web Panel", f"https://{domain}/login/verify?token={token.replace('login_', '')}")]]
         )
     except Exception as e:
+        logging.error("Exception in handle_login_token: %s", e)
         await event.reply(f"❌ Gagal memproses token login: {e}")
 
 
