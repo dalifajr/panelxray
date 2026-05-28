@@ -130,6 +130,7 @@ thm_menu_item 14 "UPDATE PROGRAM"
 thm_menu_item 15 "STATUS SERVICE"
 thm_menu_item 16 "ZI-VPN PANEL (OPSIONAL)"
 thm_menu_item 17 "MYNYAK ENGSEL PANEL (OPSIONAL)"
+thm_menu_item 18 "SETUP WEBPANEL LARAVEL"
 
 thm_section "SCRIPT INFO"
 thm_info_row "CLIENT" "$username"
@@ -140,10 +141,10 @@ thm_info_row "DAYS LEFT" "$days_left"
 thm_footer
 echo
 if declare -F thm_prompt >/dev/null; then
-  thm_prompt "Options [ 1 - 17 ] >>> "
+  thm_prompt "Options [ 1 - 18 ] >>> "
   read -r opt
 else
-  read -rp "Options [ 1 - 17 ] >>> " opt
+  read -rp "Options [ 1 - 18 ] >>> " opt
 fi
 echo
 
@@ -173,5 +174,6 @@ case "$opt" in
     menu
   }
   ;;
+18) clear ; setup-webpanel ;;
 *) clear ; menu ;;
 esac
