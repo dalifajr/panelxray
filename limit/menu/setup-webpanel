@@ -55,13 +55,41 @@ DOMAIN=$(cat /etc/xray/domain)
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
 if [ -f "$XRAY_CONF" ]; then
-    # Ubah root direktori pada block listen 81
-    sed -i "s|root /var/www/html;|root $WEB_DIR/public;|g" "$XRAY_CONF"
-    
-    # Tambahkan konfigurasi PHP ke dalam blok server listen 81 jika belum ada
-    if ! grep -q "location ~ \\.php\$" "$XRAY_CONF"; then
-        awk -v text="    index index.php index.html;\n    location / {\n        try_files \$uri \$uri/ /index.php?\$query_string;\n    }\n    location ~ \\\\.php$ {\n        include fastcgi_params;\n        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;\n        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;\n    }" '1; /root \/etc\/kyt\/limit\/webpanel-mvc\/public;/ {print text}' "$XRAY_CONF" > "${XRAY_CONF}.tmp" && mv "${XRAY_CONF}.tmp" "$XRAY_CONF"
-    fi
+    # Hapus default nginx site bawaan instalasi baru
+    rm -f /etc/nginx/sites-enabled/default
+    rm -f /etc/nginx/sites-available/default
+
+    python3 -c "
+import re
+import sys
+
+path = '$XRAY_CONF'
+try:
+    with open(path, 'r') as f:
+        config = f.read()
+
+    # Ganti root (mendukung variasi spasi)
+    config = re.sub(r'root\s+/var/www/html;', 'root /etc/kyt/limit/webpanel-mvc/public;', config)
+
+    # Tambahkan block PHP jika belum ada
+    if 'location ~ \\\\.php$' not in config:
+        php_block = r'''    index index.php index.html;
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+    location ~ \\.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+    }'''
+        config = re.sub(r'(root\s+/etc/kyt/limit/webpanel-mvc/public;)', r'\1\n' + php_block, config)
+
+    with open(path, 'w') as f:
+        f.write(config)
+except Exception as e:
+    print('Failed to update nginx conf:', e)
+    sys.exit(1)
+"
 fi
 
 systemctl restart nginx
