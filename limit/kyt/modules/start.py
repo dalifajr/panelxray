@@ -49,12 +49,12 @@ async def handle_login_token(event, token):
         import urllib.request
         import json
         req = urllib.request.Request(
-            "http://127.0.0.1:8000/api/internal/approve-token",
+            "http://127.0.0.1:81/api/internal/approve-token",
             data=json.dumps({"token": token.replace('login_', ''), "tg_id": str(event.sender_id)}).encode('utf-8'),
             headers={'Content-Type': 'application/json', 'X-Internal-Secret': 'secret123'},
             method='POST'
         )
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             res_data = json.loads(response.read().decode())
             
         await event.reply(

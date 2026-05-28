@@ -702,19 +702,47 @@ detect_bot_asset_changes() {
   fi
 }
 
-
-
 sync_laravel_webpanel() {
   local web_dir="/var/www/webpanel-mvc"
   if [ -d "$TMP_DIR/limit/webpanel-mvc" ]; then
     mkdir -p /var/www
+    
+    # Backup .env and database
+    local env_backup=""
+    local db_backup=""
+    if [ -f "$web_dir/.env" ]; then
+        env_backup=$(cat "$web_dir/.env")
+    fi
+    if [ -f "$web_dir/database/database.sqlite" ]; then
+        cp "$web_dir/database/database.sqlite" "/tmp/database.sqlite.backup"
+        db_backup="1"
+    fi
+
     rm -rf "$web_dir"
     cp -rf "$TMP_DIR/limit/webpanel-mvc" /var/www/
+    
+    # Restore .env and database
+    if [ -n "$env_backup" ]; then
+        echo "$env_backup" > "$web_dir/.env"
+    fi
+    mkdir -p "$web_dir/database"
+    if [ "$db_backup" == "1" ]; then
+        cp "/tmp/database.sqlite.backup" "$web_dir/database/database.sqlite"
+        rm -f "/tmp/database.sqlite.backup"
+    else
+        touch "$web_dir/database/database.sqlite"
+    fi
+
+    # Fix Permissions
     chown -R www-data:www-data "$web_dir" 2>/dev/null || true
+    mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
+    chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
+    
     if command -v composer >/dev/null 2>&1; then
       echo -e "${yellow}Menjalankan composer install untuk Laravel Web Panel...${NC}"
       (cd "$web_dir" && composer install --no-dev --optimize-autoloader >/dev/null 2>&1 || true)
       (cd "$web_dir" && php artisan migrate --force >/dev/null 2>&1 || true)
+      (cd "$web_dir" && php artisan optimize:clear >/dev/null 2>&1 || true)
     fi
   fi
 }
