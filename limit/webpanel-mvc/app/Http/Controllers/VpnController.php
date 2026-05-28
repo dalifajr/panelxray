@@ -118,7 +118,7 @@ class VpnController extends Controller
 
         if ($res['success']) {
             // Tell Bot to update DB
-            $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import update_account_expiry; update_account_expiry('{$protocol}', '{$user}', '".date('Y-m-d', strtotime("+$days days"))."')";
+            $script = "import sys; sys.path.insert(0, '/usr/bin'); from kyt import update_account_expiry; update_account_expiry('{$protocol}', '{$user}', '".date('Y-m-d', strtotime("+$days days"))."')";
             $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
 
             return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $user berhasil diperpanjang.");
@@ -135,7 +135,7 @@ class VpnController extends Controller
             $res = $this->vpn->executeBash("$cmd $user");
         }
         
-        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import mark_account_inactive; mark_account_inactive('{$protocol}', '{$user}')";
+        $script = "import sys; sys.path.insert(0, '/usr/bin'); from kyt import mark_account_inactive; mark_account_inactive('{$protocol}', '{$user}')";
         $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
 
         return back()->with('sweet_success', "Akun $user disuspend.");
@@ -168,7 +168,7 @@ class VpnController extends Controller
             $res = $this->vpn->executeBash("$cmd $user");
         }
 
-        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import get_db; db=get_db(); db.execute('DELETE FROM account_registry WHERE service=? AND username=?', ('{$protocol}', '{$user}')); db.commit(); db.close()";
+        $script = "import sys; sys.path.insert(0, '/usr/bin'); from kyt import get_db; db=get_db(); db.execute('DELETE FROM account_registry WHERE service=? AND username=?', ('{$protocol}', '{$user}')); db.commit(); db.close()";
         $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
 
         return back()->with('sweet_success', "Akun $user berhasil dihapus.");

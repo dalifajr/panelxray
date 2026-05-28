@@ -60,7 +60,7 @@ class VpnService
     {
         $script = <<<PYTHON
 import sys, json, sqlite3
-sys.path.insert(0, '/usr/bin/kyt')
+sys.path.insert(0, '/usr/bin')
 from kyt import list_ssh_system_accounts, list_xray_system_accounts, list_suspended_accounts
 
 service = '$service'
@@ -111,7 +111,7 @@ PYTHON;
 
     public function getAccountConfig($service, $username)
     {
-        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import account_detail_text; print(account_detail_text('{$service}', '{$username}'))";
+        $script = "import sys; sys.path.insert(0, '/usr/bin'); from kyt import account_detail_text; print(account_detail_text('{$service}', '{$username}'))";
         $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
         return $res['success'] ? $res['output'] : "Failed to fetch config.";
     }
@@ -120,7 +120,7 @@ PYTHON;
     {
         $later = date('Y-m-d', strtotime("+$expiredDays days"));
         $isTrialStr = $isTrial ? 'True' : 'False';
-        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import register_account_creation; register_account_creation('{$tg_id}', '{$service}', '{$username}', '{$later}', is_trial={$isTrialStr})";
+        $script = "import sys; sys.path.insert(0, '/usr/bin'); from kyt import register_account_creation; register_account_creation('{$tg_id}', '{$service}', '{$username}', '{$later}', is_trial={$isTrialStr})";
         return $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
     }
 
