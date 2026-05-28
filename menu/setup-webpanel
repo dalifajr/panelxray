@@ -80,8 +80,8 @@ try:
     config = re.sub(r'root\s+/var/www/html;', 'root /etc/kyt/limit/webpanel-mvc/public;', config)
 
     # Tambahkan block PHP jika belum ada
-    if 'location ~ \.php$' not in config:
-        php_block = """    index index.php index.html;
+    if r'location ~ \.php$' not in config:
+        php_block = r"""    index index.php index.html;
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
