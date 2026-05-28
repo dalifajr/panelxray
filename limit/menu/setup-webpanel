@@ -104,6 +104,14 @@ EOF
     rm -f /tmp/update_nginx.py
 fi
 
+# Fix PHP-FPM Systemd restriction (karena Laravel berada di /etc yang di-mount read-only oleh php-fpm)
+mkdir -p /etc/systemd/system/php8.4-fpm.service.d
+cat > /etc/systemd/system/php8.4-fpm.service.d/override.conf <<EOF
+[Service]
+ReadWritePaths=$WEB_DIR/storage $WEB_DIR/bootstrap/cache $WEB_DIR/database
+EOF
+systemctl daemon-reload
+
 systemctl restart nginx
 systemctl restart php8.4-fpm
 
