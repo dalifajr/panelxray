@@ -98,11 +98,11 @@ for svc in services_to_fetch:
 print(json.dumps(accounts))
 PYTHON;
 
-        $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        $res = $this->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script) . " 2>&1");
         if ($res['success']) {
             $decoded = json_decode($res['output'], true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception("JSON Decode Error: " . json_last_error_msg() . "\nRaw Output: " . $res['output']);
+                throw new \Exception("Python execution failed or returned invalid JSON.\nOutput: " . $res['output']);
             }
             return $decoded ?? [];
         }
