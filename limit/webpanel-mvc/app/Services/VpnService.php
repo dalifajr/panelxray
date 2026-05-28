@@ -25,26 +25,31 @@ class VpnService
      */
     public function execute($command, $args = [])
     {
-        $cmdString = escapeshellcmd($command);
-        foreach ($args as $arg) {
-            $cmdString .= ' ' . escapeshellarg($arg);
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(60)->post($this->apiUrl, [
+                'command' => $command,
+                'args' => $args
+            ]);
+
+            if ($response->successful() && $response->json('ok')) {
+                return [
+                    'success' => true,
+                    'output' => $response->json('output', '') ?: $response->json('stdout', '')
+                ];
+            }
+
+            return [
+                'success' => false,
+                'error' => 'HTTP Error: ' . $response->status()
+            ];
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("VpnService Execution Failed: " . $e->getMessage());
+            return [
+                'success' => false,
+                'output' => '',
+                'error' => 'Connection to Python API failed.'
+            ];
         }
-        
-        // Use sudo to run the bash command with xterm environment
-        $fullCommand = "sudo bash -c " . escapeshellarg("export TERM=xterm; " . $cmdString) . " 2>&1";
-        
-        $output = [];
-        $returnCode = 0;
-        
-        exec($fullCommand, $output, $returnCode);
-        
-        $outputStr = implode("\n", $output);
-        
-        return [
-            'success' => $returnCode === 0,
-            'output' => $outputStr,
-            'error' => $returnCode !== 0 ? $outputStr : ''
-        ];
     }
 
     public function executeBash($scriptContent)
