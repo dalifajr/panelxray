@@ -78,13 +78,17 @@ class VpnController extends Controller
                 $this->vpn->executeBash("mkdir -p /etc/kyt/limit/ssh/ip && echo \"$ip\" > /etc/kyt/limit/ssh/ip/$user");
             }
         } elseif ($protocol === 'vmess') {
-            $res = $this->vpn->executeBash("addws none $user $exp $pw $ip");
+            $inputs = "3\\n$user\\n$exp\\n0\\n$ip\\n";
+            $res = $this->vpn->executeBash("printf '$inputs' | addws");
         } elseif ($protocol === 'vless') {
-            $res = $this->vpn->executeBash("addvless none $user $exp $pw $ip");
+            $inputs = "3\\n$user\\n$exp\\n0\\n$ip\\n";
+            $res = $this->vpn->executeBash("printf '$inputs' | addvless");
         } elseif ($protocol === 'trojan') {
-            $res = $this->vpn->executeBash("addtrojan none $user $exp $pw $ip");
+            $inputs = "3\\n$user\\n$exp\\n0\\n$ip\\n";
+            $res = $this->vpn->executeBash("printf '$inputs' | addtr");
         } elseif ($protocol === 'shadowsocks') {
-            $res = $this->vpn->executeBash("addss none $user $exp $pw $ip");
+            $inputs = "3\\n$user\\n$exp\\n0\\n$ip\\n";
+            $res = $this->vpn->executeBash("printf '$inputs' | addss");
         }
 
         if ($res && $res['success']) {
@@ -112,9 +116,40 @@ class VpnController extends Controller
             $later = date('Y-m-d', strtotime("+$days days"));
             $res = $this->vpn->executeBash("usermod -e $later $user && passwd -u $user");
         } else {
-            $cmd = 'renew' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            // The renew script asks for: Username, Expired (days), Quota (0), iplim (0)
-            $res = $this->vpn->executeBash("printf '%s\\n%s\\n0\\n0\\n' '$user' '$days' | $cmd");
+            $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+            $marker = $xrayMarkers[$protocol] ?? '###';
+            $later = date('Y-m-d', strtotime("+$days days"));
+            
+            $script = <<<PYTHON
+import os
+path = '/etc/xray/config.json'
+marker = '$marker'
+username = '$user'
+new_expiry = '$later'
+
+try:
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    changed = False
+    next_lines = []
+    for line in lines:
+        parts = line.strip().split()
+        if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
+            next_lines.append(f"{marker} {username} {new_expiry}\\n")
+            changed = True
+        else:
+            next_lines.append(line)
+    if changed:
+        with open(path, 'w') as f:
+            f.writelines(next_lines)
+        os.system('systemctl restart xray >/dev/null 2>&1')
+        print("SUCCESS")
+except Exception as e:
+    pass
+PYTHON;
+            $res = $this->vpn->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
+            // Ensure success is set correctly based on python output
+            $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
         }
 
         if ($res['success']) {
@@ -133,8 +168,7 @@ class VpnController extends Controller
         if ($protocol === 'ssh') {
             $res = $this->vpn->executeBash("usermod -L $user");
         } else {
-            $cmd = 'susp' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | $cmd");
+            $res = $this->vpn->executeBash("mkdir -p /etc/kyt/suspended/{$protocol} && touch /etc/kyt/suspended/{$protocol}/{$user} && systemctl restart xray >/dev/null 2>&1");
         }
         // Web panel doesn't strictly need to run mark_account_inactive because suspend scripts usually handle it natively.
         // But to be thorough, we can execute an UPDATE.
@@ -149,8 +183,7 @@ class VpnController extends Controller
         if ($protocol === 'ssh') {
             $res = $this->vpn->executeBash("usermod -U $user");
         } else {
-            $cmd = 'unsusp' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | $cmd");
+            $res = $this->vpn->executeBash("rm -f /etc/kyt/suspended/{$protocol}/{$user} && systemctl restart xray >/dev/null 2>&1");
         }
 
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -167,8 +200,53 @@ class VpnController extends Controller
                 $res = $this->vpn->executeBash("userdel -f $user");
             }
         } else {
-            $cmd = 'del' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | $cmd");
+            $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+            $marker = $xrayMarkers[$protocol] ?? '###';
+            
+            $script = <<<PYTHON
+import os
+path = '/etc/xray/config.json'
+marker = '$marker'
+username = '$user'
+
+try:
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    changed = False
+    next_lines = []
+    skip_next = False
+    for line in lines:
+        if skip_next:
+            if line.lstrip().startswith("},{"):
+                changed = True
+                skip_next = False
+                continue
+            skip_next = False
+        parts = line.strip().split()
+        if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
+            changed = True
+            skip_next = True
+            continue
+        next_lines.append(line)
+    if changed:
+        with open(path, 'w') as f:
+            f.writelines(next_lines)
+        os.system('systemctl restart xray >/dev/null 2>&1')
+        
+        srv = 'vmess'
+        if marker == '#&': srv = 'vless'
+        elif marker == '#!': srv = 'trojan'
+        elif marker == '#!#': srv = 'shadowsocks'
+        
+        os.system(f"rm -rf /etc/kyt/limit/{srv}/ip/{username}")
+        os.system(f"rm -rf /etc/{srv}/{username}")
+        os.system(f"sed -i '/\\\\b{username}\\\\b/d' /etc/{srv}/.{srv}.db 2>/dev/null")
+        
+        print("SUCCESS")
+except Exception as e:
+    pass
+PYTHON;
+            $res = $this->vpn->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
         }
 
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
