@@ -113,7 +113,8 @@ class VpnController extends Controller
             $res = $this->vpn->executeBash("usermod -e $later $user && passwd -u $user");
         } else {
             $cmd = 'renew' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("$cmd $user $days");
+            // The renew script asks for: Username, Expired (days), Quota (0), iplim (0)
+            $res = $this->vpn->executeBash("printf '%s\\n%s\\n0\\n0\\n' '$user' '$days' | $cmd");
         }
 
         if ($res['success']) {
@@ -130,10 +131,10 @@ class VpnController extends Controller
     public function suspend($protocol, $user)
     {
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("suspssh $user");
+            $res = $this->vpn->executeBash("usermod -L $user");
         } else {
             $cmd = 'susp' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("$cmd $user");
+            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | $cmd");
         }
         // Web panel doesn't strictly need to run mark_account_inactive because suspend scripts usually handle it natively.
         // But to be thorough, we can execute an UPDATE.
@@ -146,10 +147,10 @@ class VpnController extends Controller
     public function unsuspend($protocol, $user)
     {
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("unsuspssh $user");
+            $res = $this->vpn->executeBash("usermod -U $user");
         } else {
             $cmd = 'unsusp' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("$cmd $user");
+            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | $cmd");
         }
 
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -161,13 +162,13 @@ class VpnController extends Controller
     public function delete($protocol, $user)
     {
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("printf '%s\n' '$user' | delssh");
+            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | delssh");
             if (!$res['success']) {
                 $res = $this->vpn->executeBash("userdel -f $user");
             }
         } else {
             $cmd = 'del' . ($protocol === 'shadowsocks' ? 'ss' : ($protocol === 'vmess' ? 'ws' : $protocol));
-            $res = $this->vpn->executeBash("$cmd $user");
+            $res = $this->vpn->executeBash("printf '%s\\n' '$user' | $cmd");
         }
 
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
