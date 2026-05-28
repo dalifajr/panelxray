@@ -59,37 +59,48 @@ if [ -f "$XRAY_CONF" ]; then
     rm -f /etc/nginx/sites-enabled/default
     rm -f /etc/nginx/sites-available/default
 
-    python3 -c "
+    # Tulis script python ke temporary file untuk menghindari masalah escaping Bash
+    cat << 'EOF' > /tmp/update_nginx.py
 import re
 import sys
 
-path = '$XRAY_CONF'
+path = sys.argv[1]
 try:
     with open(path, 'r') as f:
         config = f.read()
+
+    # Bersihkan block konfigurasi rusak dari percobaan sebelumnya
+    broken_pattern = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \\ \\/ /index\.php\?\\;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.4-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \\;\s*\}'
+    config = re.sub(broken_pattern, '', config)
+    
+    broken_pattern_83 = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \\ \\/ /index\.php\?\\;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.3-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \\;\s*\}'
+    config = re.sub(broken_pattern_83, '', config)
 
     # Ganti root (mendukung variasi spasi)
     config = re.sub(r'root\s+/var/www/html;', 'root /etc/kyt/limit/webpanel-mvc/public;', config)
 
     # Tambahkan block PHP jika belum ada
-    if 'location ~ \\\\.php$' not in config:
-        php_block = r'''    index index.php index.html;
+    if 'location ~ \.php$' not in config:
+        php_block = """    index index.php index.html;
     location / {
-        try_files \$uri \$uri/ /index.php?\$query_string;
+        try_files $uri $uri/ /index.php?$query_string;
     }
-    location ~ \\.php$ {
+    location ~ \.php$ {
         include fastcgi_params;
         fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
-    }'''
-        config = re.sub(r'(root\s+/etc/kyt/limit/webpanel-mvc/public;)', r'\1\n' + php_block, config)
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+    }"""
+        config = re.sub(r'(root\s+/etc/kyt/limit/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block, config)
 
     with open(path, 'w') as f:
         f.write(config)
 except Exception as e:
     print('Failed to update nginx conf:', e)
     sys.exit(1)
-"
+EOF
+
+    python3 /tmp/update_nginx.py "$XRAY_CONF"
+    rm -f /tmp/update_nginx.py
 fi
 
 systemctl restart nginx
