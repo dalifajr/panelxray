@@ -12,6 +12,9 @@
                     @if(session('error'))
                         <div class="alert alert-danger">{{ session('error') }}</div>
                     @endif
+                    @if(session('sweet_error'))
+                        <div class="alert alert-danger">{{ session('sweet_error') }}</div>
+                    @endif
                     @if($errors->any())
                         <div class="alert alert-danger">
                             <ul class="mb-0">
@@ -40,10 +43,30 @@
                         <input type="hidden" name="password" value="auto">
                         @endif
 
+                        @if($protocol !== 'ssh')
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Custom SNI</label>
+                            <select name="sni_config" class="form-select">
+                                <option value="3" {{ old('sni_config', '3') == '3' ? 'selected' : '' }}>Tanpa konfigurasi (Default)</option>
+                                <option value="1" {{ old('sni_config') == '1' ? 'selected' : '' }}>support.zoom.us</option>
+                                <option value="2" {{ old('sni_config') == '2' ? 'selected' : '' }}>live.iflix.com</option>
+                            </select>
+                            <div class="form-text">Pilih profil SNI untuk konfigurasi koneksi.</div>
+                        </div>
+                        @endif
+
                         <div class="mb-3">
                             <label class="form-label fw-bold">Masa Aktif (Hari)</label>
                             <input type="number" name="expired" class="form-control" value="{{ old('expired', '30') }}" min="1" max="365" required>
                         </div>
+
+                        @if($protocol !== 'ssh')
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Quota (GB)</label>
+                            <input type="number" name="quota" class="form-control" value="{{ old('quota', '0') }}" min="0">
+                            <div class="form-text">Masukkan 0 untuk unlimited.</div>
+                        </div>
+                        @endif
 
                         <div class="mb-4">
                             <label class="form-label fw-bold">Limit IP</label>

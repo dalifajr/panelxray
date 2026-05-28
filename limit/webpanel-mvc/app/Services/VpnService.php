@@ -53,8 +53,53 @@ class VpnService
 
     public function executeBash($scriptContent)
     {
-        $b64 = base64_encode("export TERM=xterm; " . $scriptContent);
-        return $this->execute('bash', ['-c', "echo '$b64' | base64 -d | bash"]);
+        // Base64 encode the entire script to avoid ALL quoting/escaping issues
+        $b64 = base64_encode($scriptContent);
+        
+        // Simple, flat command: decode base64 and pipe to bash
+        // No nested quoting — the base64 string is pure alphanumeric+/+=
+        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; export TERM=xterm; echo $b64 | base64 -d | bash'";
+        
+        $output = [];
+        $returnCode = 0;
+        
+        exec($fullCommand, $output, $returnCode);
+        $outputStr = implode("\n", $output);
+        
+        Log::info("executeBash CMD: " . substr($fullCommand, 0, 200) . "...");
+        Log::info("executeBash Return Code: " . $returnCode);
+        Log::info("executeBash Output: " . substr($outputStr, 0, 500));
+        
+        return [
+            'success' => ($returnCode === 0),
+            'output' => $outputStr,
+            'error' => ($returnCode !== 0) ? "Exit code: $returnCode" : ''
+        ];
+    }
+
+    /**
+     * Execute a Python script on VPS via base64 piping.
+     * Completely bypasses shell quoting issues.
+     */
+    public function runPython($script)
+    {
+        $b64 = base64_encode($script);
+        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; echo $b64 | base64 -d | /usr/bin/kyt/.venv/bin/python3'";
+        
+        $output = [];
+        $returnCode = 0;
+        
+        exec($fullCommand, $output, $returnCode);
+        $outputStr = implode("\n", $output);
+        
+        Log::info("runPython Return Code: " . $returnCode);
+        Log::info("runPython Output: " . substr($outputStr, 0, 500));
+        
+        return [
+            'success' => ($returnCode === 0),
+            'output' => $outputStr,
+            'error' => ($returnCode !== 0) ? "Exit code: $returnCode" : ''
+        ];
     }
 
     public function getAccounts($service = null)
@@ -70,8 +115,7 @@ try:
 except Exception as e:
     print("[]")
 PYTHON;
-        $b64 = base64_encode($pythonScript);
-        $resDb = $this->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
+        $resDb = $this->runPython($pythonScript);
         $dbRows = json_decode(trim($resDb['output']), true) ?? [];
         
         $dbMap = [];
@@ -160,8 +204,7 @@ PYTHON;
     public function getAccountConfig($service, $username)
     {
         $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import account_detail_text; print(account_detail_text('{$service}', '{$username}'))";
-        $b64 = base64_encode($script);
-        $res = $this->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
+        $res = $this->runPython($script);
         return $res['success'] ? $res['output'] : "Failed to fetch config.";
     }
 
@@ -169,9 +212,8 @@ PYTHON;
     {
         $later = date('Y-m-d', strtotime("+$expiredDays days"));
         $isTrialStr = $isTrial ? '1' : '0';
-        $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"INSERT INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"); c.commit()";
-        $b64 = base64_encode($script);
-        return $this->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
+        $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"INSERT OR REPLACE INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"); c.commit(); print('OK')";
+        return $this->runPython($script);
     }
 
     /**
