@@ -20,16 +20,16 @@
     <div class="container-fluid px-4" style="margin-top: -60px;">
         <div class="row g-4">
             <!-- Card 1 -->
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
                     <div class="card-body p-4 position-relative">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
-                                <h2 class="display-5 fw-bold text-dark mb-0">15</h2>
-                                <div class="text-muted small text-uppercase fw-bold">Total Akun VMess</div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">{{ $vmsCount }}</h2>
+                                <div class="text-muted small text-uppercase fw-bold">Akun VMess</div>
                             </div>
                             <div class="bg-primary-subtle rounded-3 p-3 text-primary">
-                                <i class="fas fa-users fa-2x"></i>
+                                <i class="fas fa-satellite-dish fa-2x"></i>
                             </div>
                         </div>
                     </div>
@@ -37,13 +37,13 @@
             </div>
 
             <!-- Card 2 -->
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
                     <div class="card-body p-4 position-relative">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
-                                <h2 class="display-5 fw-bold text-dark mb-0">8</h2>
-                                <div class="text-muted small text-uppercase fw-bold">Total Akun VLESS</div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">{{ $vlsCount }}</h2>
+                                <div class="text-muted small text-uppercase fw-bold">Akun VLESS</div>
                             </div>
                             <div class="bg-warning-subtle rounded-3 p-3 text-warning-emphasis">
                                 <i class="fas fa-shield-alt fa-2x"></i>
@@ -54,16 +54,33 @@
             </div>
 
             <!-- Card 3 -->
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
                     <div class="card-body p-4 position-relative">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
-                                <h2 class="display-5 fw-bold text-dark mb-0">12</h2>
-                                <div class="text-muted small text-uppercase fw-bold">Total Akun Trojan</div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">{{ $trjCount }}</h2>
+                                <div class="text-muted small text-uppercase fw-bold">Akun Trojan</div>
                             </div>
                             <div class="bg-success-subtle rounded-3 p-3 text-success">
                                 <i class="fas fa-horse fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
+                    <div class="card-body p-4 position-relative">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">{{ $sshCount }}</h2>
+                                <div class="text-muted small text-uppercase fw-bold">Akun SSH</div>
+                            </div>
+                            <div class="bg-info-subtle rounded-3 p-3 text-info-emphasis">
+                                <i class="fas fa-terminal fa-2x"></i>
                             </div>
                         </div>
                     </div>

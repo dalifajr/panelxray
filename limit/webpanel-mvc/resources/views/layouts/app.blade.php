@@ -60,11 +60,11 @@
 
             <div class="menu-group">
                 <div class="menu-header">Kelola VPN</div>
-                <a href="#" class="menu-item"><i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> VMess</a>
-                <a href="#" class="menu-item"><i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> VLESS</a>
-                <a href="#" class="menu-item"><i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> Trojan</a>
-                <a href="#" class="menu-item"><i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> Shadowsocks</a>
-                <a href="#" class="menu-item"><i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> SSH</a>
+                <a href="{{ route('vpn.index', 'vmess') }}" class="menu-item {{ request()->is('vpn/vmess*') ? 'active' : '' }}"><i class="fas fa-satellite-dish"></i> VMess</a>
+                <a href="{{ route('vpn.index', 'vless') }}" class="menu-item {{ request()->is('vpn/vless*') ? 'active' : '' }}"><i class="fas fa-shield-alt"></i> VLESS</a>
+                <a href="{{ route('vpn.index', 'trojan') }}" class="menu-item {{ request()->is('vpn/trojan*') ? 'active' : '' }}"><i class="fas fa-horse"></i> Trojan</a>
+                <a href="{{ route('vpn.index', 'shadowsocks') }}" class="menu-item {{ request()->is('vpn/shadowsocks*') ? 'active' : '' }}"><i class="fas fa-moon"></i> Shadowsocks</a>
+                <a href="{{ route('vpn.index', 'ssh') }}" class="menu-item {{ request()->is('vpn/ssh*') ? 'active' : '' }}"><i class="fas fa-terminal"></i> SSH</a>
             </div>
         </div>
     </div>

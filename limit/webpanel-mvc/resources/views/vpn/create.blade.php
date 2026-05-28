@@ -1,0 +1,59 @@
+@extends('layouts.app')
+
+@section('content')
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h4 class="fw-bold mb-0 text-uppercase">Buat Akun {{ strtoupper($protocol) }}</h4>
+                </div>
+                <div class="card-body p-4">
+                    @if(session('error'))
+                        <div class="alert alert-danger">{{ session('error') }}</div>
+                    @endif
+                    @if($errors->any())
+                        <div class="alert alert-danger">
+                            <ul class="mb-0">
+                                @foreach($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
+                    <form action="{{ route('vpn.store', $protocol) }}" method="POST">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Username</label>
+                            <input type="text" name="username" class="form-control" value="{{ old('username') }}" required>
+                            <div class="form-text">Hanya huruf, angka, dot (.), dan underscore (_)</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Password / UUID</label>
+                            <input type="text" name="password" class="form-control" value="{{ old('password', '1') }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Masa Aktif (Hari)</label>
+                            <input type="number" name="expired" class="form-control" value="{{ old('expired', '30') }}" min="1" max="365" required>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Limit IP</label>
+                            <input type="number" name="limit_ip" class="form-control" value="{{ old('limit_ip', '1') }}" min="1">
+                            <div class="form-text">Jumlah maksimal IP yang dapat login bersamaan. Biarkan 1 untuk keamanan.</div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">Buat Akun</button>
+                            <a href="{{ route('vpn.index', $protocol) }}" class="btn btn-light">Kembali</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
