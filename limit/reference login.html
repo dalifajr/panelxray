@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SIMAK UIN Raden Fatah</title>
+    
+    <!-- External Resources -->
+    <link href="https://simak.radenfatah.ac.id/assets/css/outfit.css" rel="stylesheet">
+    <link href="https://simak.radenfatah.ac.id/assets/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        :root {
+            --primary-color: #0d47a1;
+            --primary-light: #1976d2;
+            --accent-color: #ffd700;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+            --bg-color: #f1f5f9;
+            --white: #ffffff;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(217,91%,60%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 100%, hsla(217,91%,60%,1) 0, transparent 50%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .login-wrapper {
+            width: 100%;
+            max-width: 1200px;
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            display: flex;
+            overflow: hidden;
+        }
+
+        .login-section {
+            flex: 1;
+            padding: 4rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .brand-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 1rem 1rem 1rem 3rem;
+            border: 2px solid #e2e8f0;
+            border-radius: var(--radius-md);
+            background: #f8fafc;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            color: var(--white);
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .info-section {
+            flex: 1.2;
+            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%);
+            padding: 3rem;
+            color: var(--white);
+            position: relative;
+        }
+
+        @media (max-width: 968px) {
+            .login-wrapper { flex-direction: column; }
+            .info-section { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <!-- Form Section -->
+        <div class="login-section">
+            <div class="brand-header">
+                <h1 class="brand-title">SIMAK</h1>
+                <p class="brand-subtitle">UIN Raden Fatah Palembang</p>
+            </div>
+            
+            <form>
+                <div class="form-group">
+                    <input type="text" class="form-control" placeholder="Username">
+                </div>
+                <div class="form-group">
+                    <input type="password" class="form-control" placeholder="Password

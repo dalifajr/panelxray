@@ -2535,6 +2535,43 @@ async def _show_package_detail_menu(
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if args and len(args) > 0:
+        arg = args[0]
+        if arg.startswith("login_"):
+            token = arg.replace("login_", "")
+            user_id = update.effective_user.id
+            import requests, os
+            try:
+                # Otorisasi ke Laravel
+                url = "http://127.0.0.1:81/api/internal/approve-token"
+                headers = {"X-Internal-Secret": "secret123"}
+                data = {"token": token, "tg_id": user_id}
+                res = requests.post(url, json=data, headers=headers)
+                
+                if res.status_code == 200:
+                    domain = ""
+                    if os.path.exists("/usr/bin/kyt/var.txt"):
+                        with open("/usr/bin/kyt/var.txt", "r") as vf:
+                            for line in vf:
+                                if line.startswith("DOMAIN="):
+                                    domain = line.strip().split("=")[1].strip("'\"")
+                    if not domain:
+                        domain = "127.0.0.1"
+                    
+                    verify_url = f"https://{domain}/login/verify?token={token}"
+                    await update.message.reply_text(
+                        f"✅ **Login Berhasil Diotorisasi!**\n\n"
+                        f"Silakan klik tautan di bawah ini untuk masuk ke Web Panel:\n"
+                        f"{verify_url}",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await update.message.reply_text("❌ Gagal mengotorisasi login. Token mungkin kadaluarsa.")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Terjadi kesalahan sistem: {e}")
+            return
+
     if not await ensure_allowed(update, context):
         return
     set_flow(context, "home", {})
