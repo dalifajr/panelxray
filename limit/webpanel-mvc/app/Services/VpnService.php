@@ -53,7 +53,8 @@ class VpnService
 
     public function executeBash($scriptContent)
     {
-        return $this->execute('bash', ['-c', "export TERM=xterm; " . $scriptContent]);
+        $b64 = base64_encode("export TERM=xterm; " . $scriptContent);
+        return $this->execute('bash', ['-c', "echo '$b64' | base64 -d | bash"]);
     }
 
     public function getAccounts($service = null)
@@ -158,7 +159,8 @@ PYTHON;
     public function getAccountConfig($service, $username)
     {
         $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import account_detail_text; print(account_detail_text('{$service}', '{$username}'))";
-        $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        $b64 = base64_encode($script);
+        $res = $this->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
         return $res['success'] ? $res['output'] : "Failed to fetch config.";
     }
 
@@ -167,7 +169,8 @@ PYTHON;
         $later = date('Y-m-d', strtotime("+$expiredDays days"));
         $isTrialStr = $isTrial ? '1' : '0';
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"INSERT INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"); c.commit()";
-        return $this->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
+        $b64 = base64_encode($script);
+        return $this->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
     }
 
     /**

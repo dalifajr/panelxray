@@ -147,7 +147,8 @@ try:
 except Exception as e:
     pass
 PYTHON;
-            $res = $this->vpn->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
+            $b64 = base64_encode($script);
+            $res = $this->vpn->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
             // Ensure success is set correctly based on python output
             $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
         }
@@ -173,7 +174,8 @@ PYTHON;
         // Web panel doesn't strictly need to run mark_account_inactive because suspend scripts usually handle it natively.
         // But to be thorough, we can execute an UPDATE.
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET updated_at=date('now') WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
-        $this->vpn->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
+        $b64 = base64_encode($script);
+        $this->vpn->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
 
         return back()->with('sweet_success', "Akun $user disuspend.");
     }
@@ -187,7 +189,8 @@ PYTHON;
         }
 
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
-        $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        $b64 = base64_encode($script);
+        $this->vpn->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
 
         return back()->with('sweet_success', "Akun $user diaktifkan kembali.");
     }
@@ -246,11 +249,13 @@ try:
 except Exception as e:
     pass
 PYTHON;
-            $res = $this->vpn->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
+            $b64 = base64_encode($script);
+            $res = $this->vpn->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
         }
 
         $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
-        $this->vpn->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
+        $b64 = base64_encode($script);
+        $this->vpn->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
 
         return back()->with('sweet_success', "Akun $user berhasil dihapus.");
     }
