@@ -10,12 +10,12 @@ fi
 
 echo -e "[\e[32mINFO\e[0m] Memulai instalasi dependensi Web Panel..."
 
-# 1. Install PHP 8.3 & Composer
+# 1. Install PHP 8.4 & Composer
 apt-get update
 apt-get install -y software-properties-common curl
 add-apt-repository ppa:ondrej/php -y
 apt-get update
-apt-get install -y php8.3-fpm php8.3-cli php8.3-curl php8.3-mysql php8.3-sqlite3 php8.3-mbstring php8.3-xml php8.3-zip unzip nginx
+apt-get install -y php8.4-fpm php8.4-cli php8.4-curl php8.4-mysql php8.4-sqlite3 php8.4-mbstring php8.4-xml php8.4-zip unzip nginx
 
 if ! command -v composer &> /dev/null; then
     curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
@@ -55,26 +55,38 @@ DOMAIN=$(cat /etc/xray/domain)
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
 if [ -f "$XRAY_CONF" ]; then
-    # Ubah root direktori pada block listen 81
-    sed -i "s|root /var/www/html;|root $WEB_DIR/public;|g" "$XRAY_CONF"
+    python3 -c '
+import sys, re
+conf_path = "'"$XRAY_CONF"'"
+web_dir = "'"$WEB_DIR"'"
+try:
+    with open(conf_path, "r") as f:
+        content = f.read()
     
-    # Tambahkan konfigurasi PHP ke dalam blok server listen 81 jika belum ada
-    if ! grep -q "location ~ \\.php\$" "$XRAY_CONF"; then
-        sed -i "/root $WEB_DIR\/public;/a \\
-    index index.php index.html;\\
-    location / {\\
-        try_files \$uri \$uri/ /index.php?\$query_string;\\
-    }\\
-    location ~ \\\\.php\$ {\\
-        include fastcgi_params;\\
-        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;\\
-        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;\\
-    }" "$XRAY_CONF"
-    fi
+    content = re.sub(r"root /var/www/html;", f"root {web_dir}/public;", content)
+    
+    if "location ~ \\.php$" not in content:
+        insert_text = f"""
+    index index.php index.html;
+    location / {{
+        try_files $uri $uri/ /index.php?$query_string;
+    }}
+    location ~ \\.php$ {{
+        include fastcgi_params;
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+    }}"""
+        content = re.sub(rf"(root {web_dir}/public;)", r"\1" + insert_text, content)
+        
+    with open(conf_path, "w") as f:
+        f.write(content)
+except Exception as e:
+    print(f"Failed to update Nginx config: {e}")
+'
 fi
 
 systemctl restart nginx
-systemctl restart php8.3-fpm
+systemctl restart php8.4-fpm
 
 echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses langsung melalui https://$DOMAIN"
 echo -e "[\e[32mINFO\e[0m] Pastikan Bot Telegram Anda sedang berjalan untuk proses otentikasi."
