@@ -39,21 +39,15 @@ class VpnService
         exec($fullCommand, $output, $returnCode);
         $outputStr = implode("\n", $output);
         
-        if ($returnCode !== 0 && empty($outputStr)) {
-            // If it failed and there is no output, try to capture stderr to see what went wrong (e.g. sudo password prompt)
-            exec($fullCommand . " 2>&1", $errOutput, $errCode);
-            $outputStr = implode("\n", $errOutput);
-            throw new \Exception("Sudo Execute Error: " . $outputStr);
-        }
-        
-        if ($returnCode !== 0) {
-            throw new \Exception("Command Execute Error: " . $outputStr);
-        }
+        // The old Python API returned {ok: True, stdout: output} regardless of the exit code.
+        // Some commands like `grep -c` return exit code 1 if no matches are found, but output "0".
+        // Therefore, we consider it a "success" if it ran without throwing a fatal system error,
+        // mirroring the old API's behavior exactly.
         
         return [
-            'success' => $returnCode === 0,
+            'success' => true,
             'output' => $outputStr,
-            'error' => $returnCode !== 0 ? $outputStr : ''
+            'error' => ''
         ];
     }
 
