@@ -25,31 +25,32 @@ class VpnService
      */
     public function execute($command, $args = [])
     {
-        try {
-            $response = \Illuminate\Support\Facades\Http::timeout(60)->post($this->apiUrl, [
-                'command' => $command,
-                'args' => $args
-            ]);
-
-            if ($response->successful() && $response->json('ok')) {
-                return [
-                    'success' => true,
-                    'output' => $response->json('output', '') ?: $response->json('stdout', '')
-                ];
-            }
-
-            return [
-                'success' => false,
-                'error' => 'HTTP Error: ' . $response->status()
-            ];
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error("VpnService Execution Failed: " . $e->getMessage());
-            return [
-                'success' => false,
-                'output' => '',
-                'error' => 'Connection to Python API failed.'
-            ];
+        $cmdString = escapeshellcmd($command);
+        foreach ($args as $arg) {
+            $cmdString .= ' ' . escapeshellarg($arg);
         }
+        
+        // Execute via sudo directly without mixing stderr so JSON parses correctly
+        $fullCommand = "sudo bash -c " . escapeshellarg("export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; export TERM=xterm; " . $cmdString);
+        
+        $output = [];
+        $returnCode = 0;
+        
+        exec($fullCommand, $output, $returnCode);
+        $outputStr = implode("\n", $output);
+        
+        if ($returnCode !== 0 && empty($outputStr)) {
+            // If it failed and there is no output, try to capture stderr to see what went wrong (e.g. sudo password prompt)
+            exec($fullCommand . " 2>&1", $errOutput, $errCode);
+            $outputStr = implode("\n", $errOutput);
+            \Illuminate\Support\Facades\Log::error("Sudo Execute Error: " . $outputStr);
+        }
+        
+        return [
+            'success' => $returnCode === 0,
+            'output' => $outputStr,
+            'error' => $returnCode !== 0 ? $outputStr : ''
+        ];
     }
 
     public function executeBash($scriptContent)
