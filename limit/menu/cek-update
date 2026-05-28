@@ -734,17 +734,17 @@ sync_laravel_webpanel() {
         touch "$web_dir/database/database.sqlite"
     fi
 
-    # Fix Permissions
-    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
-    mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
-    chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
-    
     if command -v composer >/dev/null 2>&1; then
       echo -e "${yellow}Menjalankan composer install untuk Laravel Web Panel...${NC}"
       (cd "$web_dir" && composer install --no-dev --optimize-autoloader >/dev/null 2>&1 || true)
       (cd "$web_dir" && php artisan migrate --force >/dev/null 2>&1 || true)
       (cd "$web_dir" && php artisan optimize:clear >/dev/null 2>&1 || true)
     fi
+
+    # Fix Permissions
+    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
+    mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
+    chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
   fi
 }
 
