@@ -63,7 +63,7 @@ class VpnService
         $output = [];
         $returnCode = 0;
         
-        exec($fullCommand, $output, $returnCode);
+        exec($fullCommand . " 2>&1", $output, $returnCode);
         $outputStr = implode("\n", $output);
         
         Log::info("executeBash CMD: " . substr($fullCommand, 0, 200) . "...");
@@ -84,21 +84,22 @@ class VpnService
     public function runPython($script)
     {
         $b64 = base64_encode($script);
-        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; echo $b64 | base64 -d | /usr/bin/kyt/.venv/bin/python'";
+        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; echo $b64 | base64 -d | /usr/bin/kyt/.venv/bin/python 2>&1'";
         
         $output = [];
         $returnCode = 0;
         
-        exec($fullCommand, $output, $returnCode);
+        exec($fullCommand . " 2>&1", $output, $returnCode);
         $outputStr = implode("\n", $output);
         
+        Log::info("runPython CMD: " . substr($fullCommand, 0, 300));
         Log::info("runPython Return Code: " . $returnCode);
         Log::info("runPython Output: " . substr($outputStr, 0, 500));
         
         return [
             'success' => ($returnCode === 0),
             'output' => $outputStr,
-            'error' => ($returnCode !== 0) ? "Exit code: $returnCode" : ''
+            'error' => ($returnCode !== 0) ? "Exit code: $returnCode. Output: $outputStr" : ''
         ];
     }
 
