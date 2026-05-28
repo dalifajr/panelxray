@@ -12,9 +12,9 @@ KYT_VAR="/usr/bin/kyt/var.txt"
 LEGACY_BOT_DB="/etc/bot/.bot.db"
 VIOLATION_LOG="/root/log-limit.txt"
 
-CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-180}"
-LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-900}"
-REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-3}"
+CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-300}"
+LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-600}"
+REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-6}"
 MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-2}"
 
 mkdir -p "$STATE_ROOT"
@@ -58,15 +58,24 @@ send_bot_message() {
     local token="$1"
     local chat_id="$2"
     local message="$3"
+    local markup="${4:-}"
 
     token="$(trim "$token")"
     chat_id="$(trim "$chat_id")"
     [[ -n "$token" && -n "$chat_id" && -n "$message" ]] || return 0
 
-    curl -fsS --max-time 10 "https://api.telegram.org/bot${token}/sendMessage" \
-        -d "chat_id=${chat_id}" \
-        --data-urlencode "text=${message}" \
-        -d "disable_web_page_preview=1" >/dev/null 2>&1 || true
+    if [[ -n "$markup" ]]; then
+        curl -fsS --max-time 10 "https://api.telegram.org/bot${token}/sendMessage" \
+            -d "chat_id=${chat_id}" \
+            --data-urlencode "text=${message}" \
+            --data-urlencode "reply_markup=${markup}" \
+            -d "disable_web_page_preview=1" >/dev/null 2>&1 || true
+    else
+        curl -fsS --max-time 10 "https://api.telegram.org/bot${token}/sendMessage" \
+            -d "chat_id=${chat_id}" \
+            --data-urlencode "text=${message}" \
+            -d "disable_web_page_preview=1" >/dev/null 2>&1 || true
+    fi
 }
 
 collect_admin_chat_ids() {
@@ -136,17 +145,19 @@ notify_auto_suspend() {
     message+="Akun disuspend otomatis untuk mencegah abuse.\n"
     message+="Lanjutkan dengan unsuspend atau renew + limit IP baru."
 
+    local inline_keyboard="{\"inline_keyboard\":[[{\"text\":\"✅ Unsuspend\",\"callback_data\":\"un_${service}_${user}\"},{\"text\":\"⬆️ Naikkan Limit\",\"callback_data\":\"up_${service}_${user}\"}],[{\"text\":\"🗑 Hapus Akun\",\"callback_data\":\"del_${service}_${user}\"}]]}"
+
     {
         collect_admin_chat_ids
         collect_owner_chat_ids "$service" "$user"
     } | awk 'NF && !seen[$0]++' | while IFS= read -r chat_id; do
-        send_bot_message "$token" "$chat_id" "$message"
+        send_bot_message "$token" "$chat_id" "$message" "$inline_keyboard"
     done
 
     if [[ -n "$legacy_token" ]]; then
         local legacy_chat
         legacy_chat="$(trim "$(read_legacy_bot_field 3)")"
-        send_bot_message "$legacy_token" "$legacy_chat" "$message"
+        send_bot_message "$legacy_token" "$legacy_chat" "$message" "$inline_keyboard"
     fi
 }
 
@@ -255,7 +266,7 @@ collect_xray_ip_stats() {
             return ip
         }
         {
-            if (index($0, user) == 0) {
+            if ($0 !~ "\\b" user "\\b") {
                 next
             }
 
