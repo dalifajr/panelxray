@@ -58,26 +58,37 @@ class VpnService
 
     public function getAccounts($service = null)
     {
-        // Fetch all accounts from SQLite database using sudo sqlite3
-        $sqliteCmd = "sudo sqlite3 -json /usr/bin/kyt/database.db 'SELECT * FROM account_registry'";
-        exec($sqliteCmd, $dbOutput, $dbReturn);
-        $dbRows = json_decode(implode("\n", $dbOutput), true) ?? [];
+        // Fetch all accounts from SQLite database using a tiny inline python script
+        $pythonScript = <<<PYTHON
+import sqlite3, json
+try:
+    c = sqlite3.connect('/usr/bin/kyt/database.db')
+    c.row_factory = sqlite3.Row
+    db_rows = c.execute("SELECT * FROM account_registry").fetchall()
+    print(json.dumps([dict(r) for r in db_rows]))
+except Exception as e:
+    print("[]")
+PYTHON;
+        $resDb = $this->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($pythonScript));
+        $dbRows = json_decode(trim($resDb['output']), true) ?? [];
         
         $dbMap = [];
         foreach ($dbRows as $r) {
-            $dbMap[$r['service'] . '_' . $r['username']] = $r;
+            if (isset($r['service']) && isset($r['username'])) {
+                $dbMap[$r['service'] . '_' . $r['username']] = $r;
+            }
         }
 
         $accounts = [];
 
         if ($service === 'ssh' || !$service) {
             // Fetch SSH users using awk on /etc/passwd
-            $awkCmd = "sudo awk -F: '$3>=1000 && $1!=\"nobody\" {print $1}' /etc/passwd";
-            exec($awkCmd, $sshOutput);
+            $resSsh = $this->executeBash("awk -F: '\$3>=1000 && \$1!=\"nobody\" {print \$1}' /etc/passwd");
+            $sshOutput = array_filter(explode("\n", $resSsh['output']));
             
             // For suspended ssh users, check if password hash contains !
-            $shadowCmd = "sudo awk -F: '$2 ~ /^!/ {print $1}' /etc/shadow";
-            exec($shadowCmd, $suspendedOutput);
+            $resSusp = $this->executeBash("awk -F: '\$2 ~ /^!/ {print \$1}' /etc/shadow");
+            $suspendedOutput = array_filter(explode("\n", $resSusp['output']));
             $suspendedSsh = array_flip($suspendedOutput);
             
             foreach ($sshOutput as $user) {
@@ -96,38 +107,47 @@ class VpnService
             }
         }
 
-        $xrayServices = ['vmess', 'vless', 'trojan', 'shadowsocks'];
-        $servicesToFetch = in_array($service, $xrayServices) ? [$service] : (!$service ? $xrayServices : []);
+        $xrayServices = [
+            'vmess' => '###',
+            'vless' => '#&',
+            'trojan' => '#!',
+            'shadowsocks' => '#!#'
+        ];
+        $servicesToFetch = $service ? (isset($xrayServices[$service]) ? [$service => $xrayServices[$service]] : []) : $xrayServices;
 
         if (!empty($servicesToFetch)) {
-            // Fetch Xray users from config.json
-            $xrayCmd = "sudo cat /etc/xray/config.json";
-            exec($xrayCmd, $xrayOutput);
-            $xrayConfig = json_decode(implode("\n", $xrayOutput), true) ?? [];
-            
-            $inbounds = $xrayConfig['inbounds'] ?? [];
-            foreach ($servicesToFetch as $svc) {
-                // In Xray, suspended accounts might just be prefixed with # or removed.
-                // For simplicity, we just extract active clients.
-                foreach ($inbounds as $inbound) {
-                    if (($inbound['protocol'] ?? '') === $svc || ($svc === 'shadowsocks' && ($inbound['protocol'] ?? '') === 'shadowsocks')) {
-                        $clients = $inbound['settings']['clients'] ?? [];
-                        foreach ($clients as $client) {
-                            $user = $client['email'] ?? '';
-                            if (empty($user)) continue;
-                            
-                            $k = "{$svc}_{$user}";
-                            $dbInfo = $dbMap[$k] ?? [];
-                            
-                            $accounts[] = [
-                                'service' => $svc,
-                                'username' => $user,
-                                'active' => 1, // Assume active if in config
-                                'created_at' => $dbInfo['created_at'] ?? '',
-                                'expires_at' => $dbInfo['expires_at'] ?? ''
-                            ];
-                        }
-                    }
+            foreach ($servicesToFetch as $svc => $marker) {
+                // Fetch Xray users from config.json magic comments
+                $grepCmd = "grep -E '^" . preg_quote($marker) . " ' /etc/xray/config.json | awk '{print \$2, \$3}'";
+                $resXray = $this->executeBash($grepCmd);
+                $lines = array_filter(explode("\n", $resXray['output']));
+                
+                // Fetch suspended users by checking /etc/kyt/suspended/<service>/
+                $resSusp = $this->executeBash("ls -1 /etc/kyt/suspended/{$svc} 2>/dev/null");
+                $suspendedOutput = array_filter(explode("\n", $resSusp['output']));
+                $suspendedSvc = array_flip(array_map('trim', $suspendedOutput));
+
+                // A single user might have 2 markers in config.json, so keep track of added users
+                $seen = [];
+
+                foreach ($lines as $line) {
+                    $parts = explode(" ", trim($line));
+                    if (count($parts) < 1) continue;
+                    $user = trim($parts[0]);
+                    if (empty($user)) continue;
+                    if (isset($seen[$user])) continue;
+                    $seen[$user] = true;
+
+                    $k = "{$svc}_{$user}";
+                    $dbInfo = $dbMap[$k] ?? [];
+                    
+                    $accounts[] = [
+                        'service' => $svc,
+                        'username' => $user,
+                        'active' => isset($suspendedSvc[$user]) ? 0 : 1,
+                        'created_at' => $dbInfo['created_at'] ?? '',
+                        'expires_at' => $parts[1] ?? ($dbInfo['expires_at'] ?? '')
+                    ];
                 }
             }
         }
@@ -146,8 +166,8 @@ class VpnService
     {
         $later = date('Y-m-d', strtotime("+$expiredDays days"));
         $isTrialStr = $isTrial ? '1' : '0';
-        $cmd = "sudo sqlite3 /usr/bin/kyt/database.db \"INSERT INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"";
-        return $this->executeBash($cmd);
+        $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"INSERT INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"); c.commit()";
+        return $this->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($script));
     }
 
     /**
