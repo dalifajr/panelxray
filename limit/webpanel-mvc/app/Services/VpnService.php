@@ -59,8 +59,46 @@ class VpnService
 
     public function getAccounts($service = null)
     {
-        $condition = $service ? "WHERE service='{$service}'" : "";
-        $script = "import sqlite3, json; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.row_factory=sqlite3.Row; print(json.dumps([dict(r) for r in c.execute(\"SELECT * FROM account_registry {$condition} ORDER BY created_at DESC\").fetchall()]))";
+        $script = <<<PYTHON
+import sys, json, sqlite3
+sys.path.insert(0, '/usr/bin/kyt')
+from kyt import list_ssh_system_accounts, list_xray_system_accounts, list_suspended_accounts
+
+service = '$service'
+accounts = []
+
+try:
+    c = sqlite3.connect('/usr/bin/kyt/database.db')
+    c.row_factory = sqlite3.Row
+    db_rows = c.execute("SELECT * FROM account_registry").fetchall()
+    db_map = { f"{r['service']}_{r['username']}": dict(r) for r in db_rows }
+    c.close()
+except:
+    db_map = {}
+
+if service == 'ssh' or not service:
+    for a in list_ssh_system_accounts():
+        k = f"ssh_{a['username']}"
+        db_info = db_map.get(k, {})
+        a['active'] = 0 if a.get('status') == 'suspended' or a.get('status') == 'L' else 1
+        a['created_at'] = db_info.get('created_at', '')
+        accounts.append(a)
+
+xray_services = ['vmess', 'vless', 'trojan', 'shadowsocks']
+services_to_fetch = [service] if service in xray_services else (xray_services if not service else [])
+
+for svc in services_to_fetch:
+    susp = {s['username']: s for s in list_suspended_accounts(svc)}
+    for a in list_xray_system_accounts(svc):
+        k = f"{svc}_{a['username']}"
+        db_info = db_map.get(k, {})
+        a['active'] = 0 if a['username'] in susp else 1
+        a['created_at'] = db_info.get('created_at', '')
+        accounts.append(a)
+
+print(json.dumps(accounts))
+PYTHON;
+
         $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
         if ($res['success']) {
             return json_decode($res['output'], true) ?? [];

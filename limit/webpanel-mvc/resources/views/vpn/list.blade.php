@@ -36,14 +36,25 @@
                             <td class="fw-bold text-primary">{{ $user['username'] }}</td>
                             <td><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
                             <td><span class="badge bg-info text-dark">{{ $user['ip_limit'] ?? 1 }}</span></td>
-                            <td>{{ \Carbon\Carbon::parse($user['created_at'])->format('d M Y') }}</td>
+                            @php
+                                $createdStr = $user['created_at'] ?? '';
+                                $formattedCreated = !empty($createdStr) ? \Carbon\Carbon::parse($createdStr)->format('d M Y') : '-';
+                            @endphp
+                            <td>{{ $formattedCreated }}</td>
                             <td>
                                 @php
-                                    $expDate = \Carbon\Carbon::parse($user['expires_at']);
-                                    $isExpired = $expDate->isPast();
+                                    $expStr = $user['expires_at'] ?? '';
+                                    if (!empty($expStr)) {
+                                        $expDate = \Carbon\Carbon::parse($expStr);
+                                        $isExpired = $expDate->isPast();
+                                        $formattedExp = $expDate->format('d M Y');
+                                    } else {
+                                        $isExpired = false;
+                                        $formattedExp = '-';
+                                    }
                                 @endphp
                                 <span class="badge {{ $isExpired ? 'bg-danger' : 'bg-success' }}">
-                                    {{ $expDate->format('d M Y') }}
+                                    {{ $formattedExp }}
                                 </span>
                             </td>
                             <td class="text-end pe-4">

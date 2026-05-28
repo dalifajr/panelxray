@@ -150,7 +150,7 @@ class VpnController extends Controller
             $res = $this->vpn->executeBash("$cmd $user");
         }
 
-        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import mark_account_active; mark_account_active('{$protocol}', '{$user}')";
+        $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
         $this->vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
 
         return back()->with('sweet_success', "Akun $user diaktifkan kembali.");

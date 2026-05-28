@@ -41,12 +41,24 @@
                             <td><span class="badge bg-info text-dark">{{ $user['ip_limit'] ?? 1 }}</span></td>
                             <td>
                                 @php
-                                    $expDate = \Carbon\Carbon::parse($user['expires_at']);
-                                    $isExpired = $expDate->isPast();
+                                    $expStr = $user['expires_at'] ?? '';
+                                    if (!empty($expStr)) {
+                                        $expDate = \Carbon\Carbon::parse($expStr);
+                                        $isExpired = $expDate->isPast();
+                                        $formattedExp = $expDate->format('d M Y');
+                                    } else {
+                                        $isExpired = false;
+                                        $formattedExp = '-';
+                                    }
+                                    
+                                    $createdStr = $user['created_at'] ?? '';
+                                    $formattedCreated = !empty($createdStr) ? \Carbon\Carbon::parse($createdStr)->format('d M Y') : '-';
                                 @endphp
-                                <span class="badge {{ $isExpired ? 'bg-danger' : 'bg-success' }}">
-                                    {{ $expDate->format('d M Y') }}
-                                </span>
+                                @if($isExpired)
+                                    <span class="badge bg-danger">{{ $formattedExp }} (Expired)</span>
+                                @else
+                                    <span class="badge bg-success">{{ $formattedExp }}</span>
+                                @endif
                             </td>
                             <td class="text-end">
                                 @if($user['active'] == 1)

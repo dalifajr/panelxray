@@ -27,12 +27,18 @@ async def api_execute(request):
         return web.json_response({"ok": False, "error": "Missing command"}, status=400)
         
     try:
-        res = subprocess.run([command] + args, capture_output=True, text=True, check=False)
+        import asyncio
+        process = await asyncio.create_subprocess_exec(
+            command, *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
         return web.json_response({
             "ok": True, 
-            "stdout": res.stdout, 
-            "stderr": res.stderr, 
-            "code": res.returncode
+            "stdout": stdout.decode() if stdout else "", 
+            "stderr": stderr.decode() if stderr else "", 
+            "code": process.returncode
         })
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
