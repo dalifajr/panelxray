@@ -43,7 +43,11 @@ class VpnService
             // If it failed and there is no output, try to capture stderr to see what went wrong (e.g. sudo password prompt)
             exec($fullCommand . " 2>&1", $errOutput, $errCode);
             $outputStr = implode("\n", $errOutput);
-            \Illuminate\Support\Facades\Log::error("Sudo Execute Error: " . $outputStr);
+            throw new \Exception("Sudo Execute Error: " . $outputStr);
+        }
+        
+        if ($returnCode !== 0) {
+            throw new \Exception("Command Execute Error: " . $outputStr);
         }
         
         return [
@@ -102,7 +106,11 @@ PYTHON;
 
         $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
         if ($res['success']) {
-            return json_decode($res['output'], true) ?? [];
+            $decoded = json_decode($res['output'], true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception("JSON Decode Error: " . json_last_error_msg() . "\nRaw Output: " . $res['output']);
+            }
+            return $decoded ?? [];
         }
         return [];
     }
