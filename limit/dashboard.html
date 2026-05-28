@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIMAK - Mahasiswa</title>
+    <link rel="icon" type="image/jpeg" href="https://simak.radenfatah.ac.id/assets/logopustipd.jpeg">
+    <link href="https://simak.radenfatah.ac.id/assets/css/outfit.css" rel="stylesheet">
+    <link href="https://simak.radenfatah.ac.id/assets/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://simak.radenfatah.ac.id/assets/css/all.min.css" rel="stylesheet">
+    <link href="https://simak.radenfatah.ac.id/assets/css/student-app.css" rel="stylesheet">
+    </head>
+<body class="bg-body-tertiary">
+
+<nav class="navbar navbar-expand fixed-top shadow-sm px-4 bg-body border-bottom" style="z-index: 1030; top: 0;">
+        <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-link link-body-emphasis d-md-none text-decoration-none p-0" id="sidebarToggle">
+            <i class="fas fa-bars fs-4"></i>
+        </button>
+        <div class="navbar-brand d-flex align-items-center gap-2 text-primary fw-bold m-0">
+            <i class="fas fa-university"></i> 
+            <span>SIMAK <span class="fw-light text-secondary fs-6 d-none d-sm-inline">| Mahasiswa</span></span>
+        </div>
+    </div>
+    <div class="ms-auto d-flex align-items-center gap-3">
+        
+        <!-- Notifications -->
+                <div class="dropdown me-2">
+            <button class="btn btn-link link-body-emphasis p-0 position-relative" id="notifDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-bell fs-5"></i>
+                            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" aria-labelledby="notifDropdown" style="width: 300px;">
+                <li class="dropdown-header fw-bold">Notifikasi</li>
+                                                            <li class="p-3 text-center text-muted small">Tidak ada notifikasi baru.</li>
+                                                    <li class="dropdown-footer text-center p-2 border-top bg-light rounded-bottom flex-fill">
+                    <a href="https://simak.radenfatah.ac.id/notifications" class="text-decoration-none small fw-bold text-primary d-block">
+                        Lihat Semua Notifikasi <i class="fas fa-arrow-right ms-1"></i>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Theme Toggle -->
+        <button class="btn btn-link link-body-emphasis p-0 me-2" id="themeToggle" title="Toggle Theme">
+            <i class="fas fa-moon fs-5" id="themeIcon"></i>
+        </button>
+
+        <form action="https://simak.radenfatah.ac.id/logout" method="POST" class="m-0">
+            <input type="hidden" name="_token" value="wMulNqHjwKsQ9eiHybT66ocH8K4wjBfxH32uCyEj" autocomplete="off">            <button type="submit" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-2">
+                <i class="fas fa-sign-out-alt"></i> <span class="d-none d-sm-inline">Logout</span>
+            </button>
+        </form>
+    </div>
+</nav>
+
+<div class="app-container" style="padding-top: 0;">
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header d-flex align-items-center gap-3">
+            <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px;">
+                M
+            </div>
+            <div class="d-flex flex-column">
+                <span class="fw-bold text-body" style="font-size: 0.9rem;">M.DZULFIKRI ALI...</span>
+                <small class="text-secondary" style="font-size: 0.75rem;">23041450155</small>
+            </div>
+        </div>
+
+        <div class="py-3">
+            <div class="menu-group">
+                <a href="https://simak.radenfatah.ac.id/student" class="menu-item active">
+                    <i class="fas fa-home"></i> <span>Dashboard</span>
+                </a>
+            </div>
+
+                            <div class="menu-group">
+                    <div class="menu-header">Mahasiswa</div>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/biodata" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            03 Biodata
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/transcript" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            07 Transkrip Nilai
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/billing" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Biaya Kuliah
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/krs" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Kartu Rencana Studi
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/khs" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Nilai Semester
+                        </a>
+                                                                    <a href="?mnux=mhsw/RegIjazah&amp;mdlid=242" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Pengajuan Cetak Ijazah
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/wisuda" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Registrasi Wisuda
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/password" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Reset Password Mahasiswa
+                        </a>
+                                                                    <a href="?mnux=jur/semesterantara&amp;mdlid=232" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Semester Antara (SA)
+                        </a>
+                                                                    <a href="https://simak.radenfatah.ac.id/student/bta" class="menu-item ">
+                            <i class="fas fa-circle" style="font-size: 0.4rem; opacity: 0.6;"></i> 
+                            Sertifikat BTA
+                        </a>
+                                    </div>
+                    </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content position-relative">
+        <div class="main-background"></div>
+        <div class="container-fluid position-relative px-4 py-4" style="z-index: 1;">
+            <!-- Alerts -->
+
+
+<!-- Hero Section -->
+<div class="position-relative mb-5">
+    <!-- Background Banner -->
+    <div class="rounded-4 p-5 text-white shadow-sm overflow-hidden position-relative" 
+         style="background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%); min-height: 220px;">
+        <!-- Abstract Pattern -->
+        <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0.1; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 20px 20px;"></div>
+        <div style="position: absolute; bottom: -50px; left: -50px; width: 300px; height: 300px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+        
+        <div class="position-relative z-1">
+            <h1 class="fw-bold mb-2 text-white">Selamat Datang, M.DZULFIKRI ALIFAJRI</h1>
+            <p class="mb-0 fs-5 opacity-75 fw-light text-white">NIM: 23041450155 | S1 Sistem Informasi</p>
+        </div>
+    </div>
+
+    <!-- Floating Stats Cards -->
+    <div class="container-fluid px-4" style="margin-top: -60px;">
+        <div class="row g-4">
+            <!-- Card 1 -->
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
+                    <div class="card-body p-4 position-relative">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">0.00</h2>
+                                <div class="text-muted small text-uppercase fw-bold">IPS Terakhir</div>
+                            </div>
+                            <div class="bg-primary-subtle rounded-3 p-3 text-primary">
+                                <i class="fas fa-chart-line fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
+                    <div class="card-body p-4 position-relative">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">3.70</h2>
+                                <div class="text-muted small text-uppercase fw-bold">IP Kumulatif</div>
+                            </div>
+                            <div class="bg-warning-subtle rounded-3 p-3 text-warning-emphasis">
+                                <i class="fas fa-graduation-cap fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100 overflow-hidden lift-hover">
+                    <div class="card-body p-4 position-relative">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h2 class="display-5 fw-bold text-dark mb-0">104</h2>
+                                <div class="text-muted small text-uppercase fw-bold">Total SKS</div>
+                            </div>
+                            <div class="bg-success-subtle rounded-3 p-3 text-success">
+                                <i class="fas fa-book fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-5">
+    <!-- Academic Menu -->
+    <div class="col-lg-12">
+        <h4 class="fw-bold mb-3"><i class="fas fa-th-large text-primary me-2"></i> Menu Akademik</h4>
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <a href="https://simak.radenfatah.ac.id/student/krs" class="card border-0 shadow-sm text-center text-decoration-none h-100 lift-hover text-dark bg-white">
+                    <div class="card-body py-4">
+                        <div class="bg-primary-subtle rounded-circle d-inline-flex p-3 mb-3 text-primary">
+                            <i class="fas fa-file-alt fa-2x"></i>
+                        </div>
+                        <div class="fw-bold">KRS</div>
+                        <div class="small text-muted">Rencana Studi</div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-md-3">
+                <a href="https://simak.radenfatah.ac.id/student/khs" class="card border-0 shadow-sm text-center text-decoration-none h-100 lift-hover text-dark bg-white">
+                    <div class="card-body py-4">
+                        <div class="bg-warning-subtle rounded-circle d-inline-flex p-3 mb-3 text-warning-emphasis">
+                            <i class="fas fa-poll fa-2x"></i>
+                        </div>
+                        <div class="fw-bold">KHS</div>
+                        <div class="small text-muted">Hasil Studi</div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-md-3">
+                <a href="https://simak.radenfatah.ac.id/student/transcript" class="card border-0 shadow-sm text-center text-decoration-none h-100 lift-hover text-dark bg-white">
+                    <div class="card-body py-4">
+                        <div class="bg-success-subtle rounded-circle d-inline-flex p-3 mb-3 text-success">
+                            <i class="fas fa-certificate fa-2x"></i>
+                        </div>
+                        <div class="fw-bold">Transkrip</div>
+                        <div class="small text-muted">Nilai Lengkap</div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-md-3">
+                <a href="https://simak.radenfatah.ac.id/student/billing" class="card border-0 shadow-sm text-center text-decoration-none h-100 lift-hover text-dark bg-white">
+                    <div class="card-body py-4">
+                        <div class="bg-info-subtle rounded-circle d-inline-flex p-3 mb-3 text-info-emphasis">
+                            <i class="fas fa-receipt fa-2x"></i>
+                        </div>
+                        <div class="fw-bold">Biaya Kuliah</div>
+                        <div class="small text-muted">Info Tagihan</div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Academic Chart Row -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 border-0">
+                <h5 class="card-title mb-0 fw-bold"><i class="fas fa-chart-line text-primary me-2"></i>Grafik Perkembangan Akademik</h5>
+            </div>
+            <div class="card-body p-4">
+                <canvas id="academicChart" style="height: 350px; width: 100%;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://simak.radenfatah.ac.id/assets/js/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('academicChart').getContext('2d');
+        const labels = ["2023","20231","20232","20241","20242","20243","20251","20252"];
+        const ipsData = ["0.00","3.89","3.38","3.92","3.25","0.00","3.57","0.00"];
+        const ipkData = ["3.61","3.89","3.63","3.73","3.60","0.00","3.60","3.61"];
+
+        // Updated Colors for Premium Theme
+        const primaryColor = '#0d47a1'; // Deep Blue
+        const secondaryColor = '#ffd700'; // Gold
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'IPS (Semester)',
+                        data: ipsData,
+                        borderColor: primaryColor,
+                        backgroundColor: 'rgba(13, 71, 161, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: primaryColor,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    },
+                    {
+                        label: 'IPK (Kumulatif)',
+                        data: ipkData,
+                        borderColor: secondaryColor,
+                        backgroundColor: 'rgba(255, 215, 0, 0.05)',
+                        borderWidth: 3,
+                        borderDash: [5, 5],
+                        tension: 0.4,
+                        fill: false,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: secondaryColor,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        align: 'end',
+                        labels: { 
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            font: { family: "'Outfit', sans-serif" }
+                        }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        titleColor: '#000',
+                        bodyColor: '#555',
+                        borderColor: 'rgba(0,0,0,0.1)',
+                        borderWidth: 1,
+                        padding: 10,
+                        titleFont: { family: "'Outfit', sans-serif", weight: 'bold' }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { family: "'Outfit', sans-serif" } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 4.0,
+                        grid: { borderDash: [2, 4], color: '#f0f0f0' },
+                        ticks: { font: { family: "'Outfit', sans-serif" } }
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+    });
+</script>
+
+<style>
+    .lift-hover { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .lift-hover:hover { transform: translateY(-8px); box-shadow: 0 1rem 3rem rgba(0,0,0,.1) !important; color: var(--primary-color) !important; }
+</style>
+        </div>
+    </div>
+    
+    <!-- Overlay for mobile sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <!-- Global Loader -->
+    <div class="page-loader" id="pageLoader">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Floating Help Button -->
+    <a href="https://simak.radenfatah.ac.id/student/tickets" 
+       class="btn btn-primary rounded-pill shadow-lg position-fixed d-flex align-items-center justify-content-center transition-hover gap-2 px-4" 
+       style="bottom: 30px; right: 30px; height: 50px; z-index: 1050; border: 2px solid rgba(255,255,255,0.2);"
+       title="Pusat Bantuan & Tiket">
+        <i class="fas fa-headset fa-lg"></i>
+        <span class="fw-bold">Bantuan</span>
+    </a>
+
+    <!-- Modals Stack -->
+    
+</div>
+
+<script src="https://simak.radenfatah.ac.id/assets/js/bootstrap.bundle.min.js"></script>
+<script src="https://simak.radenfatah.ac.id/assets/js/student-app.js"></script>
+    <!-- SweetAlert2 (Local) -->
+    <script src="https://simak.radenfatah.ac.id/assets/js/sweetalert2.all.min.js"></script>
+    <script>
+        // Global SweetAlert Handler for Session Messages
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            
+                    });
+    </script>
+    </body>
+</html>
