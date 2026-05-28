@@ -78,12 +78,10 @@ try:
     broken_pattern_83 = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \\ \\/ /index\.php\?\\;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.3-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \\;\s*\}'
     config = re.sub(broken_pattern_83, '', config)
 
-    # Ganti root (mendukung variasi spasi)
+    # Ganti root di port 81 (mendukung variasi spasi)
     config = re.sub(r'root\s+/(var/www/html|etc/kyt/limit/webpanel-mvc/public);', 'root /var/www/webpanel-mvc/public;', config)
 
-    # Tambahkan block PHP jika belum ada
-    if r'location ~ \.php$' not in config:
-        php_block = r"""    index index.php index.html;
+    php_block = r"""    index index.php index.html;
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
@@ -92,7 +90,15 @@ try:
         fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
     }"""
+
+    # Tambahkan block PHP di port 81 jika belum ada
+    if r'location ~ \.php$' not in config:
         config = re.sub(r'(root\s+/var/www/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block, config)
+        
+    # Perbaiki Port 1013 (HTTP/2 Fallback dari Xray) yang selama ini menyebabkan Error 403 di browser
+    if 'root /var/www/webpanel-mvc/public;' not in config.split('listen 1013')[1]:
+        # Sisipkan root dan php_block setelah listen 1013
+        config = re.sub(r'(listen\s+1013\s+http2\s+proxy_protocol.*?;)', r'\1\n    root /var/www/webpanel-mvc/public;\n' + php_block, config, count=1)
 
     with open(path, 'w') as f:
         f.write(config)
