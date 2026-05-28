@@ -10,6 +10,7 @@
     <link href="{{ asset('assets/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ asset('assets/css/student-app.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body {
             font-family: 'Outfit', sans-serif;
@@ -42,12 +43,12 @@
 <div class="app-container" style="padding-top: 0;">
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header d-flex align-items-center gap-3">
-            <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px;">
-                A
+            <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px; text-transform: uppercase;">
+                {{ substr(Auth::user()->name, 0, 1) }}
             </div>
             <div class="d-flex flex-column">
-                <span class="fw-bold text-body" style="font-size: 0.9rem;">Admin Panel</span>
-                <small class="text-secondary" style="font-size: 0.75rem;">ID: {{ Auth::user()->tg_id }}</small>
+                <span class="fw-bold text-body" style="font-size: 0.9rem;">{{ Auth::user()->name }}</span>
+                <small class="text-secondary" style="font-size: 0.75rem;">ID: {{ explode('@', Auth::user()->email)[0] }}</small>
             </div>
         </div>
 
@@ -55,6 +56,12 @@
             <div class="menu-group">
                 <a href="{{ route('dashboard') }}" class="menu-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
                     <i class="fas fa-home"></i> <span>Dashboard</span>
+                </a>
+                <a href="{{ route('vpn.master') }}" class="menu-item {{ request()->routeIs('vpn.master') ? 'active' : '' }}">
+                    <i class="fas fa-database text-info"></i> <span>Master Data VPN</span>
+                </a>
+                <a href="{{ route('profile') }}" class="menu-item {{ request()->routeIs('profile') ? 'active' : '' }}">
+                    <i class="fas fa-user-circle text-primary"></i> <span>Profil Pengguna</span>
                 </a>
             </div>
 
@@ -103,5 +110,28 @@
         }
     });
 </script>
+
+@if(session('sweet_success'))
+<script>
+    Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: '{{ session('sweet_success') }}',
+        timer: 3000,
+        showConfirmButton: false
+    });
+</script>
+@endif
+
+@if(session('sweet_error'))
+<script>
+    Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: '{{ session('sweet_error') }}'
+    });
+</script>
+@endif
+
 </body>
 </html>

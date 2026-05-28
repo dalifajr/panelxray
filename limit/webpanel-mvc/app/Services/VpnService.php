@@ -26,30 +26,20 @@ class VpnService
     public function execute($command, $args = [])
     {
         try {
-            $response = Http::timeout(10)->post($this->apiUrl, [
+            $response = Http::timeout(60)->post($this->apiUrl, [
                 'command' => $command,
                 'args' => $args
             ]);
 
-            if ($response->successful()) {
-                $data = $response->json();
-                if (isset($data['ok']) && $data['ok'] && $data['code'] === 0) {
-                    return [
-                        'success' => true,
-                        'output' => $data['stdout'],
-                        'error' => $data['stderr']
-                    ];
-                }
+            if ($response->successful() && $response->json('ok')) {
                 return [
-                    'success' => false,
-                    'output' => $data['stdout'] ?? '',
-                    'error' => $data['stderr'] ?? ($data['error'] ?? 'Unknown error')
+                    'success' => true,
+                    'output' => $response->json('output', '') ?: $response->json('stdout', '')
                 ];
             }
 
             return [
                 'success' => false,
-                'output' => '',
                 'error' => 'HTTP Error: ' . $response->status()
             ];
         } catch (\Exception $e) {
@@ -60,6 +50,37 @@ class VpnService
                 'error' => 'Connection to Python API failed.'
             ];
         }
+    }
+
+    public function executeBash($scriptContent)
+    {
+        return $this->execute('bash', ['-c', "export TERM=xterm; " . $scriptContent]);
+    }
+
+    public function getAccounts($service = null)
+    {
+        $condition = $service ? "WHERE service='{$service}'" : "";
+        $script = "import sqlite3, json; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.row_factory=sqlite3.Row; print(json.dumps([dict(r) for r in c.execute(\"SELECT * FROM account_registry {$condition} ORDER BY created_at DESC\").fetchall()]))";
+        $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        if ($res['success']) {
+            return json_decode($res['output'], true) ?? [];
+        }
+        return [];
+    }
+
+    public function getAccountConfig($service, $username)
+    {
+        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import account_detail_text; print(account_detail_text('{$service}', '{$username}'))";
+        $res = $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        return $res['success'] ? $res['output'] : "Failed to fetch config.";
+    }
+
+    public function registerAccountToDb($tg_id, $service, $username, $expiredDays, $isTrial = false)
+    {
+        $later = date('Y-m-d', strtotime("+$expiredDays days"));
+        $isTrialStr = $isTrial ? 'True' : 'False';
+        $script = "import sys; sys.path.insert(0, '/usr/bin/kyt'); from kyt import register_account_creation; register_account_creation('{$tg_id}', '{$service}', '{$username}', '{$later}', is_trial={$isTrialStr})";
+        return $this->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
     }
 
     /**

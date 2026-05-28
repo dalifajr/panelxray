@@ -76,14 +76,37 @@ class AuthController extends Controller
             return redirect()->route('login')->with('error', 'Token belum diotorisasi oleh bot.');
         }
 
+        // Fetch user info from Bot's SQLite database via VpnService
+        $vpn = app(\App\Services\VpnService::class);
+        $script = "import sqlite3, json; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.row_factory=sqlite3.Row; r=c.execute('SELECT username, full_name FROM telegram_users WHERE tg_id = ?', ('{$tokenData['tg_id']}',)).fetchone(); print(json.dumps(dict(r) if r else {}))";
+        $res = $vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
+        
+        $fullName = 'Admin Panel';
+        if ($res['success']) {
+            $botUser = json_decode($res['output'], true);
+            if (!empty($botUser['full_name'])) {
+                $fullName = $botUser['full_name'];
+            } elseif (!empty($botUser['username'])) {
+                $fullName = $botUser['username'];
+            }
+        }
+
         // Login the user (Create dummy user on the fly if needed, or find by tg_id)
         $user = User::firstOrCreate(
             ['email' => $tokenData['tg_id'] . '@telegram.local'],
             [
-                'name' => 'Admin ' . $tokenData['tg_id'],
-                'password' => bcrypt(Str::random(16)),
+                'name' => $fullName,
+                'password' => bcrypt(Str::random(24))
             ]
         );
+
+        // Update the name if they changed it in Telegram (optional, but good for sync)
+        // Wait, if they edit it locally in Profile, we shouldn't overwrite it automatically.
+        // Or we only overwrite if it's currently 'Admin Panel'.
+        if ($user->name === 'Admin Panel' && $fullName !== 'Admin Panel') {
+            $user->name = $fullName;
+            $user->save();
+        }
 
         Auth::login($user);
         
@@ -93,9 +116,11 @@ class AuthController extends Controller
         return redirect()->route('dashboard');
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
         Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
         return redirect()->route('login');
     }
 }
