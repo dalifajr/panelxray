@@ -39,11 +39,11 @@ class VpnService
         exec($fullCommand, $output, $returnCode);
         $outputStr = implode("\n", $output);
         
-        // The old Python API returned {ok: True, stdout: output} regardless of the exit code.
-        // Some commands like `grep -c` return exit code 1 if no matches are found, but output "0".
-        // Therefore, we consider it a "success" if it ran without throwing a fatal system error,
-        // mirroring the old API's behavior exactly.
+        Log::info("Executing CMD: " . $fullCommand);
+        Log::info("Return Code: " . $returnCode);
+        Log::info("Output: " . $outputStr);
         
+        // The old Python API returned {ok: True, stdout: output} regardless of the exit code.
         return [
             'success' => true,
             'output' => $outputStr,
@@ -70,7 +70,8 @@ try:
 except Exception as e:
     print("[]")
 PYTHON;
-        $resDb = $this->executeBash("/usr/bin/kyt/.venv/bin/python -c " . escapeshellarg($pythonScript));
+        $b64 = base64_encode($pythonScript);
+        $resDb = $this->executeBash("echo '$b64' | base64 -d | /usr/bin/kyt/.venv/bin/python");
         $dbRows = json_decode(trim($resDb['output']), true) ?? [];
         
         $dbMap = [];
