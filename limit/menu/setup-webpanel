@@ -55,9 +55,10 @@ DOMAIN=$(cat /etc/xray/domain)
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
 if [ -f "$XRAY_CONF" ]; then
-    # Hapus default nginx site bawaan instalasi baru
+    # Hapus default nginx site bawaan instalasi baru dan config usang
     rm -f /etc/nginx/sites-enabled/default
     rm -f /etc/nginx/sites-available/default
+    rm -f /etc/nginx/conf.d/webpanel.conf
 
     # Tulis script python ke temporary file untuk menghindari masalah escaping Bash
     cat << 'EOF' > /tmp/update_nginx.py
