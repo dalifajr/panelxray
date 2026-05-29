@@ -144,7 +144,14 @@ class VpnController extends Controller
             return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $user berhasil dibuat!");
         }
 
-        return back()->with('sweet_error', 'Gagal membuat akun: ' . ($res['error'] ?? $res['output'] ?? 'Unknown error'))->withInput();
+        $debugError = $res['error'] ?? 'Unknown error';
+        $debugOutput = $res['output'] ?? '';
+        $fullMsg = 'Gagal membuat akun: ' . $debugError;
+        if (!empty($debugOutput)) {
+            $fullMsg .= "\nOutput Log:\n" . $debugOutput;
+        }
+
+        return back()->with('sweet_error', $fullMsg)->withInput();
     }
 
     public function renewForm($protocol, $user)

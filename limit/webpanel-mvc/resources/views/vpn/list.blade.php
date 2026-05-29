@@ -314,7 +314,8 @@
                         </div>
                         <div class="text-start bg-light p-3 rounded border">
                             <table class="table table-sm table-borderless mb-0">
-                                <tr><td class="text-muted" width="80">Username</td><td class="fw-bold text-dark">: ${info.username}</td></tr>
+                                <tr><td class="text-muted" width="110">Username</td><td class="fw-bold text-dark">: ${info.username}</td></tr>
+                                <tr><td class="text-muted">Pass / UUID</td><td class="fw-bold text-dark font-monospace small">: <span style="user-select: all;">${info.uuid}</span></td></tr>
                                 <tr><td class="text-muted">Protocol</td><td class="fw-bold text-dark text-uppercase">: ${protocol}</td></tr>
                                 <tr><td class="text-muted">Domain</td><td class="fw-bold text-dark">: ${info.domain}</td></tr>
                                 <tr><td class="text-muted">Limit IP</td><td class="fw-bold text-dark">: ${info.ip_limit}</td></tr>
