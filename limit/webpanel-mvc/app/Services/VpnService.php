@@ -192,9 +192,31 @@ PYTHON;
                     $accounts[] = [
                         'service' => $svc,
                         'username' => $user,
-                        'active' => isset($suspendedSvc[$user]) ? 0 : 1,
+                        'active' => 1, // Since they are in config.json, they are active
                         'created_at' => $dbInfo['created_at'] ?? '',
                         'expires_at' => $parts[1] ?? ($dbInfo['expires_at'] ?? '')
+                    ];
+                }
+
+                // Add suspended users who are missing from config.json
+                foreach (array_keys($suspendedSvc) as $user) {
+                    if (empty($user)) continue;
+                    if (isset($seen[$user])) continue;
+                    $seen[$user] = true;
+
+                    $k = "{$svc}_{$user}";
+                    $dbInfo = $dbMap[$k] ?? [];
+
+                    // Try to read expiry from the suspended file
+                    $resExp = $this->executeBash("awk '{print \$1}' /etc/kyt/suspended/{$svc}/{$user} 2>/dev/null");
+                    $suspExp = trim($resExp['output']);
+
+                    $accounts[] = [
+                        'service' => $svc,
+                        'username' => $user,
+                        'active' => 0, // They are suspended
+                        'created_at' => $dbInfo['created_at'] ?? '',
+                        'expires_at' => $suspExp ?: ($dbInfo['expires_at'] ?? '')
                     ];
                 }
             }

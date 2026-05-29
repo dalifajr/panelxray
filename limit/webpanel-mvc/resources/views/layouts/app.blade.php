@@ -15,9 +15,54 @@
         body {
             font-family: 'Outfit', sans-serif;
         }
+        /* Container Utama Loader */
+        .page-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        /* Status Aktif */
+        .page-loader.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        /* Animasi Spinner (Lingkaran Berputar) */
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e0e0e0;
+            border-top: 5px solid var(--bs-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Tema Gelap */
+        [data-bs-theme="dark"] .page-loader {
+            background: rgba(0, 0, 0, 0.8);
+        }
     </style>
 </head>
 <body class="bg-body-tertiary">
+<div class="page-loader active" id="pageLoader">
+    <div class="spinner"></div>
+</div>
 
 @if(Auth::check())
 <nav class="navbar navbar-expand fixed-top shadow-sm px-4 bg-body border-bottom" style="z-index: 1030; top: 0;">
@@ -93,7 +138,36 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    window.addEventListener('load', function() {
+        const loader = document.getElementById('pageLoader');
+        if (loader) {
+            loader.classList.remove('active');
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', function() {
+        const loader = document.getElementById('pageLoader');
+        const links = document.querySelectorAll('a:not([target="_blank"]):not([href^="#"]):not([href^="javascript:"])');
+        
+        links.forEach(link => {
+            link.addEventListener('click', function(e) {
+                if(e.ctrlKey || e.metaKey || e.shiftKey) return; // Allow open in new tab
+                if (loader) {
+                    loader.classList.add('active');
+                }
+            });
+        });
+
+        // Keep form submission loader as well
+        const forms = document.querySelectorAll('form');
+        forms.forEach(form => {
+            form.addEventListener('submit', function() {
+                if (loader && !form.classList.contains('no-loader')) {
+                    loader.classList.add('active');
+                }
+            });
+        });
+
         const sidebarToggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebarOverlay');
@@ -116,7 +190,7 @@
     Swal.fire({
         icon: 'success',
         title: 'Berhasil',
-        text: '{{ session('sweet_success') }}',
+        text: {!! json_encode(session('sweet_success')) !!},
         timer: 3000,
         showConfirmButton: false
     });
@@ -128,7 +202,7 @@
     Swal.fire({
         icon: 'error',
         title: 'Gagal',
-        text: '{{ session('sweet_error') }}'
+        text: {!! json_encode(session('sweet_error')) !!}
     });
 </script>
 @endif

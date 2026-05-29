@@ -13,6 +13,19 @@
         </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-md-5 mb-2 mb-md-0">
+            <input type="text" id="searchInput" class="form-control" placeholder="Cari username...">
+        </div>
+        <div class="col-md-3 mb-2 mb-md-0">
+            <select id="statusFilter" class="form-select">
+                <option value="all">Semua Status</option>
+                <option value="active">Aktif</option>
+                <option value="suspended">Disuspend</option>
+            </select>
+        </div>
+    </div>
+
     <div class="card shadow-sm border-0">
         <div class="card-body p-0">
             @if(count($parsedUsers) > 0)
@@ -31,7 +44,7 @@
                     </thead>
                     <tbody>
                         @foreach($parsedUsers as $index => $user)
-                        <tr>
+                        <tr class="account-row" data-username="{{ strtolower($user['username']) }}" data-status="{{ $user['active'] == 1 ? 'active' : 'suspended' }}">
                             <td class="ps-4 text-muted">{{ $index + 1 }}</td>
                             <td class="fw-bold text-primary">{{ $user['username'] }}</td>
                             <td><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
@@ -106,6 +119,33 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Handle Search and Filter
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
+        const rows = document.querySelectorAll('.account-row');
+
+        function filterTable() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const filterValue = statusFilter.value;
+
+            rows.forEach(row => {
+                const username = row.getAttribute('data-username');
+                const status = row.getAttribute('data-status');
+
+                const matchesSearch = username.includes(searchTerm);
+                const matchesStatus = filterValue === 'all' || status === filterValue;
+
+                if (matchesSearch && matchesStatus) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        if (searchInput) searchInput.addEventListener('input', filterTable);
+        if (statusFilter) statusFilter.addEventListener('change', filterTable);
+
         // Handle Delete Confirmation
         const deleteButtons = document.querySelectorAll('.btn-delete');
         deleteButtons.forEach(button => {
