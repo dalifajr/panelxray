@@ -78,6 +78,19 @@
             seconds = seconds < 10 ? "0" + seconds : seconds;
 
             countdownElement.innerHTML = minutes + ":" + seconds;
+
+            // Check status via AJAX every 3 seconds
+            if (seconds % 3 === 0) {
+                fetch(`{{ route('transaction.status', $transaction->id) }}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' || data.status === 'cancelled') {
+                            clearInterval(interval);
+                            window.location.reload();
+                        }
+                    })
+                    .catch(error => console.error('Error fetching status:', error));
+            }
         }, 1000);
     });
 </script>

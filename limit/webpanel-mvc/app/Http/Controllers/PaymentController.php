@@ -282,6 +282,15 @@ PYTHON;
         return response()->json(['status' => 'success']);
     }
 
+    public function status($id)
+    {
+        $transaction = Transaction::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        return response()->json(['status' => $transaction->status]);
+    }
+
     public function testConnection(Request $request)
     {
         $secretKey = Setting::where('key', 'payment_secret_key')->value('value');

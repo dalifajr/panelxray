@@ -168,12 +168,20 @@
             seconds = seconds < 10 ? "0" + seconds : seconds;
 
             if(countdownElement) countdownElement.innerHTML = minutes + ":" + seconds;
+
+            // Check status via AJAX every 3 seconds
+            if (seconds % 3 === 0) {
+                fetch(`{{ route('transaction.status', $pendingTopup->id) }}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' || data.status === 'cancelled') {
+                            clearInterval(interval);
+                            window.location.reload();
+                        }
+                    })
+                    .catch(error => console.error('Error fetching status:', error));
+            }
         }, 1000);
-        
-        // Auto refresh page every 15 seconds to check payment status
-        setInterval(function() {
-            window.location.reload();
-        }, 15000);
     });
 </script>
 @endpush

@@ -72,6 +72,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/checkout/{id}', [\App\Http\Controllers\CheckoutController::class, 'show'])->name('checkout.show');
     Route::post('/checkout/{id}/cancel', [\App\Http\Controllers\CheckoutController::class, 'cancel'])->name('checkout.cancel');
+    Route::get('/transaction/{id}/status', [\App\Http\Controllers\PaymentController::class, 'status'])->name('transaction.status');
 
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll'])->name('notifications.read-all');

@@ -80,10 +80,10 @@ class VpnController extends Controller
                         'is_pending_payment' => true,
                         'active' => 0, // Fallback active status for list view
                         'transaction_id' => $tx->id,
-                        'creator_name' => $authUser->role === 'admin' ? ($tx->user->username ?? $tx->user->name) : 'Anda'
+                        'creator_name' => $authUser->role === 'admin' ? ($tx->user?->username ?? $tx->user?->name ?? 'Unknown') : 'Anda'
                     ];
                 }
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::error('Error processing pending transaction: ' . $e->getMessage());
             }
         }
