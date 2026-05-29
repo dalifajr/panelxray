@@ -95,6 +95,9 @@
                         <tr>
                             <th class="ps-3 py-2">No.</th>
                             <th class="py-2">Username</th>
+                            @if(auth()->user()->role === 'admin')
+                            <th class="py-2">Pembuat</th>
+                            @endif
                             <th class="py-2">Limit IP</th>
                             <th class="py-2">Dibuat</th>
                             <th class="py-2">Kedaluwarsa</th>
@@ -127,6 +130,9 @@
                         <tr class="account-row border-bottom" data-username="{{ strtolower($user['username']) }}" data-status="{{ $status }}">
                             <td class="ps-3 text-muted py-2" data-label="No.">{{ $index + 1 }}</td>
                             <td class="fw-bold text-primary py-2" data-label="Username">{{ $user['username'] }}</td>
+                            @if(auth()->user()->role === 'admin')
+                            <td class="py-2 text-secondary" data-label="Pembuat"><span class="badge bg-secondary rounded-pill"><i class="fas fa-user-circle me-1"></i>{{ $user['creator_name'] ?? 'Sistem' }}</span></td>
+                            @endif
                             <td class="py-2 fw-medium text-secondary" data-label="Limit IP">{{ $user['ip_limit'] ?? 1 }}</td>
                             <td class="py-2 text-secondary" data-label="Dibuat">{{ $formattedCreated }}</td>
                             <td class="py-2 text-secondary" data-label="Kedaluwarsa">{{ $formattedExp }}</td>

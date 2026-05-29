@@ -35,6 +35,21 @@ class VpnController extends Controller
             $parsedUsers = array_filter($parsedUsers, function($user) use ($ownedVpnUsernames) {
                 return in_array(strtolower($user['username']), $ownedVpnUsernames);
             });
+        } else {
+            // Admin: get all owners for mapping
+            $vpnAccounts = \App\Models\VpnAccount::with('user')->where('service', $protocol)->get()->keyBy(function($item) {
+                return strtolower($item->vpn_username);
+            });
+            
+            foreach ($parsedUsers as &$user) {
+                $lowerUser = strtolower($user['username']);
+                if (isset($vpnAccounts[$lowerUser]) && $vpnAccounts[$lowerUser]->user) {
+                    $u = $vpnAccounts[$lowerUser]->user;
+                    $user['creator_name'] = $u->username ?? $u->name;
+                } else {
+                    $user['creator_name'] = 'Sistem';
+                }
+            }
         }
         
         return view('vpn.list', compact('protocol', 'parsedUsers'));
@@ -339,6 +354,12 @@ PYTHON;
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET updated_at=date('now') WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
         $this->runPython($dbScript);
 
+        $acc = \App\Models\VpnAccount::where('service', $protocol)->where('vpn_username', $user)->first();
+        if ($acc) {
+            $acc->admin_suspended = ($authUser->role === 'admin');
+            $acc->save();
+        }
+
         return back()->with('sweet_success', "Akun $user disuspend.");
     }
 
@@ -349,8 +370,11 @@ PYTHON;
             $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
                 ->where('service', $protocol)
                 ->where('vpn_username', $user)
-                ->exists();
+                ->first();
             if (!$owns) abort(403, 'Unauthorized action.');
+            if ($owns->admin_suspended) {
+                return back()->with('sweet_error', 'Akun ini disuspend oleh Admin. Anda tidak dapat mengaktifkannya sendiri.');
+            }
         }
 
         if ($protocol === 'ssh') {
@@ -368,6 +392,12 @@ PYTHON;
 
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
         $this->runPython($dbScript);
+
+        $acc = \App\Models\VpnAccount::where('service', $protocol)->where('vpn_username', $user)->first();
+        if ($acc) {
+            $acc->admin_suspended = false;
+            $acc->save();
+        }
 
         return back()->with('sweet_success', "Akun $user diaktifkan kembali.");
     }

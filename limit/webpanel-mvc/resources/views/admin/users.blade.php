@@ -60,10 +60,21 @@
                             </td>
                             <td data-label="Aksi" class="px-4 py-3 text-md-end">
                                 <div class="d-flex justify-content-md-end gap-2">
+                                    @if($user->id !== auth()->id())
                                     <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#editUser{{ $user->id }}" title="Edit User">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-                                    @if($user->id !== auth()->id())
+                                    <button class="btn btn-sm btn-light text-warning" data-bs-toggle="modal" data-bs-target="#resetPassword{{ $user->id }}" title="Reset Password">
+                                        <i class="fas fa-key"></i>
+                                    </button>
+                                    @if($user->telegram_id)
+                                    <form action="{{ route('admin.users.unlink-telegram', $user->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin melepas tautan Telegram untuk user ini?');">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-light text-secondary" title="Unlink Telegram">
+                                            <i class="fas fa-unlink"></i>
+                                        </button>
+                                    </form>
+                                    @endif
                                     <form action="{{ route('admin.users.delete', $user->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus user ini secara permanen?');">
                                         @csrf
                                         @method('DELETE')
@@ -71,6 +82,8 @@
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </form>
+                                    @else
+                                    <span class="badge bg-secondary">Anda (Admin)</span>
                                     @endif
                                 </div>
                             </td>
@@ -114,6 +127,32 @@
                                         <div class="modal-footer">
                                             <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
                                             <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Modal Reset Password -->
+                        <div class="modal fade" id="resetPassword{{ $user->id }}" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Reset Password: {{ $user->username ?? $user->name }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <form action="{{ route('admin.users.reset-password', $user->id) }}" method="POST">
+                                        @csrf
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label class="form-label fw-bold">Password Baru</label>
+                                                <input type="password" name="new_password" class="form-control" required minlength="6" placeholder="Masukkan password baru">
+                                                <div class="form-text">Password harus terdiri dari minimal 6 karakter.</div>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+                                            <button type="submit" class="btn btn-warning text-dark">Reset Password</button>
                                         </div>
                                     </form>
                                 </div>

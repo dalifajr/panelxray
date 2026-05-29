@@ -116,6 +116,16 @@ class AuthController extends Controller
 
         if (isset($tokenData['user_id'])) {
             // Ini adalah token dari proses pendaftaran untuk menautkan Telegram
+            $existingTgUser = User::where('telegram_id', $tokenData['tg_id'])
+                                  ->where('id', '!=', $tokenData['user_id'])
+                                  ->first();
+
+            if ($existingTgUser) {
+                Cache::forget($cacheKey);
+                $msg = "Akun Telegram ini sudah tertaut dengan user: " . ($existingTgUser->username ?? 'Tidak diketahui') . " / " . $existingTgUser->name . ".";
+                return redirect()->route('profile')->with('sweet_error', $msg);
+            }
+
             $user = User::find($tokenData['user_id']);
             if ($user) {
                 $user->telegram_id = $tokenData['tg_id'];
@@ -137,7 +147,8 @@ class AuthController extends Controller
                     'email' => $tokenData['tg_id'] . '@telegram.local',
                     'password' => bcrypt(Str::random(24)),
                     'role' => $isFirstUser ? 'admin' : 'customer',
-                    'telegram_id' => $tokenData['tg_id']
+                    'telegram_id' => $tokenData['tg_id'],
+                    'vpn_account_limit' => $isFirstUser ? 999999 : 2
                 ]);
             } else {
                 if (empty($user->telegram_id)) {

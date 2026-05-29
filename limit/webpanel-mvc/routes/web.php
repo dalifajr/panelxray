@@ -32,6 +32,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
     Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
+    Route::post('/admin/users/{user}/reset-password', [AdminController::class, 'resetPassword'])->name('admin.users.reset-password');
+    Route::post('/admin/users/{user}/unlink-telegram', [AdminController::class, 'unlinkTelegram'])->name('admin.users.unlink-telegram');
     Route::delete('/admin/users/{user}', [AdminController::class, 'deleteUser'])->name('admin.users.delete');
 
     Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
