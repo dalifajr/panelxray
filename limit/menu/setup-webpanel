@@ -66,6 +66,13 @@ chown -R www-data:www-data $WEB_DIR
 chmod -R 775 $WEB_DIR/storage
 chmod -R 775 $WEB_DIR/bootstrap/cache
 
+# Install VPN Bridge Service
+echo -e "[\e[32mINFO\e[0m] Menginstal VPN Bridge Service..."
+if [ -f "$WEB_DIR/setup-vpn-bridge.sh" ]; then
+    cd $WEB_DIR
+    bash setup-vpn-bridge.sh
+fi
+
 # 3. Setup Nginx Configuration (Integrate with Xray)
 DOMAIN=$(cat /etc/xray/domain)
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"

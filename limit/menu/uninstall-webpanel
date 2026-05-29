@@ -53,6 +53,16 @@ fi
 
 echo -e "[\e[33mINFO\e[0m] Membersihkan sistem cache dan service..."
 rm -f /etc/systemd/system/php8.4-fpm.service.d/override.conf
+
+# Uninstall VPN Bridge Service
+if systemctl list-unit-files | grep -q 'vpn-bridge.service'; then
+    echo -e "[\e[33mINFO\e[0m] Menghentikan dan menghapus VPN Bridge Service..."
+    systemctl stop vpn-bridge.service 2>/dev/null
+    systemctl disable vpn-bridge.service 2>/dev/null
+    rm -f /usr/local/bin/vpn-bridge.py
+    rm -f /etc/systemd/system/vpn-bridge.service
+fi
+
 systemctl daemon-reload
 
 systemctl restart nginx
