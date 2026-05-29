@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'username', 'email', 'password', 'role', 'status', 'vpn_account_limit', 'telegram_id'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'status', 'vpn_account_limit', 'telegram_id', 'balance'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -33,5 +33,15 @@ class User extends Authenticatable
     public function vpnAccounts()
     {
         return $this->hasMany(VpnAccount::class);
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class);
     }
 }

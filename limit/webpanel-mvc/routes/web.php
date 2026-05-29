@@ -34,7 +34,17 @@ Route::middleware('auth')->group(function () {
     Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
     Route::post('/admin/users/{user}/reset-password', [AdminController::class, 'resetPassword'])->name('admin.users.reset-password');
     Route::post('/admin/users/{user}/unlink-telegram', [AdminController::class, 'unlinkTelegram'])->name('admin.users.unlink-telegram');
+    Route::post('/admin/users/{user}/inject-balance', [AdminController::class, 'injectBalance'])->name('admin.users.inject-balance');
+    Route::post('/admin/users/{user}/block-balance', [AdminController::class, 'blockBalance'])->name('admin.users.block-balance');
     Route::delete('/admin/users/{user}', [AdminController::class, 'deleteUser'])->name('admin.users.delete');
+
+    Route::get('/admin/settings', [\App\Http\Controllers\SettingController::class, 'index'])->name('admin.settings');
+    Route::post('/admin/settings/prices', [\App\Http\Controllers\SettingController::class, 'updatePrices'])->name('admin.settings.prices');
+    Route::post('/admin/settings/payment', [\App\Http\Controllers\SettingController::class, 'updatePayment'])->name('admin.settings.payment');
+    Route::post('/admin/settings/announcement', [\App\Http\Controllers\SettingController::class, 'updateAnnouncement'])->name('admin.settings.announcement');
+    Route::post('/admin/notifications/broadcast', [\App\Http\Controllers\NotificationController::class, 'broadcast'])->name('admin.notifications.broadcast');
+
+    Route::get('/admin/finance', [\App\Http\Controllers\WalletController::class, 'adminFinance'])->name('admin.finance');
 
     Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');
@@ -51,10 +61,17 @@ Route::middleware('auth')->group(function () {
         Route::post('/{user}/suspend', [VpnController::class, 'suspend'])->name('suspend');
         Route::post('/{user}/unsuspend', [VpnController::class, 'unsuspend'])->name('unsuspend');
     });
+
+    Route::get('/wallet', [\App\Http\Controllers\WalletController::class, 'index'])->name('wallet.index');
+    Route::post('/wallet/topup', [\App\Http\Controllers\WalletController::class, 'topup'])->name('wallet.topup');
+
+    Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll'])->name('notifications.read-all');
 });
 
 Route::post('/api/internal/approve-token', [AuthController::class, 'approveToken']);
 Route::get('/api/internal/check-username', [VpnController::class, 'checkUsername'])->name('api.check-username');
+Route::post('/api/listener/payment', [\App\Http\Controllers\PaymentController::class, 'processListener'])->name('api.payment-listener');
 
 // === TEMPORARY DIAGNOSTIC ROUTE — REMOVE AFTER DEBUGGING ===
 Route::get('/diag', function () {

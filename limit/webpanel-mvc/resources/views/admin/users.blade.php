@@ -18,6 +18,7 @@
                             <th class="px-4 py-3">User</th>
                             <th class="px-4 py-3">Role</th>
                             <th class="px-4 py-3">Limit Akun VPN</th>
+                            <th class="px-4 py-3">Saldo</th>
                             <th class="px-4 py-3">Akun Dibuat</th>
                             <th class="px-4 py-3 text-center">Status</th>
                             <th class="px-4 py-3 text-end">Aksi</th>
@@ -45,8 +46,12 @@
                                     {{ ucfirst($user->role) }}
                                 </span>
                             </td>
-                            <td data-label="Limit VPN" class="px-4 py-3">
-                                <span class="fw-bold">{{ $user->vpn_account_limit }}</span> akun aktif
+                            <td data-label="Limit Akun VPN" class="px-4 py-3">
+                                <div class="fw-bold">{{ $user->vpn_account_limit }}</div>
+                                <div class="small text-secondary">Akun Aktif</div>
+                            </td>
+                            <td data-label="Saldo" class="px-4 py-3">
+                                <div class="fw-bold text-success">Rp {{ number_format($user->balance, 0, ',', '.') }}</div>
                             </td>
                             <td data-label="Akun Dibuat" class="px-4 py-3">
                                 <span class="fw-bold">{{ $user->vpn_accounts_count }}</span>
@@ -61,29 +66,34 @@
                             <td data-label="Aksi" class="px-4 py-3 text-md-end">
                                 <div class="d-flex justify-content-md-end gap-2">
                                     @if($user->id !== auth()->id())
-                                    <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#editUser{{ $user->id }}" title="Edit User">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
-                                    <button class="btn btn-sm btn-light text-warning" data-bs-toggle="modal" data-bs-target="#resetPassword{{ $user->id }}" title="Reset Password">
-                                        <i class="fas fa-key"></i>
-                                    </button>
-                                    @if($user->telegram_id)
-                                    <form action="{{ route('admin.users.unlink-telegram', $user->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin melepas tautan Telegram untuk user ini?');">
-                                        @csrf
-                                        <button type="submit" class="btn btn-sm btn-light text-secondary" title="Unlink Telegram">
-                                            <i class="fas fa-unlink"></i>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-light text-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                            <i class="fas fa-cog"></i> Aksi
                                         </button>
-                                    </form>
-                                    @endif
-                                    <form action="{{ route('admin.users.delete', $user->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus user ini secara permanen?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-light text-danger" title="Hapus User">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#editUser{{ $user->id }}"><i class="fas fa-edit me-2 text-primary"></i>Edit Profile</a></li>
+                                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#resetPassword{{ $user->id }}"><i class="fas fa-key me-2 text-warning"></i>Reset Password</a></li>
+                                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#injectBalance{{ $user->id }}"><i class="fas fa-wallet me-2 text-success"></i>Inject Saldo</a></li>
+                                            @if($user->telegram_id)
+                                            <li>
+                                                <form action="{{ route('admin.users.unlink-telegram', $user->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Lepas tautan Telegram untuk user ini?');">
+                                                    @csrf
+                                                    <button type="submit" class="dropdown-item"><i class="fas fa-unlink me-2 text-danger"></i>Unlink Telegram</button>
+                                                </form>
+                                            </li>
+                                            @endif
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                <form action="{{ route('admin.users.delete', $user->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus akun user ini secara permanen?');">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="dropdown-item text-danger"><i class="fas fa-trash me-2"></i>Hapus User</button>
+                                                </form>
+                                            </li>
+                                        </ul>
+                                    </div>
                                     @else
-                                    <span class="badge bg-secondary">Anda (Admin)</span>
+                                    <span class="badge bg-secondary">Self</span>
                                     @endif
                                 </div>
                             </td>
@@ -152,15 +162,52 @@
                                         </div>
                                         <div class="modal-footer">
                                             <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
-                                            <button type="submit" class="btn btn-warning text-dark">Reset Password</button>
+                                            <button type="submit" class="btn btn-warning">Reset Password</button>
                                         </div>
                                     </form>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Modal Inject Saldo -->
+                        <div class="modal fade" id="injectBalance{{ $user->id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content border-0 shadow-lg">
+                                    <div class="modal-header bg-success text-white">
+                                        <h5 class="modal-title"><i class="fas fa-wallet me-2"></i>Kelola Saldo {{ $user->name }}</h5>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body p-4">
+                                        <div class="alert alert-info mb-4">
+                                            <div class="fw-bold">Saldo Saat Ini:</div>
+                                            <div class="fs-4">Rp {{ number_format($user->balance, 0, ',', '.') }}</div>
+                                        </div>
+                                        
+                                        <form action="{{ route('admin.users.inject-balance', $user->id) }}" method="POST" class="mb-4">
+                                            @csrf
+                                            <div class="mb-3">
+                                                <label class="form-label fw-bold">Tambah Saldo</label>
+                                                <div class="input-group">
+                                                    <span class="input-group-text">Rp</span>
+                                                    <input type="number" name="amount" class="form-control" required min="1" placeholder="Contoh: 50000">
+                                                </div>
+                                            </div>
+                                            <button type="submit" class="btn btn-success w-100">Inject Saldo</button>
+                                        </form>
+
+                                        <hr>
+
+                                        <form action="{{ route('admin.users.block-balance', $user->id) }}" method="POST" onsubmit="return confirm('Anda yakin ingin me-nol-kan saldo user ini?');">
+                                            @csrf
+                                            <button type="submit" class="btn btn-outline-danger w-100"><i class="fas fa-ban me-2"></i>Blokir / Hapus Saldo Jadi 0</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         @empty
                         <tr>
-                            <td colspan="6" class="text-center py-4 text-muted">
+                            <td colspan="7" class="text-center py-4 text-muted">
                                 <i class="fas fa-folder-open fs-1 text-light mb-3 d-block"></i>
                                 Belum ada user terdaftar
                             </td>

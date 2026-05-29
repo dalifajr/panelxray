@@ -259,8 +259,19 @@
             <span>VPN XRAY <span class="fw-light text-secondary fs-6 d-none d-sm-inline">| Panel Admin</span></span>
         </div>
     </div>
-    <div class="ms-auto d-flex align-items-center gap-3">
-        <form action="{{ route('logout') }}" method="POST" class="m-0">
+      <div class="ms-auto d-flex align-items-center gap-3">
+          @php
+              $unreadCount = Auth::user()->notifications()->where('is_read', false)->count();
+          @endphp
+          <a href="{{ route('notifications.index') }}" class="btn btn-link text-decoration-none text-light position-relative p-0" style="margin-right: 15px;">
+              <i class="fas fa-bell fs-5"></i>
+              @if($unreadCount > 0)
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.65rem;">
+                  {{ $unreadCount > 99 ? '99+' : $unreadCount }}
+              </span>
+              @endif
+          </a>
+          <form action="{{ route('logout') }}" method="POST" class="m-0">
             @csrf
             <button type="submit" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-2">
                 <i class="fas fa-sign-out-alt"></i> <span class="d-none d-sm-inline">Logout</span>
@@ -274,15 +285,21 @@
         <div class="sidebar-header d-flex align-items-center gap-3">
             <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px; text-transform: uppercase;">
                 {{ substr(Auth::user()->name, 0, 1) }}
-            </div>
-            <div class="d-flex flex-column">
-                <span class="fw-bold text-body" style="font-size: 0.9rem;">{{ Auth::user()->name }}</span>
-                <small class="text-secondary" style="font-size: 0.75rem;">Username: {{ Auth::user()->username ?? 'N/A' }} | Role: {{ ucfirst(Auth::user()->role) }}</small>
-            </div>
-        </div>
-
-        <div class="py-3">
-            <div class="menu-group">
+              </div>
+              <div class="user-info d-none d-md-block">
+                  <div class="fw-bold text-white">{{ Auth::user()->name }}</div>
+                  <div class="text-secondary small">{{ Auth::user()->role === 'admin' ? 'Administrator' : 'Customer' }}</div>
+              </div>
+          </div>
+          <div class="px-3 mb-3 d-none d-md-block">
+              <div class="bg-dark p-2 rounded border border-secondary text-center">
+                  <div class="text-secondary small mb-1">Saldo Akun</div>
+                  <div class="fw-bold text-white mb-2">Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }}</div>
+                  <a href="{{ route('wallet.index') }}" class="btn btn-sm btn-primary w-100"><i class="fas fa-plus-circle me-1"></i>Top Up</a>
+              </div>
+          </div>
+          <div class="menu-list">
+              <div class="menu-group">
                 <a href="{{ route('dashboard') }}" class="menu-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
                     <i class="fas fa-home"></i> <span>Dashboard</span>
                 </a>
@@ -290,13 +307,22 @@
                 <a href="{{ route('vpn.master') }}" class="menu-item {{ request()->routeIs('vpn.master') ? 'active' : '' }}">
                     <i class="fas fa-database text-info"></i> <span>Master Data VPN</span>
                 </a>
-                <a href="{{ route('admin.users') }}" class="menu-item {{ request()->routeIs('admin.users') ? 'active' : '' }}">
-                    <i class="fas fa-users text-warning"></i> <span>Manajemen User</span>
-                </a>
-                @endif
-                <a href="{{ route('profile') }}" class="menu-item {{ request()->routeIs('profile') ? 'active' : '' }}">
-                    <i class="fas fa-user-circle text-primary"></i> <span>Profil Pengguna</span>
-                </a>
+                  <a href="{{ route('admin.users') }}" class="menu-item {{ request()->routeIs('admin.users') ? 'active' : '' }}">
+                      <i class="fas fa-users text-warning"></i> <span>Manajemen User</span>
+                  </a>
+                  <a href="{{ route('admin.finance') }}" class="menu-item {{ request()->routeIs('admin.finance') ? 'active' : '' }}">
+                      <i class="fas fa-chart-line text-success"></i> <span>Keuangan & Topup</span>
+                  </a>
+                  <a href="{{ route('admin.settings') }}" class="menu-item {{ request()->routeIs('admin.settings') ? 'active' : '' }}">
+                      <i class="fas fa-cog text-secondary"></i> <span>Pengaturan Sistem</span>
+                  </a>
+                  @endif
+                  <a href="{{ route('wallet.index') }}" class="menu-item {{ request()->routeIs('wallet.index') ? 'active' : '' }}">
+                      <i class="fas fa-wallet text-success"></i> <span>Keuangan (Wallet)</span>
+                  </a>
+                  <a href="{{ route('profile') }}" class="menu-item {{ request()->routeIs('profile') ? 'active' : '' }}">
+                      <i class="fas fa-user-circle text-primary"></i> <span>Profil Pengguna</span>
+                  </a>
             </div>
 
             <div class="menu-group">

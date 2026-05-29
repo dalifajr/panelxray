@@ -111,4 +111,48 @@ class AdminController extends Controller
 
         return back()->with('sweet_success', 'User berhasil dihapus.');
     }
+
+    public function injectBalance(Request $request, User $user)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:1'
+        ]);
+
+        $user->balance += $request->amount;
+        $user->save();
+
+        \App\Models\Transaction::create([
+            'reference' => 'INJ-' . strtoupper(\Illuminate\Support\Str::random(10)),
+            'user_id' => $user->id,
+            'type' => 'topup',
+            'amount' => $request->amount,
+            'unique_code' => 0,
+            'total_amount' => $request->amount,
+            'status' => 'success',
+            'description' => 'Saldo diinjeksi oleh Admin',
+        ]);
+
+        \App\Models\Notification::create([
+            'user_id' => $user->id,
+            'type' => 'system',
+            'message' => 'Admin telah menambahkan saldo sebesar Rp ' . number_format($request->amount, 0, ',', '.') . ' ke dompet Anda.',
+        ]);
+
+        return back()->with('sweet_success', 'Saldo berhasil diinjeksi!');
+    }
+
+    public function blockBalance(Request $request, User $user)
+    {
+        $oldBalance = $user->balance;
+        $user->balance = 0;
+        $user->save();
+
+        \App\Models\Notification::create([
+            'user_id' => $user->id,
+            'type' => 'system',
+            'message' => 'Saldo Anda (Rp ' . number_format($oldBalance, 0, ',', '.') . ') telah diblokir/dihapus oleh Admin.',
+        ]);
+
+        return back()->with('sweet_success', 'Saldo user berhasil di-nol-kan!');
+    }
 }

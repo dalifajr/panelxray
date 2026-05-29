@@ -76,7 +76,9 @@ class VpnController extends Controller
             abort(404);
         }
 
-        return view('vpn.create', compact('protocol'));
+        $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+        
+        return view('vpn.create', compact('protocol', 'basePrice'));
     }
 
     /**
@@ -122,14 +124,28 @@ class VpnController extends Controller
 
         $authUser = auth()->user();
 
-        // Cek limit pembuatan akun bagi customer
+        // Harga dan Validasi Saldo (Khusus Customer)
+        $totalPrice = 0;
         if ($authUser->role === 'customer') {
             $activeCount = \App\Models\VpnAccount::where('user_id', $authUser->id)->count();
             if ($activeCount >= $authUser->vpn_account_limit) {
                 return back()->with('sweet_error', "Gagal membuat akun: Anda telah mencapai batas maksimal pembuatan akun VPN ({$authUser->vpn_account_limit} akun aktif).")->withInput();
             }
-            // Customer dipaksa limit IP 1
-            $ip = '1';
+            
+            // Hitung harga
+            $basePriceObj = \App\Models\Price::where('protocol', $protocol)->first();
+            $basePrice = $basePriceObj->price ?? 0; // Default 0 jika belum diset
+            $ipPriceObj = \App\Models\Price::where('protocol', 'add_ip')->first();
+            $ipPrice = $ipPriceObj->price ?? 0;
+            
+            $vpnCost = round(($basePrice / 30) * $exp);
+            $extraIpCost = $ip > 1 ? ($ipPrice * ($ip - 1)) : 0; // Misal harga extra IP flat per pembuatan
+            
+            $totalPrice = $vpnCost + $extraIpCost;
+
+            if ($authUser->balance < $totalPrice) {
+                return back()->with('sweet_error', "Saldo tidak mencukupi. Total tagihan Rp " . number_format($totalPrice, 0, ',', '.') . ", sedangkan saldo Anda Rp " . number_format($authUser->balance, 0, ',', '.'))->withInput();
+            }
         }
 
         // Pre-flight check: ensure username doesn't already exist
@@ -178,6 +194,34 @@ class VpnController extends Controller
         }
 
         if ($res && $res['success']) {
+            if ($authUser->role === 'customer' && $totalPrice > 0) {
+                $authUser->balance -= $totalPrice;
+                $authUser->save();
+
+                \App\Models\Transaction::create([
+                    'reference' => 'VPN-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                    'user_id' => $authUser->id,
+                    'type' => 'vpn_purchase',
+                    'amount' => $totalPrice,
+                    'unique_code' => 0,
+                    'total_amount' => $totalPrice,
+                    'status' => 'success',
+                    'description' => "Pembelian VPN $protocol ($userStr) $exp Hari",
+                    'metadata' => [
+                        'protocol' => $protocol,
+                        'username' => $userStr,
+                        'days' => $exp,
+                        'limit_ip' => $ip
+                    ]
+                ]);
+
+                \App\Models\Notification::create([
+                    'user_id' => $authUser->id,
+                    'type' => 'order',
+                    'message' => "Pembelian VPN $protocol ($userStr) berhasil. Saldo terpotong Rp " . number_format($totalPrice, 0, ',', '.'),
+                ]);
+            }
+
             // Register to SQLite database
             $tgId = auth()->user()->telegram_id ?? '0';
             $this->vpn->registerAccountToDb($tgId, $protocol, $userStr, $exp, false);
@@ -223,20 +267,15 @@ class VpnController extends Controller
             }
         }
 
-        return view('vpn.renew', compact('protocol', 'user', 'quota', 'limit_ip'));
+        $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+
+        return view('vpn.renew', compact('protocol', 'user', 'quota', 'limit_ip', 'basePrice'));
     }
 
     public function renew(Request $request, $protocol, $user)
     {
         $authUser = auth()->user();
-        if ($authUser->role === 'customer') {
-            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
-                ->where('service', $protocol)
-                ->where('vpn_username', $user)
-                ->exists();
-            if (!$owns) abort(403, 'Unauthorized action.');
-        }
-
+        
         $validated = $request->validate([
             'days' => 'required|integer|min:1|max:365',
             'quota' => 'nullable|integer|min:0',
@@ -246,6 +285,24 @@ class VpnController extends Controller
         $days = $validated['days'];
         $quota = $validated['quota'] ?? 0;
         $limit_ip = $validated['limit_ip'] ?? 1;
+
+        $totalPrice = 0;
+
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $user)
+                ->exists();
+            if (!$owns) abort(403, 'Unauthorized action.');
+
+            // Hitung harga perpanjangan (hanya durasi)
+            $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+            $totalPrice = round(($basePrice / 30) * $days);
+
+            if ($authUser->balance < $totalPrice) {
+                return back()->with('sweet_error', "Saldo tidak mencukupi untuk perpanjangan. Tagihan: Rp " . number_format($totalPrice, 0, ',', '.'))->withInput();
+            }
+        }
 
         if ($protocol === 'ssh') {
             $later = date('Y-m-d', strtotime("+$days days"));
