@@ -129,13 +129,14 @@ class AuthController extends Controller
                         ->first();
             
             if (!$user) {
-                // Buat user baru otomatis sebagai customer
+                // Buat user baru otomatis
+                $isFirstUser = User::count() === 0;
                 $user = User::create([
                     'name' => $fullName,
-                    'username' => 'tg_' . $tokenData['tg_id'],
+                    'username' => null,
                     'email' => $tokenData['tg_id'] . '@telegram.local',
                     'password' => bcrypt(Str::random(24)),
-                    'role' => 'customer',
+                    'role' => $isFirstUser ? 'admin' : 'customer',
                     'telegram_id' => $tokenData['tg_id']
                 ]);
             } else {

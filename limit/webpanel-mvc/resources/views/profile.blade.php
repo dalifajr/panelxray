@@ -42,6 +42,14 @@
                                         <span class="text-secondary">Limit IP VPN</span>
                                         <span class="fw-bold text-dark">{{ $user->role === 'customer' ? '1 (Locked)' : 'Unlimited' }}</span>
                                     </li>
+                                    <li class="mb-2 d-flex justify-content-between">
+                                        <span class="text-secondary">Bergabung</span>
+                                        <span class="fw-bold text-dark">{{ $user->created_at->format('d M Y') }}</span>
+                                    </li>
+                                    <li class="mb-2 d-flex justify-content-between">
+                                        <span class="text-secondary">Umur Akun</span>
+                                        <span class="fw-bold text-dark">{{ $user->created_at->diffForHumans() }}</span>
+                                    </li>
                                 </ul>
                             </div>
                         </div>
@@ -69,8 +77,13 @@
                                 @csrf
                                 <div class="mb-3">
                                     <label class="form-label fw-bold">Username</label>
-                                    <input type="text" class="form-control bg-light" value="{{ $user->username }}" disabled>
-                                    <div class="form-text">Username tidak dapat diubah.</div>
+                                    @if(empty($user->username))
+                                        <input type="text" name="username" id="usernameInput" class="form-control" value="{{ old('username') }}" required placeholder="Atur username Anda">
+                                        <div id="usernameStatus" class="form-text mt-1">Username belum disetting. Silakan set satu kali.</div>
+                                    @else
+                                        <input type="text" class="form-control bg-light" value="{{ $user->username }}" disabled>
+                                        <div class="form-text">Username tidak dapat diubah lagi.</div>
+                                    @endif
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label fw-bold">Nama Tampilan</label>
@@ -82,7 +95,7 @@
                                     <div class="form-text">Minimal 6 karakter.</div>
                                 </div>
 
-                                <button type="submit" class="btn btn-primary w-100">Simpan Perubahan</button>
+                                <button type="submit" id="submitBtn" class="btn btn-primary w-100">Simpan Perubahan</button>
                             </form>
                         </div>
                     </div>
@@ -122,4 +135,49 @@
         </div>
     </div>
 </div>
+
+@if(empty($user->username))
+<script>
+    const usernameInput = document.getElementById('usernameInput');
+    const usernameStatus = document.getElementById('usernameStatus');
+    const submitBtn = document.getElementById('submitBtn');
+    let timeout = null;
+
+    usernameInput.addEventListener('input', function() {
+        clearTimeout(timeout);
+        const username = this.value.trim();
+
+        if (username.length < 3) {
+            usernameStatus.innerHTML = 'Username minimal 3 karakter.';
+            usernameStatus.className = 'form-text mt-1 text-danger';
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+        }
+
+        usernameStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mengecek ketersediaan...';
+        usernameStatus.className = 'form-text mt-1 text-warning';
+        if (submitBtn) submitBtn.disabled = true;
+
+        timeout = setTimeout(() => {
+            fetch(`{{ route('api.check-username-register') }}?username=${encodeURIComponent(username)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.available) {
+                        usernameStatus.innerHTML = '<i class="fas fa-check-circle"></i> Username tersedia';
+                        usernameStatus.className = 'form-text mt-1 text-success';
+                        if (submitBtn) submitBtn.disabled = false;
+                    } else {
+                        usernameStatus.innerHTML = '<i class="fas fa-times-circle"></i> Username sudah terdaftar';
+                        usernameStatus.className = 'form-text mt-1 text-danger';
+                        if (submitBtn) submitBtn.disabled = true;
+                    }
+                })
+                .catch(err => {
+                    usernameStatus.innerHTML = 'Gagal mengecek username';
+                    if (submitBtn) submitBtn.disabled = false;
+                });
+        }, 500);
+    });
+</script>
+@endif
 @endsection

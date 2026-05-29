@@ -16,16 +16,28 @@ class ProfileController extends Controller
 
     public function update(Request $request)
     {
-        $request->validate([
+        $user = Auth::user();
+        
+        $rules = [
             'name' => 'required|string|max:50',
             'password' => 'nullable|string|min:6',
-        ]);
+        ];
 
-        $user = Auth::user();
+        if (empty($user->username)) {
+            $rules['username'] = 'required|string|min:3|max:20|unique:users,username|regex:/^[a-zA-Z0-9_.]+$/';
+        }
+
+        $request->validate($rules, [
+            'username.unique' => 'Username sudah digunakan, silakan pilih yang lain.',
+            'username.regex' => 'Username hanya boleh berisi huruf, angka, titik, dan garis bawah.'
+        ]);
         
         // Ensure user is instance of User
         if ($user instanceof User) {
             $user->name = $request->name;
+            if (empty($user->username) && $request->filled('username')) {
+                $user->username = $request->username;
+            }
             if ($request->filled('password')) {
                 $user->password = bcrypt($request->password);
             }
