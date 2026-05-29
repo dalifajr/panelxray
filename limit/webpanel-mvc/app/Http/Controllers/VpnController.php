@@ -77,6 +77,7 @@ class VpnController extends Controller
                     'exp' => \Carbon\Carbon::now()->addDays($meta['days'] ?? 0)->format('Y-m-d'),
                     'status' => 'Menunggu Pembayaran',
                     'is_pending_payment' => true,
+                    'active' => 0, // Fallback active status for list view
                     'transaction_id' => $tx->id,
                     'creator_name' => $authUser->role === 'admin' ? ($tx->user->username ?? $tx->user->name) : 'Anda'
                 ];
