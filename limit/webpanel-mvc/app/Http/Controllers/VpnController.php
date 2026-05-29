@@ -64,23 +64,27 @@ class VpnController extends Controller
         
         $pendingTxs = $pendingQuery->get();
         foreach ($pendingTxs as $tx) {
-            $meta = is_string($tx->metadata) ? json_decode($tx->metadata, true) : $tx->metadata;
-            if (isset($meta['protocol']) && $meta['protocol'] === $protocol) {
-                // Check if expired
-                if (\Carbon\Carbon::now()->diffInMinutes($tx->created_at) >= 5) {
-                    $tx->update(['status' => 'cancelled']);
-                    continue;
+            try {
+                $meta = is_string($tx->metadata) ? json_decode($tx->metadata, true) : $tx->metadata;
+                if (isset($meta['protocol']) && $meta['protocol'] === $protocol) {
+                    // Check if expired
+                    if (\Carbon\Carbon::now()->diffInMinutes($tx->created_at) >= 5) {
+                        $tx->update(['status' => 'cancelled']);
+                        continue;
+                    }
+                    
+                    $parsedUsers[] = [
+                        'username' => $meta['username'] ?? 'unknown',
+                        'exp' => \Carbon\Carbon::now()->addDays($meta['days'] ?? 0)->format('Y-m-d'),
+                        'status' => 'Menunggu Pembayaran',
+                        'is_pending_payment' => true,
+                        'active' => 0, // Fallback active status for list view
+                        'transaction_id' => $tx->id,
+                        'creator_name' => $authUser->role === 'admin' ? ($tx->user->username ?? $tx->user->name) : 'Anda'
+                    ];
                 }
-                
-                $parsedUsers[] = [
-                    'username' => $meta['username'] ?? 'unknown',
-                    'exp' => \Carbon\Carbon::now()->addDays($meta['days'] ?? 0)->format('Y-m-d'),
-                    'status' => 'Menunggu Pembayaran',
-                    'is_pending_payment' => true,
-                    'active' => 0, // Fallback active status for list view
-                    'transaction_id' => $tx->id,
-                    'creator_name' => $authUser->role === 'admin' ? ($tx->user->username ?? $tx->user->name) : 'Anda'
-                ];
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Error processing pending transaction: ' . $e->getMessage());
             }
         }
         

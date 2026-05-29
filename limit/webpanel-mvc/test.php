@@ -1,4 +1,1 @@
-<?php
-$pdo = new PDO('sqlite:database/database.sqlite');
-$stmt = $pdo->query('SELECT * FROM users');
-print_r($stmt->fetchAll(PDO::FETCH_ASSOC));
+<?php require "vendor/autoload.php"; $app = require_once "bootstrap/app.php"; $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class); $response = $kernel->handle(Illuminate\Http\Request::create("/login", "GET")); echo $response->status();

@@ -24,12 +24,8 @@ class PaymentController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Missing required headers'], 400);
         }
 
-        if ($request->header('Content-Type') !== 'application/json') {
-            return response()->json(['status' => 'error', 'message' => 'Invalid Content-Type'], 400);
-        }
-
         if (!$secretKey) {
-            return response()->json(['status' => 'error', 'message' => 'Secret key is not configured in system'], 500);
+            return response()->json(['status' => 'error', 'message' => 'Secret key is not configured on server'], 500);
         }
 
         // Validasi HMAC Signature
