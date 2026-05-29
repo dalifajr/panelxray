@@ -23,6 +23,9 @@ Route::get('/api/check-username', [RegisterController::class, 'checkUsername'])-
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+// Webhook listener payment from Notification Listener app
+Route::post('/listener/payment', [\App\Http\Controllers\PaymentController::class, 'processListener']);
+
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -66,13 +69,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/wallet/topup', [\App\Http\Controllers\WalletController::class, 'topup'])->name('wallet.topup');
     Route::post('/wallet/cancel', [\App\Http\Controllers\WalletController::class, 'cancelTopup'])->name('wallet.cancel');
 
+    Route::get('/checkout/{id}', [\App\Http\Controllers\CheckoutController::class, 'show'])->name('checkout.show');
+    Route::post('/checkout/{id}/cancel', [\App\Http\Controllers\CheckoutController::class, 'cancel'])->name('checkout.cancel');
+
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll'])->name('notifications.read-all');
 });
 
 Route::post('/api/internal/approve-token', [AuthController::class, 'approveToken']);
 Route::get('/api/internal/check-username', [VpnController::class, 'checkUsername'])->name('api.check-username');
-Route::post('/api/listener/payment', [\App\Http\Controllers\PaymentController::class, 'processListener'])->name('api.payment-listener');
 
 // === TEMPORARY DIAGNOSTIC ROUTE — REMOVE AFTER DEBUGGING ===
 Route::get('/diag', function () {

@@ -103,38 +103,183 @@ class PaymentController extends Controller
                     'message' => "User {$user->username} berhasil Top Up saldo Rp " . number_format($transaction->total_amount, 0, ',', '.'),
                 ]);
             }
-        } elseif ($transaction->type === 'vpn_purchase') {
-            // Ini untuk pembayaran pesanan langsung (Direct Order)
-            // Saldo tidak ditambah, tapi pesanan VPN dijalankan.
-            // Implementasinya diproses via job/command atau langsung memanggil fungsi pembuatan.
-            // Karena fungsi buat vpn ada di controller VPN, kita akan ubah status jadi success
-            // dan user saat merefresh halaman akan melihat akunnya siap,
-            // atau kita panggil service buat VPN di sini.
-            
-            // Note: Pada tahap berikutnya, kita harus menghubungkan ini dengan pembuatan akun.
+        } elseif ($transaction->type === 'vpn_purchase_qris') {
             $vpnService = app(\App\Services\VpnService::class);
-            $meta = $transaction->metadata;
-            // Contoh: $meta = ['protocol' => 'vmess', 'username' => 'test', 'days' => 30, 'limit_ip' => 2];
+            $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+            $protocol = $meta['protocol'] ?? 'vmess';
+            $userStr = $meta['username'] ?? 'user';
+            $exp = $meta['days'] ?? 30;
+            $pw = $meta['password'] ?? '1';
+            $ip = $meta['limit_ip'] ?? '1';
+            $sni = $meta['sni_config'] ?? '3';
+            $quota = $meta['quota'] ?? '0';
+
             try {
-                // Di sini memanggil fungsi buat. Kita serahkan pada VpnController nanti.
-                Notification::create([
-                    'user_id' => $user->id,
-                    'type' => 'order',
-                    'message' => "Pembayaran pesanan VPN {$meta['protocol']} ({$meta['username']}) Rp " . number_format($transaction->total_amount, 0, ',', '.') . " berhasil diterima.",
-                ]);
-                
-                // Notify Admin
-                $admins = User::where('role', 'admin')->get();
-                foreach ($admins as $admin) {
-                    Notification::create([
-                        'user_id' => $admin->id,
-                        'type' => 'order',
-                        'message' => "Pesanan baru dibayar! VPN {$meta['protocol']} oleh {$user->username}.",
+                // Pengecekan apakah username sudah terpakai
+                $isExist = false;
+                if ($protocol !== 'ssh') {
+                    $resCheck = $vpnService->executeBash("grep -w \"$userStr\" /etc/xray/config.json | wc -l");
+                    if (intval(trim($resCheck['output'])) > 0) $isExist = true;
+                } else {
+                    $resCheck = $vpnService->executeBash("id -u $userStr >/dev/null 2>&1 && echo 1 || echo 0");
+                    if (intval(trim($resCheck['output'])) === 1) $isExist = true;
+                }
+
+                if ($isExist) {
+                    throw new \Exception("Username '$userStr' sudah terpakai oleh user lain.");
+                }
+
+                $res = null;
+                if ($protocol === 'ssh') {
+                    $later = date('Y-m-d', strtotime("+$exp days"));
+                    $res = $vpnService->executeBash("useradd -e $later -s /bin/false -M $userStr && echo \"$userStr:$pw\" | chpasswd");
+                    if ($res['success']) {
+                        $vpnService->executeBash("mkdir -p /etc/kyt/limit/ssh/ip && echo \"$ip\" > /etc/kyt/limit/ssh/ip/$userStr");
+                    }
+                } else {
+                    $scriptMap = [
+                        'vmess' => 'addws',
+                        'vless' => 'addvless',
+                        'trojan' => 'addtr',
+                        'shadowsocks' => 'addss'
+                    ];
+                    $cmd = $scriptMap[$protocol] ?? 'addws';
+                    $inputLines = [$sni, $userStr, $exp, $quota, $ip];
+                    $res = $vpnService->pipeInputToCommand($inputLines, $cmd);
+                }
+
+                if ($res && $res['success']) {
+                    // Update ke sqlite db kyt
+                    $vpnService->registerAccountToDb('', $protocol, $userStr, $exp, false);
+                    
+                    // Update Laravel DB
+                    \App\Models\VpnAccount::create([
+                        'user_id' => $user->id,
+                        'vpn_username' => $userStr,
+                        'service' => $protocol
                     ]);
+
+                    \App\Models\Notification::create([
+                        'user_id' => $user->id,
+                        'type' => 'order',
+                        'message' => "Pembayaran pesanan VPN {$protocol} ({$userStr}) berhasil. Akun Anda telah aktif.",
+                    ]);
+                    
+                    // Notify Admin
+                    $admins = \App\Models\User::where('role', 'admin')->get();
+                    foreach ($admins as $admin) {
+                        \App\Models\Notification::create([
+                            'user_id' => $admin->id,
+                            'type' => 'order',
+                            'message' => "Pesanan baru dibayar! VPN {$protocol} oleh {$user->username}.",
+                        ]);
+                    }
+                } else {
+                    throw new \Exception("Gagal eksekusi pembuatan VPN di sistem.");
                 }
             } catch (\Exception $e) {
-                Log::error("Failed to create VPN after payment: " . $e->getMessage());
-                // Kembalikan ke saldo jika gagal?
+                \Illuminate\Support\Facades\Log::error("Failed to create VPN after payment: " . $e->getMessage());
+                // Refund ke saldo
+                $user->balance += $transaction->total_amount;
+                $user->save();
+                
+                \App\Models\Notification::create([
+                    'user_id' => $user->id,
+                    'type' => 'order',
+                    'message' => "Gagal membuat VPN {$protocol} ({$userStr}). Alasan: " . $e->getMessage() . ". Dana sebesar Rp " . number_format($transaction->total_amount, 0, ',', '.') . " telah dikembalikan ke Saldo Akun Anda. Silakan buat ulang menggunakan Saldo.",
+                ]);
+            }
+        } elseif ($transaction->type === 'vpn_renew_qris') {
+            $vpnService = app(\App\Services\VpnService::class);
+            $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+            $protocol = $meta['protocol'] ?? 'vmess';
+            $userStr = $meta['username'] ?? 'user';
+            $days = $meta['days'] ?? 30;
+            $quota = $meta['quota'] ?? 0;
+            $limit_ip = $meta['limit_ip'] ?? 1;
+
+            try {
+                if ($protocol === 'ssh') {
+                    $later = date('Y-m-d', strtotime("+$days days"));
+                    $res = $vpnService->executeBash("usermod -e $later $userStr && passwd -u $userStr");
+                    $res['success'] = $res['rc'] == 0;
+                } else {
+                    $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+                    $marker = $xrayMarkers[$protocol] ?? '###';
+                    $later = date('Y-m-d', strtotime("+$days days"));
+                    
+                    $script = <<<PYTHON
+import os
+path = '/etc/xray/config.json'
+marker = '$marker'
+username = '$userStr'
+new_expiry = '$later'
+protocol = '$protocol'
+quota = '$quota'
+limit_ip = '$limit_ip'
+
+if os.path.exists(f"/etc/kyt/suspended/{protocol}/{username}"):
+    script_map = {'vmess': 'unsuspws', 'vless': 'unsuspvless', 'trojan': 'unsusptr', 'shadowsocks': 'unsuspss'}
+    cmd = script_map.get(protocol, 'unsuspws')
+    os.system(f"{cmd} --user {username} >/dev/null 2>&1")
+
+try:
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    changed = False
+    next_lines = []
+    for line in lines:
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[0] == marker and parts[1].lower() == username.lower():
+            next_lines.append(f"{marker} {username} {new_expiry}\\n")
+            changed = True
+        else:
+            next_lines.append(line)
+    
+    if not changed:
+        print("ERROR: User not found in config.json")
+    else:
+        with open(path, 'w') as f:
+            f.writelines(next_lines)
+            
+        if limit_ip != '1' or limit_ip != 1:
+            os.system(f"mkdir -p /etc/kyt/limit/{protocol}/ip && echo '{limit_ip}' > /etc/kyt/limit/{protocol}/ip/{username}")
+        if quota != '0' or quota != 0:
+            os.system(f"mkdir -p /etc/kyt/limit/{protocol}/quota && echo '{quota}' > /etc/kyt/limit/{protocol}/quota/{username}")
+            
+        print("SUCCESS")
+except Exception as e:
+    print(f"ERROR: {str(e)}")
+PYTHON;
+                    $res = $vpnService->executeBashWithStdin("python3 -", $script);
+                    $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
+                }
+
+                if ($res && $res['success']) {
+                    if ($protocol !== 'ssh') {
+                        $vpnService->executeBash("systemctl restart xray");
+                    }
+                    $vpnService->registerAccountToDb('', $protocol, $userStr, $days, true);
+                    
+                    \App\Models\Notification::create([
+                        'user_id' => $user->id,
+                        'type' => 'order',
+                        'message' => "Perpanjangan VPN {$protocol} ({$userStr}) berhasil. Masa aktif bertambah {$days} hari.",
+                    ]);
+                } else {
+                    throw new \Exception("Gagal eksekusi perpanjangan VPN di sistem.");
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error("Failed to renew VPN after payment: " . $e->getMessage());
+                // Refund ke saldo
+                $user->balance += $transaction->total_amount;
+                $user->save();
+                
+                \App\Models\Notification::create([
+                    'user_id' => $user->id,
+                    'type' => 'order',
+                    'message' => "Gagal memperpanjang VPN {$protocol} ({$userStr}). Alasan: " . $e->getMessage() . ". Dana sebesar Rp " . number_format($transaction->total_amount, 0, ',', '.') . " telah dikembalikan ke Saldo Akun Anda.",
+                ]);
             }
         }
 

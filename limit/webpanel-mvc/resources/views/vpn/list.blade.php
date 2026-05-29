@@ -148,35 +148,41 @@
                                 @endif
                             </td>
                             <td class="text-end pe-3 py-2" data-label="Aksi">
-                                <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-outline-info" onclick="viewConfig('{{ $protocol }}', '{{ $user['username'] }}')" title="Lihat Konfigurasi">
-                                        <i class="fas fa-qrcode"></i>
-                                    </button>
-                                    <button class="btn btn-outline-primary" onclick="openRenewModal('{{ $user['username'] }}')" title="Perpanjang">
-                                        <i class="fas fa-sync"></i>
-                                    </button>
-                                @if($user['active'] == 1)
-                                    <form action="{{ route('vpn.suspend', [$protocol, $user['username']]) }}" method="POST" class="d-inline mb-0">
-                                        @csrf
-                                        <button type="submit" class="btn btn-outline-warning" title="Suspend Akun">
-                                            <i class="fas fa-ban"></i>
-                                        </button>
-                                    </form>
+                                @if($user['is_pending_payment'] ?? false)
+                                    <a href="{{ route('checkout.show', $user['transaction_id']) }}" class="btn btn-sm btn-warning fw-bold text-dark w-100">
+                                        <i class="fas fa-wallet me-1"></i> Bayar
+                                    </a>
                                 @else
-                                    <form action="{{ route('vpn.unsuspend', [$protocol, $user['username']]) }}" method="POST" class="d-inline mb-0">
-                                        @csrf
-                                        <button type="submit" class="btn btn-outline-success" title="Aktifkan Kembali">
-                                            <i class="fas fa-play"></i>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-info" onclick="viewConfig('{{ $protocol }}', '{{ $user['username'] }}')" title="Lihat Konfigurasi">
+                                            <i class="fas fa-qrcode"></i>
                                         </button>
-                                    </form>
+                                        <button class="btn btn-outline-primary" onclick="openRenewModal('{{ $user['username'] }}')" title="Perpanjang">
+                                            <i class="fas fa-sync"></i>
+                                        </button>
+                                    @if($user['active'] == 1)
+                                        <form action="{{ route('vpn.suspend', [$protocol, $user['username']]) }}" method="POST" class="d-inline mb-0">
+                                            @csrf
+                                            <button type="submit" class="btn btn-outline-warning" title="Suspend Akun">
+                                                <i class="fas fa-ban"></i>
+                                            </button>
+                                        </form>
+                                    @else
+                                        <form action="{{ route('vpn.unsuspend', [$protocol, $user['username']]) }}" method="POST" class="d-inline mb-0">
+                                            @csrf
+                                            <button type="submit" class="btn btn-outline-success" title="Aktifkan Kembali">
+                                                <i class="fas fa-play"></i>
+                                            </button>
+                                        </form>
+                                    @endif
+                                        <form action="{{ route('vpn.delete', [$protocol, $user['username']]) }}" method="POST" class="d-inline mb-0">
+                                            @csrf
+                                            <button type="button" class="btn btn-outline-danger btn-delete" data-user="{{ $user['username'] }}" title="Hapus">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
                                 @endif
-                                    <form action="{{ route('vpn.delete', [$protocol, $user['username']]) }}" method="POST" class="d-inline mb-0">
-                                        @csrf
-                                        <button type="button" class="btn btn-outline-danger btn-delete" data-user="{{ $user['username'] }}" title="Hapus">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
-                                </div>
                             </td>
                         </tr>
                         @endforeach
@@ -395,46 +401,42 @@
         modal.show();
     }
 
-    // Live Username Check
+    // Manual Username Check
     document.addEventListener('DOMContentLoaded', function () {
         const usernameInput = document.getElementById('createUsername');
         const feedback = document.getElementById('usernameFeedback');
         const createBtn = document.getElementById('btnSubmitCreate');
-        let timeout = null;
+        const checkBtn = document.getElementById('btnCheckUsername');
 
-        if (usernameInput) {
-            usernameInput.addEventListener('input', function () {
-                clearTimeout(timeout);
-                const username = this.value.trim();
+        if (checkBtn && usernameInput) {
+            checkBtn.addEventListener('click', function () {
+                const username = usernameInput.value.trim();
 
                 if (username.length < 3) {
-                    feedback.innerHTML = '';
-                    if (createBtn) createBtn.disabled = false;
+                    feedback.innerHTML = '<span class="text-warning">Username minimal 3 karakter</span>';
                     return;
                 }
 
-                feedback.innerHTML = '<span class="text-secondary"><i class="fas fa-spinner fa-spin me-1"></i>Mengecek ketersediaan...</span>';
+                feedback.innerHTML = '<span class="text-secondary"><i class="fas fa-spinner fa-spin me-1"></i>Mengecek...</span>';
 
-                timeout = setTimeout(() => {
-                    fetch(`/vpn/check-username?username=${encodeURIComponent(username)}`)
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.exists) {
-                                feedback.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle me-1"></i>Username sudah terpakai</span>';
-                                usernameInput.classList.add('is-invalid');
-                                usernameInput.classList.remove('is-valid');
-                                if (createBtn) createBtn.disabled = true;
-                            } else {
-                                feedback.innerHTML = '<span class="text-success"><i class="fas fa-check-circle me-1"></i>Username tersedia</span>';
-                                usernameInput.classList.add('is-valid');
-                                usernameInput.classList.remove('is-invalid');
-                                if (createBtn) createBtn.disabled = false;
-                            }
-                        })
-                        .catch(error => {
-                            feedback.innerHTML = '';
-                        });
-                }, 500); // Debounce 500ms
+                fetch(`/vpn/check-username?username=${encodeURIComponent(username)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.exists) {
+                            feedback.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle me-1"></i>Username sudah terpakai</span>';
+                            usernameInput.classList.add('is-invalid');
+                            usernameInput.classList.remove('is-valid');
+                            if (createBtn) createBtn.disabled = true;
+                        } else {
+                            feedback.innerHTML = '<span class="text-success"><i class="fas fa-check-circle me-1"></i>Username tersedia</span>';
+                            usernameInput.classList.add('is-valid');
+                            usernameInput.classList.remove('is-invalid');
+                            if (createBtn) createBtn.disabled = false;
+                        }
+                    })
+                    .catch(error => {
+                        feedback.innerHTML = '<span class="text-danger">Gagal mengecek username</span>';
+                    });
             });
         }
     });
@@ -501,7 +503,10 @@
                 <div class="modal-body p-4">
                     <div class="mb-3">
                         <label class="form-label fw-bold text-secondary">Username</label>
-                        <input type="text" name="username" id="createUsername" class="form-control form-control-sm" required>
+                        <div class="input-group">
+                            <input type="text" name="username" id="createUsername" class="form-control form-control-sm" required>
+                            <button class="btn btn-outline-secondary btn-sm" type="button" id="btnCheckUsername">Cek Ketersediaan</button>
+                        </div>
                         <small id="usernameFeedback" class="form-text mt-1"></small>
                     </div>
                     @if($protocol === 'ssh')
@@ -539,6 +544,19 @@
                     @endif
                     
                     @if(Auth::user()->role === 'customer')
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary">Metode Pembayaran</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_method" id="paySaldo" value="saldo" checked>
+                                <label class="form-check-label" for="paySaldo">Saldo Akun (Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }})</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_method" id="payQris" value="qris">
+                                <label class="form-check-label" for="payQris">QRIS (Otomatis)</label>
+                            </div>
+                        </div>
+                    </div>
                     <div class="alert alert-info border-0 shadow-sm mt-3 mb-0">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
@@ -601,6 +619,19 @@
                     @endif
 
                     @if(Auth::user()->role === 'customer')
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary">Metode Pembayaran</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_method" id="renewPaySaldo" value="saldo" checked>
+                                <label class="form-check-label" for="renewPaySaldo">Saldo Akun (Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }})</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_method" id="renewPayQris" value="qris">
+                                <label class="form-check-label" for="renewPayQris">QRIS (Otomatis)</label>
+                            </div>
+                        </div>
+                    </div>
                     <div class="alert alert-info border-0 shadow-sm mt-3 mb-0">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>

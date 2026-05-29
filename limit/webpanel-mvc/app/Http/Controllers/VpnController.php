@@ -54,6 +54,35 @@ class VpnController extends Controller
         
         $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
         
+        // Tambahkan akun yang berstatus pending pembayaran (QRIS)
+        $pendingQuery = \App\Models\Transaction::where('type', 'vpn_purchase_qris')
+            ->where('status', 'pending');
+            
+        if ($authUser->role === 'customer') {
+            $pendingQuery->where('user_id', $authUser->id);
+        }
+        
+        $pendingTxs = $pendingQuery->get();
+        foreach ($pendingTxs as $tx) {
+            $meta = is_string($tx->metadata) ? json_decode($tx->metadata, true) : $tx->metadata;
+            if (isset($meta['protocol']) && $meta['protocol'] === $protocol) {
+                // Check if expired
+                if (\Carbon\Carbon::now()->diffInMinutes($tx->created_at) >= 5) {
+                    $tx->update(['status' => 'cancelled']);
+                    continue;
+                }
+                
+                $parsedUsers[] = [
+                    'username' => $meta['username'] ?? 'unknown',
+                    'exp' => \Carbon\Carbon::now()->addDays($meta['days'] ?? 0)->format('Y-m-d'),
+                    'status' => 'Menunggu Pembayaran',
+                    'is_pending_payment' => true,
+                    'transaction_id' => $tx->id,
+                    'creator_name' => $authUser->role === 'admin' ? ($tx->user->username ?? $tx->user->name) : 'Anda'
+                ];
+            }
+        }
+        
         return view('vpn.list', compact('protocol', 'parsedUsers', 'basePrice'));
     }
 
@@ -114,7 +143,8 @@ class VpnController extends Controller
             'limit_ip' => 'nullable|integer|min:1',
             'expired' => 'required|integer|min:1|max:365',
             'sni_config' => 'nullable|string|in:1,2,3',
-            'quota' => 'nullable|integer|min:0'
+            'quota' => 'nullable|integer|min:0',
+            'payment_method' => 'nullable|string|in:saldo,qris'
         ]);
 
         $userStr = $validated['username'];
@@ -123,6 +153,7 @@ class VpnController extends Controller
         $ip = $validated['limit_ip'] ?? '1';
         $sni = $validated['sni_config'] ?? '3';
         $quota = $validated['quota'] ?? '0';
+        $paymentMethod = $validated['payment_method'] ?? 'saldo';
 
         $authUser = auth()->user();
 
@@ -149,7 +180,7 @@ class VpnController extends Controller
                 return back()->with('sweet_error', "Gagal membuat akun: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
             }
 
-            if ($authUser->balance < $totalPrice) {
+            if ($paymentMethod === 'saldo' && $authUser->balance < $totalPrice) {
                 return back()->with('sweet_error', "Saldo tidak mencukupi. Total tagihan Rp " . number_format($totalPrice, 0, ',', '.') . ", sedangkan saldo Anda Rp " . number_format($authUser->balance, 0, ',', '.'))->withInput();
             }
         }
@@ -165,6 +196,33 @@ class VpnController extends Controller
             if (intval(trim($resCheck['output'])) === 1) {
                 return back()->with('sweet_error', "Gagal membuat akun: Username '$userStr' sudah terdaftar di sistem SSH!")->withInput();
             }
+        }
+
+        if ($authUser->role === 'customer' && $paymentMethod === 'qris' && $totalPrice > 0) {
+            $uniqueCode = rand(1, 100);
+            $finalTotal = $totalPrice + $uniqueCode;
+            
+            $trx = \App\Models\Transaction::create([
+                'reference' => 'VPN-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                'user_id' => $authUser->id,
+                'type' => 'vpn_purchase_qris',
+                'amount' => $totalPrice,
+                'unique_code' => $uniqueCode,
+                'total_amount' => $finalTotal,
+                'status' => 'pending',
+                'description' => "Pembelian VPN $protocol ($userStr) $exp Hari",
+                'metadata' => [
+                    'protocol' => $protocol,
+                    'username' => $userStr,
+                    'password' => $pw,
+                    'days' => $exp,
+                    'limit_ip' => $ip,
+                    'sni_config' => $sni,
+                    'quota' => $quota
+                ]
+            ]);
+
+            return redirect()->route('checkout.show', $trx->id)->with('sweet_success', 'Pesanan dibuat. Silakan selesaikan pembayaran.');
         }
 
         $res = null;
@@ -285,12 +343,14 @@ class VpnController extends Controller
         $validated = $request->validate([
             'days' => 'required|integer|min:1|max:365',
             'quota' => 'nullable|integer|min:0',
-            'limit_ip' => 'nullable|integer|min:1'
+            'limit_ip' => 'nullable|integer|min:1',
+            'payment_method' => 'nullable|string|in:saldo,qris'
         ]);
         
         $days = $validated['days'];
         $quota = $validated['quota'] ?? 0;
         $limit_ip = $validated['limit_ip'] ?? 1;
+        $paymentMethod = $validated['payment_method'] ?? 'saldo';
 
         $totalPrice = 0;
 
@@ -309,9 +369,34 @@ class VpnController extends Controller
                 return back()->with('sweet_error', "Gagal perpanjang: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
             }
 
-            if ($authUser->balance < $totalPrice) {
+            if ($paymentMethod === 'saldo' && $authUser->balance < $totalPrice) {
                 return back()->with('sweet_error', "Saldo tidak mencukupi untuk perpanjangan. Tagihan: Rp " . number_format($totalPrice, 0, ',', '.'))->withInput();
             }
+        }
+
+        if ($authUser->role === 'customer' && $paymentMethod === 'qris' && $totalPrice > 0) {
+            $uniqueCode = rand(1, 100);
+            $finalTotal = $totalPrice + $uniqueCode;
+            
+            $trx = \App\Models\Transaction::create([
+                'reference' => 'VPNR-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                'user_id' => $authUser->id,
+                'type' => 'vpn_renew_qris',
+                'amount' => $totalPrice,
+                'unique_code' => $uniqueCode,
+                'total_amount' => $finalTotal,
+                'status' => 'pending',
+                'description' => "Perpanjangan VPN $protocol ($user) $days Hari",
+                'metadata' => [
+                    'protocol' => $protocol,
+                    'username' => $user,
+                    'days' => $days,
+                    'limit_ip' => $limit_ip,
+                    'quota' => $quota
+                ]
+            ]);
+
+            return redirect()->route('checkout.show', $trx->id)->with('sweet_success', 'Pesanan perpanjangan dibuat. Silakan selesaikan pembayaran.');
         }
 
         if ($protocol === 'ssh') {
