@@ -20,9 +20,9 @@ class CheckoutController extends Controller
         $protocol = $meta['protocol'] ?? 'vmess';
 
         if ($transaction->status === 'success') {
-            return redirect()->route('vpn.index', $protocol)->with('sweet_success', 'Pembayaran berhasil dan pesanan telah diproses.');
+            return redirect()->route('checkout.success', $id);
         } elseif ($transaction->status === 'cancelled') {
-            return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Transaksi telah dibatalkan atau kedaluwarsa.');
+            return redirect()->route('checkout.cancelled', $id);
         } elseif ($transaction->status !== 'pending') {
             return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Status transaksi tidak valid.');
         }
@@ -30,7 +30,7 @@ class CheckoutController extends Controller
         // Check if 5 minutes expired for pending transactions
         if (Carbon::now()->diffInMinutes($transaction->created_at) >= 5) {
             $transaction->update(['status' => 'cancelled']);
-            return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Waktu pembayaran telah habis. Pesanan dibatalkan.');
+            return redirect()->route('checkout.cancelled', $id);
         }
 
         $settings = \App\Models\Setting::pluck('value', 'key')->toArray();
@@ -54,7 +54,35 @@ class CheckoutController extends Controller
 
         $transaction->update(['status' => 'cancelled']);
         $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
-        $protocol = $meta['protocol'] ?? 'vmess';
-        return redirect()->route('vpn.index', $protocol)->with('sweet_success', 'Pesanan berhasil dibatalkan.');
+        $transaction->update(['status' => 'cancelled']);
+
+        return redirect()->route('checkout.cancelled', $id);
+    }
+    
+    public function success($id)
+    {
+        $transaction = Transaction::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
+            ->where('status', 'success')
+            ->firstOrFail();
+            
+        $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+        
+        return view('customer.payment-success', compact('transaction', 'meta'));
+    }
+    
+    public function cancelled($id)
+    {
+        $transaction = Transaction::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
+            ->where('status', 'cancelled')
+            ->firstOrFail();
+            
+        $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+        $reason = $meta['cancel_reason'] ?? 'Dibatalkan oleh user atau waktu pembayaran habis.';
+        
+        return view('customer.payment-cancelled', compact('transaction', 'meta', 'reason'));
     }
 }

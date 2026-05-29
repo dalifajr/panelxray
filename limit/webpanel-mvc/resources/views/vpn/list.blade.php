@@ -119,7 +119,9 @@
                             }
                             
                             $status = 'active';
-                            if ($user['active'] == 0) {
+                            if ($user['is_pending_payment'] ?? false) {
+                                $status = 'pending';
+                            } elseif ($user['active'] == 0) {
                                 $status = 'suspended';
                             } elseif ($daysLeft <= 3 && $daysLeft >= 0) {
                                 $status = 'almost_expired';
@@ -137,7 +139,9 @@
                             <td class="py-2 text-secondary" data-label="Dibuat">{{ $formattedCreated }}</td>
                             <td class="py-2 text-secondary" data-label="Kedaluwarsa">{{ $formattedExp }}</td>
                             <td class="py-2" data-label="Status">
-                                @if($status === 'suspended')
+                                @if($status === 'pending')
+                                    <span class="badge bg-warning text-dark">Menunggu Pembayaran</span>
+                                @elseif($status === 'suspended')
                                     <span class="badge bg-danger">Disuspend</span>
                                 @elseif($status === 'almost_expired')
                                     <span class="badge bg-warning text-dark">Hampir Expired</span>

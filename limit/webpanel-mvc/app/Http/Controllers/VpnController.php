@@ -55,7 +55,7 @@ class VpnController extends Controller
         $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
         
         // Tambahkan akun yang berstatus pending pembayaran (QRIS)
-        $pendingQuery = \App\Models\Transaction::where('type', 'vpn_purchase_qris')
+        $pendingQuery = \App\Models\Transaction::whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
             ->where('status', 'pending');
             
         if ($authUser->role === 'customer') {

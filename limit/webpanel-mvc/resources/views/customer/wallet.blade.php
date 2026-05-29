@@ -106,8 +106,8 @@
                                 @endif
                             </td>
                             <td class="px-4">{{ $trx->description ?? '-' }}</td>
-                            <td class="px-4 text-end fw-bold {{ $trx->type == 'topup' ? 'text-success' : 'text-danger' }}">
-                                {{ $trx->type == 'topup' ? '+' : '-' }} Rp {{ number_format($trx->total_amount, 0, ',', '.') }}
+                            <td class="px-4 text-end fw-bold {{ in_array($trx->type, ['topup', 'refund']) ? 'text-success' : 'text-danger' }}">
+                                {{ in_array($trx->type, ['topup', 'refund']) ? '+' : '-' }} Rp {{ number_format($trx->total_amount, 0, ',', '.') }}
                             </td>
                             <td class="px-4 text-center">
                                 @if($trx->status == 'success')

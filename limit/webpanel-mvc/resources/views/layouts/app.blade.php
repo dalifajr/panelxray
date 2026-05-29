@@ -313,6 +313,9 @@
                   <a href="{{ route('admin.finance') }}" class="menu-item {{ request()->routeIs('admin.finance') ? 'active' : '' }}">
                       <i class="fas fa-chart-line text-success"></i> <span>Keuangan & Topup</span>
                   </a>
+                  <a href="{{ route('admin.orders') }}" class="menu-item {{ request()->routeIs('admin.orders') ? 'active' : '' }}">
+                      <i class="fas fa-shopping-cart text-info"></i> <span>Daftar Pesanan</span>
+                  </a>
                   <a href="{{ route('admin.settings') }}" class="menu-item {{ request()->routeIs('admin.settings') ? 'active' : '' }}">
                       <i class="fas fa-cog text-secondary"></i> <span>Pengaturan Sistem</span>
                   </a>

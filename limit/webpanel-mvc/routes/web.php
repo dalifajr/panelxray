@@ -49,6 +49,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/admin/notifications/broadcast', [\App\Http\Controllers\NotificationController::class, 'broadcast'])->name('admin.notifications.broadcast');
 
     Route::get('/admin/finance', [\App\Http\Controllers\WalletController::class, 'adminFinance'])->name('admin.finance');
+    
+    // Admin Orders
+    Route::get('/admin/orders', [\App\Http\Controllers\OrderController::class, 'index'])->name('admin.orders');
+    Route::post('/admin/orders/{id}/approve', [\App\Http\Controllers\OrderController::class, 'approve'])->name('admin.orders.approve');
+    Route::post('/admin/orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel'])->name('admin.orders.cancel');
 
     Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');
@@ -72,7 +77,9 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/checkout/{id}', [\App\Http\Controllers\CheckoutController::class, 'show'])->name('checkout.show');
     Route::post('/checkout/{id}/cancel', [\App\Http\Controllers\CheckoutController::class, 'cancel'])->name('checkout.cancel');
-    Route::get('/transaction/{id}/status', [\App\Http\Controllers\PaymentController::class, 'status'])->name('transaction.status');
+    Route::get('/checkout/{id}/status', [\App\Http\Controllers\PaymentController::class, 'status'])->name('transaction.status');
+    Route::get('/checkout/{id}/success', [\App\Http\Controllers\CheckoutController::class, 'success'])->name('checkout.success');
+    Route::get('/checkout/{id}/cancelled', [\App\Http\Controllers\CheckoutController::class, 'cancelled'])->name('checkout.cancelled');
 
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll'])->name('notifications.read-all');
