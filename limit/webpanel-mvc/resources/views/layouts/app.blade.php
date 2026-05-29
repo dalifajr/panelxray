@@ -109,6 +109,12 @@
             color: #475569 !important;
         }
 
+        .swal2-html-container .bg-light table td,
+        .swal2-html-container .mt-3 {
+            font-size: 0.875rem !important; /* Setara 14px */
+            line-height: 1.5 !important;
+        }
+
         /* Gaya Bootstrap Modal Minimalis (selaras dengan SweetAlert) */
         .modal-content {
             border-radius: 16px !important;
