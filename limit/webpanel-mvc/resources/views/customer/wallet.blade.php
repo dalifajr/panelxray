@@ -3,7 +3,7 @@
 @section('content')
 <div class="container-fluid px-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0 text-white">Dompet Keuangan</h2>
+        <h2 class="mb-0 text-dark fw-bold">Dompet Keuangan</h2>
     </div>
 
     <div class="row">
@@ -14,7 +14,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="text-white-50 small mb-1">Total Saldo Aktif</div>
-                            <h3 class="mb-0">Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }}</h3>
+                            <h3 class="mb-0 fw-bold">Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }}</h3>
                         </div>
                         <div class="fs-1 text-white-50 opacity-50">
                             <i class="fas fa-wallet"></i>
@@ -27,10 +27,10 @@
         <!-- Topup Form -->
         <div class="col-md-8 mb-4">
             <div class="card border-0 shadow-sm lift-hover h-100">
-                <div class="card-header bg-dark text-white border-bottom border-secondary">
-                    <h5 class="mb-0"><i class="fas fa-plus-circle me-2 text-success"></i>Isi Saldo (Top Up)</h5>
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-plus-circle me-2 text-success"></i>Isi Saldo (Top Up)</h5>
                 </div>
-                <div class="card-body bg-dark text-white">
+                <div class="card-body p-4">
                     @if($pendingTopup)
                         <div class="alert alert-warning border-0 d-flex gap-3 shadow-sm align-items-start">
                             <i class="fas fa-exclamation-triangle fs-3 text-dark mt-1"></i>
@@ -55,12 +55,12 @@
                         <form action="{{ route('wallet.topup') }}" method="POST">
                             @csrf
                             <div class="mb-3">
-                                <label class="form-label">Nominal Top Up</label>
+                                <label class="form-label fw-bold">Nominal Top Up</label>
                                 <div class="input-group">
-                                    <span class="input-group-text bg-secondary border-0 text-white">Rp</span>
-                                    <input type="number" name="amount" class="form-control bg-dark text-white border-secondary" min="5000" step="5000" placeholder="Minimal Rp 5.000" required>
+                                    <span class="input-group-text bg-light border">Rp</span>
+                                    <input type="number" name="amount" class="form-control border" min="5000" step="5000" placeholder="Minimal Rp 5.000" required>
                                 </div>
-                                <div class="form-text text-secondary">Masukkan nominal kelipatan 5000.</div>
+                                <div class="form-text">Masukkan nominal kelipatan 5000.</div>
                             </div>
                             <button type="submit" class="btn btn-success w-100">Buat Instruksi Pembayaran</button>
                         </form>
@@ -71,14 +71,14 @@
     </div>
 
     <!-- Riwayat Transaksi -->
-    <div class="card border-0 shadow-sm lift-hover">
-        <div class="card-header bg-dark text-white border-bottom border-secondary d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-history text-info me-2"></i>Riwayat Transaksi</h5>
+    <div class="card border-0 shadow-sm lift-hover mb-4">
+        <div class="card-header bg-white border-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-history text-info me-2"></i>Riwayat Transaksi</h5>
         </div>
-        <div class="card-body bg-dark p-0">
+        <div class="card-body p-0 mt-3">
             <div class="table-responsive">
-                <table class="table table-dark table-hover mb-0">
-                    <thead>
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
                         <tr>
                             <th class="px-4">Waktu</th>
                             <th class="px-4">Referensi</th>
@@ -124,7 +124,7 @@
             </div>
         </div>
         @if($transactions->hasPages())
-        <div class="card-footer bg-dark border-secondary">
+        <div class="card-footer bg-white border-0 pb-4">
             {{ $transactions->links() }}
         </div>
         @endif
