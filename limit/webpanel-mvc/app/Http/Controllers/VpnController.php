@@ -52,7 +52,9 @@ class VpnController extends Controller
             }
         }
         
-        return view('vpn.list', compact('protocol', 'parsedUsers'));
+        $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+        
+        return view('vpn.list', compact('protocol', 'parsedUsers', 'basePrice'));
     }
 
     public function master()
@@ -142,6 +144,10 @@ class VpnController extends Controller
             $extraIpCost = $ip > 1 ? ($ipPrice * ($ip - 1)) : 0; // Misal harga extra IP flat per pembuatan
             
             $totalPrice = $vpnCost + $extraIpCost;
+
+            if ($totalPrice <= 0) {
+                return back()->with('sweet_error', "Gagal membuat akun: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
+            }
 
             if ($authUser->balance < $totalPrice) {
                 return back()->with('sweet_error', "Saldo tidak mencukupi. Total tagihan Rp " . number_format($totalPrice, 0, ',', '.') . ", sedangkan saldo Anda Rp " . number_format($authUser->balance, 0, ',', '.'))->withInput();
@@ -298,6 +304,10 @@ class VpnController extends Controller
             // Hitung harga perpanjangan (hanya durasi)
             $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
             $totalPrice = round(($basePrice / 30) * $days);
+
+            if ($totalPrice <= 0) {
+                return back()->with('sweet_error', "Gagal perpanjang: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
+            }
 
             if ($authUser->balance < $totalPrice) {
                 return back()->with('sweet_error', "Saldo tidak mencukupi untuk perpanjangan. Tagihan: Rp " . number_format($totalPrice, 0, ',', '.'))->withInput();

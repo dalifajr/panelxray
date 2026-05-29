@@ -438,6 +438,53 @@
             });
         }
     });
+
+    // Modal Pricing Logic
+    const basePrice = {{ $basePrice ?? 0 }};
+    
+    function initPricing(btnClass, inputId, displayId) {
+        const btns = document.querySelectorAll(btnClass);
+        const input = document.getElementById(inputId);
+        const display = document.getElementById(displayId);
+        
+        if (!btns.length) return;
+
+        function updatePrice(days) {
+            if(display) {
+                const total = Math.round((basePrice / 30) * days);
+                display.innerText = 'Rp ' + total.toLocaleString('id-ID');
+            }
+        }
+
+        btns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                btns.forEach(b => {
+                    b.classList.remove('btn-primary', 'text-white');
+                    b.classList.add('btn-outline-primary');
+                });
+                
+                this.classList.remove('btn-outline-primary');
+                this.classList.add('btn-primary', 'text-white');
+                
+                const days = this.getAttribute('data-days');
+                if(input) input.value = days;
+                updatePrice(days);
+            });
+        });
+
+        // Initialize active state
+        const defaultBtn = document.querySelector(btnClass + '[data-days="30"]');
+        if (defaultBtn) {
+            defaultBtn.classList.remove('btn-outline-primary');
+            defaultBtn.classList.add('btn-primary', 'text-white');
+            updatePrice(30);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initPricing('.create-day-btn', 'createExpiredInput', 'createPriceDisplay');
+        initPricing('.renew-day-btn', 'renewExpiredInput', 'renewPriceDisplay');
+    });
 </script>
 
 @push('modals')
@@ -467,9 +514,14 @@
                     <input type="hidden" name="sni_config" value="3">
                     @endif
                     <div class="row mb-3">
-                        <div class="col-6">
+                        <div class="col-12 mb-3">
                             <label class="form-label fw-bold text-secondary">Masa Aktif (Hari)</label>
-                            <input type="number" name="expired" class="form-control form-control-sm" value="30" min="1" max="365" required>
+                            <input type="hidden" name="expired" id="createExpiredInput" value="30">
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach([1, 3, 7, 14, 30, 60] as $day)
+                                    <button type="button" class="btn btn-outline-primary create-day-btn" data-days="{{ $day }}">{{ $day }} Hari</button>
+                                @endforeach
+                            </div>
                         </div>
                         @if(auth()->user()->role === 'admin')
                         <div class="col-6">
@@ -483,6 +535,18 @@
                         <label class="form-label fw-bold text-secondary">Quota (GB)</label>
                         <input type="number" name="quota" class="form-control form-control-sm" value="0" min="0">
                         <small class="text-muted">0 = unlimited</small>
+                    </div>
+                    @endif
+                    
+                    @if(Auth::user()->role === 'customer')
+                    <div class="alert alert-info border-0 shadow-sm mt-3 mb-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1 fw-bold text-dark"><i class="fas fa-receipt me-2"></i>Total Tagihan</h6>
+                                <small class="text-dark">Harga per 30 hari: Rp {{ number_format($basePrice ?? 0, 0, ',', '.') }}</small>
+                            </div>
+                            <h5 class="mb-0 fw-bold text-success" id="createPriceDisplay">Rp 0</h5>
+                        </div>
                     </div>
                     @endif
                 </div>
@@ -512,9 +576,14 @@
                         <input type="hidden" name="username" id="renewUsername">
                     </div>
                     <div class="row mb-3">
-                        <div class="col-6">
+                        <div class="col-12 mb-3">
                             <label class="form-label fw-bold text-secondary">Masa Aktif (Hari)</label>
-                            <input type="number" name="days" class="form-control form-control-sm" value="30" min="1" max="365" required>
+                            <input type="hidden" name="days" id="renewExpiredInput" value="30">
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach([1, 3, 7, 14, 30, 60] as $day)
+                                    <button type="button" class="btn btn-outline-primary renew-day-btn" data-days="{{ $day }}">{{ $day }} Hari</button>
+                                @endforeach
+                            </div>
                         </div>
                         @if(auth()->user()->role === 'admin')
                         <div class="col-6">
@@ -528,6 +597,18 @@
                         <label class="form-label fw-bold text-secondary">Quota (GB)</label>
                         <input type="number" name="quota" class="form-control form-control-sm" value="0" min="0">
                         <small class="text-muted">0 = unlimited</small>
+                    </div>
+                    @endif
+
+                    @if(Auth::user()->role === 'customer')
+                    <div class="alert alert-info border-0 shadow-sm mt-3 mb-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1 fw-bold text-dark"><i class="fas fa-receipt me-2"></i>Total Tagihan</h6>
+                                <small class="text-dark">Harga per 30 hari: Rp {{ number_format($basePrice ?? 0, 0, ',', '.') }}</small>
+                            </div>
+                            <h5 class="mb-0 fw-bold text-success" id="renewPriceDisplay">Rp 0</h5>
+                        </div>
                     </div>
                     @endif
                 </div>
