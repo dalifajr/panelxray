@@ -28,6 +28,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
     Route::post('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/unlink', [ProfileController::class, 'unlinkTelegram'])->name('profile.unlink');
 
     Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
     Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');

@@ -124,7 +124,9 @@ class AuthController extends Controller
             Auth::login($user);
         } else {
             // Login langsung menggunakan Telegram
-            $user = User::where('telegram_id', $tokenData['tg_id'])->first();
+            $user = User::where('telegram_id', $tokenData['tg_id'])
+                        ->orWhere('email', $tokenData['tg_id'] . '@telegram.local')
+                        ->first();
             
             if (!$user) {
                 // Buat user baru otomatis sebagai customer
@@ -137,10 +139,13 @@ class AuthController extends Controller
                     'telegram_id' => $tokenData['tg_id']
                 ]);
             } else {
+                if (empty($user->telegram_id)) {
+                    $user->telegram_id = $tokenData['tg_id'];
+                }
                 if ($user->name === 'Admin Panel' && $fullName !== 'Admin Panel') {
                     $user->name = $fullName;
-                    $user->save();
                 }
+                $user->save();
             }
 
             if ($user->status === 'suspended') {
