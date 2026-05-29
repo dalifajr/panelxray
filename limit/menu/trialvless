@@ -167,8 +167,7 @@ ${vlesslink3}
 
 END
 
-systemctl restart xray
-systemctl restart nginx
+systemctl restart xray > /dev/null 2>&1
 if [ ! -e /etc/vless ]; then
   mkdir -p /etc/vless
 fi

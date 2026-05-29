@@ -280,8 +280,7 @@ END
 QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$vlesslink1")"
 wget -q -O /var/www/html/vless-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
 
-systemctl restart xray
-systemctl restart nginx
+systemctl restart xray > /dev/null 2>&1
 clear
 echo -e ""
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
