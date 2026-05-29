@@ -14,14 +14,22 @@ class CheckoutController extends Controller
         $transaction = Transaction::where('id', $id)
             ->where('user_id', auth()->id())
             ->whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
-            ->where('status', 'pending')
             ->firstOrFail();
 
-        // Check if 5 minutes expired
+        $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+        $protocol = $meta['protocol'] ?? 'vmess';
+
+        if ($transaction->status === 'success') {
+            return redirect()->route('vpn.index', $protocol)->with('sweet_success', 'Pembayaran berhasil dan pesanan telah diproses.');
+        } elseif ($transaction->status === 'cancelled') {
+            return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Transaksi telah dibatalkan atau kedaluwarsa.');
+        } elseif ($transaction->status !== 'pending') {
+            return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Status transaksi tidak valid.');
+        }
+
+        // Check if 5 minutes expired for pending transactions
         if (Carbon::now()->diffInMinutes($transaction->created_at) >= 5) {
             $transaction->update(['status' => 'cancelled']);
-            $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
-            $protocol = $meta['protocol'] ?? 'vmess';
             return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Waktu pembayaran telah habis. Pesanan dibatalkan.');
         }
 

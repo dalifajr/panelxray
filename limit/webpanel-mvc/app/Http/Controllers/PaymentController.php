@@ -141,7 +141,7 @@ class PaymentController extends Controller
                     ];
                     $cmd = $scriptMap[$protocol] ?? 'addws';
                     $inputLines = [$sni, $userStr, $exp, $quota, $ip];
-                    $res = $vpnService->pipeInputToCommand($inputLines, $cmd);
+                    $res = $vpnService->executeBashWithStdin($cmd, implode("\n", $inputLines) . "\n");
                 }
 
                 if ($res && $res['success']) {
