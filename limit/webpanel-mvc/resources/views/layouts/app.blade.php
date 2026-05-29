@@ -125,7 +125,7 @@
     <!-- Main Content -->
     <div class="{{ Auth::check() ? 'main-content position-relative' : '' }}">
         @if(Auth::check())<div class="main-background"></div>@endif
-        <div class="container-fluid position-relative px-4 py-4" style="z-index: 1;">
+        <div class="container-fluid position-relative px-4 py-4">
             @yield('content')
         </div>
     </div>
@@ -135,6 +135,8 @@
     @endif
     
 </div>
+
+@stack('modals')
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>

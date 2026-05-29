@@ -1,6 +1,26 @@
 @extends('layouts.app')
 
 @section('content')
+<style>
+/* Menghilangkan radius sudut pada tombol di dalam form di tengah grup */
+.btn-group > form:not(:last-child) > .btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.btn-group > form:not(:first-child) > .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 0; /* Menghilangkan border ganda */
+}
+
+/* Jika tombol pertama bukan form tapi setelahnya ada form */
+.btn-group > .btn:first-child:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+</style>
+
 <div class="container py-4">
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
@@ -283,13 +303,14 @@
         // Setup Form Action
         const protocol = '{{ $protocol }}';
         const form = document.getElementById('renewForm');
-        form.action = `/vpn/${protocol}/renew/${username}`;
+        form.action = `/vpn/${protocol}/${username}/renew`;
         
         const modal = new bootstrap.Modal(document.getElementById('renewModal'));
         modal.show();
     }
 </script>
 
+@push('modals')
 <!-- Create Modal -->
 <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -390,4 +411,5 @@
         </div>
     </div>
 </div>
+@endpush
 @endsection
