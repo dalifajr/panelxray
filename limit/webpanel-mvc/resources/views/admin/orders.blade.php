@@ -63,7 +63,7 @@
                         <tr>
                             <td>{{ $order->created_at->format('d M Y H:i') }}</td>
                             <td><span class="badge bg-light text-dark border">{{ $order->reference }}</span></td>
-                            <td>{{ $order->user->username ?? $order->user->name ?? 'Unknown' }}</td>
+                            <td>{{ $order->user?->username ?? $order->user?->name ?? 'Unknown' }}</td>
                             <td>
                                 @if($order->type == 'topup')
                                     <span class="badge bg-info">Top Up</span>
