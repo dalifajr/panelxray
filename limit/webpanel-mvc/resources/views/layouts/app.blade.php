@@ -88,6 +88,62 @@
             background-color: #f1f5f9 !important;
             color: #475569 !important;
         }
+
+        /* Gaya Bootstrap Modal Minimalis (selaras dengan SweetAlert) */
+        .modal-content {
+            border-radius: 16px !important;
+            border: none !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+        }
+        .modal-header {
+            background: transparent !important;
+            border-bottom: none !important;
+            padding: 2rem 2rem 0.5rem 2rem !important;
+        }
+        .modal-title {
+            color: #1e293b !important;
+            font-size: 1.5rem !important;
+            font-weight: 700 !important;
+        }
+        .modal-body {
+            padding: 1.5rem 2rem !important;
+            color: #64748b !important;
+        }
+        .modal-body label {
+            color: #475569 !important;
+        }
+        .modal-footer {
+            border-top: none !important;
+            padding: 0.5rem 2rem 2rem 2rem !important;
+        }
+        .modal-content .btn-primary {
+            border-radius: 10px !important;
+            padding: 0.625rem 1.5rem !important;
+            font-weight: 600 !important;
+            background-color: #0d6efd !important;
+            border: none !important;
+            box-shadow: 0 4px 6px -1px rgba(13, 110, 253, 0.2) !important;
+            transition: all 0.2s ease !important;
+        }
+        .modal-content .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 10px -1px rgba(13, 110, 253, 0.3) !important;
+        }
+        .modal-content .btn-light, .modal-content .btn-secondary {
+            border-radius: 10px !important;
+            padding: 0.625rem 1.5rem !important;
+            font-weight: 600 !important;
+            background-color: #f1f5f9 !important;
+            color: #475569 !important;
+            border: none !important;
+        }
+        .modal-content .btn-light:hover, .modal-content .btn-secondary:hover {
+            background-color: #e2e8f0 !important;
+        }
+        .modal-header .btn-close {
+            margin-right: -0.5rem;
+            margin-top: -0.5rem;
+        }
     </style>
 </head>
 <body class="bg-body-tertiary">

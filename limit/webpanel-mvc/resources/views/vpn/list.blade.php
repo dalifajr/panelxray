@@ -35,25 +35,6 @@
     white-space: nowrap;
 }
 
-/* Gradien pada Header Modal */
-.modal-header {
-    background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%) !important;
-    border: none !important;
-}
-
-/* Gradien pada Tombol Utama Modal */
-.modal-content .btn-primary {
-    background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%) !important;
-    border: none !important;
-    box-shadow: 0 4px 15px rgba(13, 71, 161, 0.3) !important;
-    transition: all 0.2s ease !important;
-}
-
-.modal-content .btn-primary:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 6px 20px rgba(13, 71, 161, 0.4) !important;
-}
-
 /* Gaya Tombol Tabel Minimalis */
 .btn-group-sm > .btn, 
 .btn-group-sm > form > .btn {
@@ -371,9 +352,9 @@
 <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white border-0">
-                <h5 class="modal-title fw-bold" id="createModalLabel"><i class="fas fa-plus-circle me-2"></i>Buat Akun {{ strtoupper($protocol) }}</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header">
+                <h5 class="modal-title" id="createModalLabel"><i class="fas fa-plus-circle me-2 text-primary"></i>Buat Akun {{ strtoupper($protocol) }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form action="{{ route('vpn.store', $protocol) }}" method="POST" id="createFormModal">
                 @csrf
@@ -429,9 +410,9 @@
 <div class="modal fade" id="renewModal" tabindex="-1" aria-labelledby="renewModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white border-0">
-                <h5 class="modal-title fw-bold" id="renewModalLabel"><i class="fas fa-sync me-2"></i>Perpanjang Akun</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header">
+                <h5 class="modal-title" id="renewModalLabel"><i class="fas fa-sync me-2 text-primary"></i>Perpanjang Akun</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" id="renewForm">
                 @csrf
