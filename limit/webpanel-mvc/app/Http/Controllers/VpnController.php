@@ -62,15 +62,12 @@ class VpnController extends Controller
 
     /**
      * Helper: Pipe input lines into a shell command on the VPS.
-     * Uses base64 encoding to avoid all quoting issues.
+     * Uses the bridge's native stdin support — no base64 nesting needed.
      */
     private function pipeInputToCommand($lines, $command)
     {
-        $content = implode("\n", $lines);
-        $b64 = base64_encode($content);
-        // executeBash base64-encodes the whole thing, but this inner base64 is for the DATA
-        // The outer wrapper decodes to: echo INNER_B64 | base64 -d | command
-        return $this->vpn->executeBash("echo $b64 | base64 -d | $command");
+        $stdinData = implode("\n", $lines) . "\n";
+        return $this->vpn->executeBashWithStdin($command, $stdinData);
     }
 
     public function store(Request $request, $protocol)

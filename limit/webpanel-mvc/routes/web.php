@@ -117,5 +117,30 @@ Route::get('/diag', function () {
     exec("sudo nsenter --mount=/proc/1/ns/mnt -- bash -c 'head -1 /etc/xray/config.json && echo CONFIG_READ_OK' 2>&1", $output6, $rc6);
     $results['17_nsenter_config_read'] = "rc=$rc6 output=" . implode(' ', $output6);
 
+    // Test 18: Bridge socket — bash write to /etc/xray
+    try {
+        $vpn = app(\App\Services\VpnService::class);
+        $r18 = $vpn->executeBash("touch /etc/xray/bridge_diag_test && echo BRIDGE_WRITE_OK && rm /etc/xray/bridge_diag_test");
+        $results['18_bridge_bash_write'] = "success={$r18['success']} output={$r18['output']} error={$r18['error']}";
+    } catch (\Exception $e) {
+        $results['18_bridge_bash_write'] = "EXCEPTION: " . $e->getMessage();
+    }
+
+    // Test 19: Bridge socket — python write to SQLite
+    try {
+        $r19 = $vpn->runPython("import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute('SELECT count(*) FROM account_registry'); print('READ_OK'); c.execute(\"UPDATE account_registry SET updated_at=updated_at WHERE id=1\"); c.commit(); print('WRITE_OK')");
+        $results['19_bridge_python_sqlite'] = "success={$r19['success']} output={$r19['output']} error={$r19['error']}";
+    } catch (\Exception $e) {
+        $results['19_bridge_python_sqlite'] = "EXCEPTION: " . $e->getMessage();
+    }
+
+    // Test 20: Bridge socket — stdin piping test
+    try {
+        $r20 = $vpn->executeBashWithStdin("cat", "hello\nworld\n");
+        $results['20_bridge_stdin_pipe'] = "success={$r20['success']} output={$r20['output']} error={$r20['error']}";
+    } catch (\Exception $e) {
+        $results['20_bridge_stdin_pipe'] = "EXCEPTION: " . $e->getMessage();
+    }
+
     return response()->json($results, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 });

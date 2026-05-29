@@ -2,110 +2,116 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class VpnService
 {
-    protected $apiUrl;
-    protected $secret;
+    const BRIDGE_SOCK = '/tmp/vpn-bridge.sock';
 
     public function __construct()
     {
-        $this->apiUrl = env('PYTHON_API_URL', 'http://127.0.0.1:1014/api/execute');
-        $this->secret = env('INTERNAL_API_SECRET', 'secret123'); // Adjust if needed
+        // No longer needs API URL — uses Unix socket bridge
     }
 
     /**
-     * Executes a command via the Python API
+     * Send a command to the VPN Bridge service via Unix socket.
      *
-     * @param string $command The main command (e.g., 'addws')
-     * @param array $args Arguments for the command
+     * @param string $cmd  The raw command/script string
+     * @param string $mode 'bash' or 'python'
+     * @param string|null $stdin Optional stdin data to pipe into the command
      * @return array ['success' => bool, 'output' => string, 'error' => string]
      */
-    public function execute($command, $args = [])
+    private function bridge($cmd, $mode = 'bash', $stdin = null)
     {
-        $cmdString = escapeshellcmd($command);
-        foreach ($args as $arg) {
-            $cmdString .= ' ' . escapeshellarg($arg);
-        }
-        
-        // Execute via sudo directly without mixing stderr so JSON parses correctly
-        $fullCommand = "sudo bash -c " . escapeshellarg("export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; export TERM=xterm; " . $cmdString);
-        
-        $output = [];
-        $returnCode = 0;
-        
-        exec($fullCommand, $output, $returnCode);
-        $outputStr = implode("\n", $output);
-        
-        Log::info("Executing CMD: " . $fullCommand);
-        Log::info("Return Code: " . $returnCode);
-        Log::info("Output: " . $outputStr);
-        
-        // The old Python API returned {ok: True, stdout: output} regardless of the exit code.
-        return [
-            'success' => true,
-            'output' => $outputStr,
-            'error' => ''
-        ];
-    }
+        $payload = json_encode([
+            'cmd' => base64_encode($cmd),
+            'mode' => $mode,
+            'stdin' => $stdin ? base64_encode($stdin) : '',
+        ]);
 
-    public function executeBash($scriptContent)
-    {
-        // Base64 encode the entire script to avoid ALL quoting/escaping issues
-        $b64 = base64_encode($scriptContent);
-        
-        // Simple, flat command: decode base64 and pipe to bash
-        // No nested quoting — the base64 string is pure alphanumeric+/+=
-        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; export TERM=xterm; echo $b64 | base64 -d | bash'";
-        
-        $output = [];
-        $returnCode = 0;
-        
-        exec($fullCommand . " 2>&1", $output, $returnCode);
-        $outputStr = implode("\n", $output);
-        
-        Log::info("executeBash CMD: " . substr($fullCommand, 0, 200) . "...");
-        Log::info("executeBash Return Code: " . $returnCode);
-        Log::info("executeBash Output: " . substr($outputStr, 0, 500));
-        
+        $sock = @stream_socket_client('unix://' . self::BRIDGE_SOCK, $errno, $errstr, 10);
+        if (!$sock) {
+            Log::error("Bridge connect failed: [$errno] $errstr");
+            return [
+                'success' => false,
+                'output' => '',
+                'error' => "Bridge unavailable: $errstr"
+            ];
+        }
+
+        // Send request
+        fwrite($sock, $payload);
+        stream_socket_shutdown($sock, STREAM_SHUT_WR);  // Signal end of request
+
+        // Read response
+        $response = stream_get_contents($sock);
+        fclose($sock);
+
+        $result = json_decode($response, true);
+        if (!$result) {
+            Log::error("Bridge invalid response: " . substr($response, 0, 200));
+            return [
+                'success' => false,
+                'output' => '',
+                'error' => 'Invalid bridge response'
+            ];
+        }
+
+        $output = trim($result['stdout'] ?? '');
+        $stderr = trim($result['stderr'] ?? '');
+        $rc = $result['rc'] ?? -1;
+
+        Log::info("Bridge [$mode] rc=$rc output=" . substr($output, 0, 500));
+        if ($stderr) {
+            Log::info("Bridge stderr: " . substr($stderr, 0, 300));
+        }
+
         return [
-            'success' => ($returnCode === 0),
-            'output' => $outputStr,
-            'error' => ($returnCode !== 0) ? "Exit code: $returnCode" : ''
+            'success' => ($rc === 0),
+            'output' => $output,
+            'error' => ($rc !== 0) ? "Exit $rc: $stderr" : ''
         ];
     }
 
     /**
-     * Execute a Python script on VPS via base64 piping.
-     * Completely bypasses shell quoting issues.
+     * Execute a bash script via the bridge.
+     */
+    public function executeBash($scriptContent)
+    {
+        return $this->bridge($scriptContent, 'bash');
+    }
+
+    /**
+     * Execute a bash command with stdin data piped in.
+     */
+    public function executeBashWithStdin($cmd, $stdinData)
+    {
+        return $this->bridge($cmd, 'bash', $stdinData);
+    }
+
+    /**
+     * Execute a Python script via the bridge.
      */
     public function runPython($script)
     {
-        $b64 = base64_encode($script);
-        $fullCommand = "sudo bash -c 'export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/kyt; echo $b64 | base64 -d | /usr/bin/kyt/.venv/bin/python 2>&1'";
-        
-        $output = [];
-        $returnCode = 0;
-        
-        exec($fullCommand . " 2>&1", $output, $returnCode);
-        $outputStr = implode("\n", $output);
-        
-        Log::info("runPython CMD: " . substr($fullCommand, 0, 300));
-        Log::info("runPython Return Code: " . $returnCode);
-        Log::info("runPython Output: " . substr($outputStr, 0, 500));
-        
-        return [
-            'success' => ($returnCode === 0),
-            'output' => $outputStr,
-            'error' => ($returnCode !== 0) ? "Exit code: $returnCode. Output: $outputStr" : ''
-        ];
+        return $this->bridge($script, 'python');
+    }
+
+    /**
+     * Legacy execute method — now routes through executeBash.
+     */
+    public function execute($command, $args = [])
+    {
+        $cmdString = $command;
+        foreach ($args as $arg) {
+            $cmdString .= ' ' . escapeshellarg($arg);
+        }
+        return $this->executeBash($cmdString);
     }
 
     public function getAccounts($service = null)
     {
-        // Fetch all accounts from SQLite database using a tiny inline python script
+        // Fetch all accounts from SQLite database
         $pythonScript = <<<PYTHON
 import sqlite3, json
 try:
@@ -129,11 +135,9 @@ PYTHON;
         $accounts = [];
 
         if ($service === 'ssh' || !$service) {
-            // Fetch SSH users using awk on /etc/passwd
             $resSsh = $this->executeBash("awk -F: '\$3>=1000 && \$1!=\"nobody\" {print \$1}' /etc/passwd");
             $sshOutput = array_filter(explode("\n", $resSsh['output']));
             
-            // For suspended ssh users, check if password hash contains !
             $resSusp = $this->executeBash("awk -F: '\$2 ~ /^!/ {print \$1}' /etc/shadow");
             $suspendedOutput = array_filter(explode("\n", $resSusp['output']));
             $suspendedSsh = array_flip($suspendedOutput);
@@ -164,17 +168,14 @@ PYTHON;
 
         if (!empty($servicesToFetch)) {
             foreach ($servicesToFetch as $svc => $marker) {
-                // Fetch Xray users from config.json magic comments
                 $grepCmd = "grep -E '^" . preg_quote($marker) . " ' /etc/xray/config.json | awk '{print \$2, \$3}'";
                 $resXray = $this->executeBash($grepCmd);
                 $lines = array_filter(explode("\n", $resXray['output']));
                 
-                // Fetch suspended users by checking /etc/kyt/suspended/<service>/
                 $resSusp = $this->executeBash("ls -1 /etc/kyt/suspended/{$svc} 2>/dev/null");
                 $suspendedOutput = array_filter(explode("\n", $resSusp['output']));
                 $suspendedSvc = array_flip(array_map('trim', $suspendedOutput));
 
-                // A single user might have 2 markers in config.json, so keep track of added users
                 $seen = [];
 
                 foreach ($lines as $line) {
@@ -222,11 +223,7 @@ PYTHON;
      */
     public function count($command, $divisor = 1)
     {
-        // For simple commands like `awk ... /etc/passwd`, we need to run them in a shell wrapper
-        // because subprocess.run takes raw commands, not shell strings by default in our python api unless shell=True
-        // Actually, the python API does `subprocess.run([command] + args)`.
-        // So we can pass `bash` as command, and `-c` and `$command` as args.
-        $res = $this->execute('bash', ['-c', $command]);
+        $res = $this->executeBash($command);
         
         if ($res['success']) {
             $val = intval(trim($res['output']));
