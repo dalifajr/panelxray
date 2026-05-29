@@ -57,6 +57,37 @@
         [data-bs-theme="dark"] .page-loader {
             background: rgba(0, 0, 0, 0.8);
         }
+
+        /* Tema SweetAlert2 Minimalis & Modern */
+        .swal2-popup {
+            border-radius: 16px !important;
+            padding: 2rem !important;
+            font-family: 'Outfit', sans-serif !important;
+        }
+
+        .swal2-title {
+            color: #1e293b !important;
+            font-size: 1.5rem !important;
+            font-weight: 700 !important;
+        }
+
+        .swal2-html-container {
+            color: #64748b !important;
+            line-height: 1.6 !important;
+        }
+
+        .swal2-confirm {
+            border-radius: 10px !important;
+            padding: 0.625rem 1.5rem !important;
+            font-weight: 600 !important;
+            box-shadow: 0 4px 6px -1px rgba(13, 110, 253, 0.2) !important;
+        }
+
+        .swal2-cancel {
+            border-radius: 10px !important;
+            background-color: #f1f5f9 !important;
+            color: #475569 !important;
+        }
     </style>
 </head>
 <body class="bg-body-tertiary">
