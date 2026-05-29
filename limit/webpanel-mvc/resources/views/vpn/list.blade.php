@@ -125,12 +125,12 @@
                             }
                         @endphp
                         <tr class="account-row border-bottom" data-username="{{ strtolower($user['username']) }}" data-status="{{ $status }}">
-                            <td class="ps-3 text-muted py-2">{{ $index + 1 }}</td>
-                            <td class="fw-bold text-primary py-2">{{ $user['username'] }}</td>
-                            <td class="py-2 fw-medium text-secondary">{{ $user['ip_limit'] ?? 1 }}</td>
-                            <td class="py-2 text-secondary">{{ $formattedCreated }}</td>
-                            <td class="py-2 text-secondary">{{ $formattedExp }}</td>
-                            <td class="py-2">
+                            <td class="ps-3 text-muted py-2" data-label="No.">{{ $index + 1 }}</td>
+                            <td class="fw-bold text-primary py-2" data-label="Username">{{ $user['username'] }}</td>
+                            <td class="py-2 fw-medium text-secondary" data-label="Limit IP">{{ $user['ip_limit'] ?? 1 }}</td>
+                            <td class="py-2 text-secondary" data-label="Dibuat">{{ $formattedCreated }}</td>
+                            <td class="py-2 text-secondary" data-label="Kedaluwarsa">{{ $formattedExp }}</td>
+                            <td class="py-2" data-label="Status">
                                 @if($status === 'suspended')
                                     <span class="badge bg-danger">Disuspend</span>
                                 @elseif($status === 'almost_expired')
@@ -141,7 +141,7 @@
                                     <span class="badge bg-success">Aktif</span>
                                 @endif
                             </td>
-                            <td class="text-end pe-3 py-2">
+                            <td class="text-end pe-3 py-2" data-label="Aksi">
                                 <div class="btn-group btn-group-sm">
                                     <button class="btn btn-outline-info" onclick="viewConfig('{{ $protocol }}', '{{ $user['username'] }}')" title="Lihat Konfigurasi">
                                         <i class="fas fa-qrcode"></i>

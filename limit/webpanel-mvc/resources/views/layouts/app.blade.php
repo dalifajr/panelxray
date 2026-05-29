@@ -61,30 +61,50 @@
         /* Tema SweetAlert2 Minimalis & Modern */
         .swal2-popup {
             border-radius: 16px !important;
-            padding: 2rem !important;
+            padding: 1.25rem !important; /* Dikurangi dari 2rem agar lebih lega di layar kecil */
             font-family: 'Outfit', sans-serif !important;
+            width: 95% !important;
+            max-width: 500px !important;
         }
 
         .swal2-title {
             color: #1e293b !important;
-            font-size: 1.5rem !important;
+            font-size: 1.25rem !important;
             font-weight: 700 !important;
+            padding: 0 !important;
+            margin: 0 0 10px 0 !important;
         }
 
         .swal2-html-container {
             color: #64748b !important;
             line-height: 1.6 !important;
+            margin: 10px 0 15px 0 !important;
+            padding: 0 !important;
+            text-align: center !important;
+        }
+
+        .swal2-actions {
+            margin-top: 15px !important;
+            gap: 10px !important;
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: row !important; /* Mencegah tombol bertumpuk (column-reverse) */
+            justify-content: center !important;
+        }
+
+        .swal2-confirm, .swal2-cancel {
+            border-radius: 10px !important;
+            padding: 0.6rem 1.5rem !important;
+            font-weight: 600 !important;
+            flex: 1 !important; /* Membuat lebar tombol seimbang */
+            margin: 0 !important;
         }
 
         .swal2-confirm {
-            border-radius: 10px !important;
-            padding: 0.625rem 1.5rem !important;
-            font-weight: 600 !important;
             box-shadow: 0 4px 6px -1px rgba(13, 110, 253, 0.2) !important;
         }
 
         .swal2-cancel {
-            border-radius: 10px !important;
             background-color: #f1f5f9 !important;
             color: #475569 !important;
         }
@@ -143,6 +163,77 @@
         .modal-header .btn-close {
             margin-right: -0.5rem;
             margin-top: -0.5rem;
+        }
+
+        /* Transformasi Tabel Menjadi Kartu pada Mobile */
+        @media (max-width: 768px) {
+            .table, 
+            .table tbody, 
+            .table tr, 
+            .table td {
+                display: block;
+                width: 100%;
+            }
+
+            .table thead {
+                display: none; /* Sembunyikan header kolom */
+            }
+
+            .account-row {
+                background: #ffffff;
+                border: 1px solid #e2e8f0 !important;
+                border-radius: 12px;
+                margin-bottom: 1.25rem;
+                padding: 1rem;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+                position: relative;
+            }
+
+            .account-row td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border: none !important;
+                padding: 0.6rem 0 !important;
+                text-align: right;
+                font-size: 0.9rem;
+            }
+
+            /* Membuat label otomatis jika ada atribut data-label di HTML */
+            .account-row td::before {
+                content: attr(data-label);
+                font-weight: 600;
+                color: #64748b;
+                text-align: left;
+                font-size: 0.8rem;
+                text-transform: uppercase;
+                margin-right: 1rem;
+            }
+
+            /* Baris terakhir (biasanya tombol aksi) */
+            .account-row td:last-child {
+                margin-top: 0.8rem;
+                padding-top: 1rem !important;
+                border-top: 1px dashed #e2e8f0 !important;
+                justify-content: center;
+            }
+        }
+
+        /* Optimalisasi Jarak pada Layar Sangat Kecil (Smartphone < 576px) */
+        @media (max-width: 576px) {
+            .main-content {
+                padding: 60px 10px 10px 10px !important; /* Kurangi padding kiri/kanan menjadi 10px */
+            }
+            .container {
+                padding-left: 0 !important;
+                padding-right: 0 !important;
+            }
+            .card {
+                border-radius: 12px !important;
+            }
+            .card-body {
+                padding: 1rem 0.75rem !important;
+            }
         }
     </style>
 </head>

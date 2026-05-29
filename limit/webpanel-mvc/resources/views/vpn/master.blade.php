@@ -83,19 +83,19 @@
                     </thead>
                     <tbody>
                         @foreach($parsedUsers as $index => $user)
-                        <tr class="border-bottom">
-                            <td class="ps-3 text-muted py-2">{{ $index + 1 }}</td>
-                            <td class="py-2"><span class="badge bg-secondary text-uppercase">{{ $user['service'] }}</span></td>
-                            <td class="fw-bold text-primary py-2">{{ $user['username'] }}</td>
-                            <td class="py-2">
+                        <tr class="account-row border-bottom">
+                            <td class="ps-3 text-muted py-2" data-label="No.">{{ $index + 1 }}</td>
+                            <td class="py-2" data-label="Protokol"><span class="badge bg-secondary text-uppercase">{{ $user['service'] }}</span></td>
+                            <td class="fw-bold text-primary py-2" data-label="Username">{{ $user['username'] }}</td>
+                            <td class="py-2" data-label="Status">
                                 @if($user['active'] == 1)
                                     <span class="badge bg-success">Aktif</span>
                                 @else
                                     <span class="badge bg-danger">Disuspend</span>
                                 @endif
                             </td>
-                            <td class="py-2 fw-medium text-secondary">{{ $user['ip_limit'] ?? 1 }}</td>
-                            <td class="py-2 text-secondary">
+                            <td class="py-2 fw-medium text-secondary" data-label="Limit IP">{{ $user['ip_limit'] ?? 1 }}</td>
+                            <td class="py-2 text-secondary" data-label="Kedaluwarsa">
                                 @php
                                     $expStr = $user['expires_at'] ?? '';
                                     if (!empty($expStr)) {
@@ -116,7 +116,7 @@
                                     {{ $formattedExp }}
                                 @endif
                             </td>
-                            <td class="text-end pe-3 py-2">
+                            <td class="text-end pe-3 py-2" data-label="Aksi">
                                 <div class="btn-group btn-group-sm">
                                     <button type="button" class="btn btn-outline-info" onclick="viewConfig('{{ $user['service'] }}', '{{ $user['username'] }}')" title="Lihat Konfigurasi">
                                         <i class="fas fa-qrcode"></i>
