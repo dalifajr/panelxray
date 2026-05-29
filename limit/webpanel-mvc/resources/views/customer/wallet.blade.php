@@ -36,15 +36,15 @@
                             <i class="fas fa-exclamation-triangle fs-3 text-dark mt-1"></i>
                             <div>
                                 <h5 class="alert-heading fw-bold text-dark mb-1">Selesaikan Pembayaran Sebelumnya</h5>
-                                <p class="mb-1 text-dark">Anda memiliki transaksi topup yang belum dibayar.</p>
+                                <p class="mb-1 text-dark">Sisa waktu pembayaran: <span id="countdown" class="fw-bold text-danger">05:00</span></p>
                                 <hr class="border-dark opacity-25">
-                                <p class="mb-1 text-dark fw-bold">Kode Unik / Total: Rp {{ number_format($pendingTopup->total_amount, 0, ',', '.') }}</p>
-                                <p class="small text-dark mb-3">Silakan bayar menggunakan QRIS di bawah ini dengan nominal <b>TEPAT SESUAI TOTAL TRANSFER</b> hingga 3 digit terakhir.</p>
+                                <p class="mb-1 text-dark fw-bold">Total Tagihan: Rp {{ number_format($pendingTopup->total_amount, 0, ',', '.') }}</p>
+                                <p class="small text-dark mb-3">Silakan scan QRIS di bawah ini dengan aplikasi pembayaran Anda.</p>
                                 
                                 <div class="text-center p-3 bg-white rounded mb-3">
-                                    <h6 class="text-dark fw-bold mb-3">QRIS Pembayaran</h6>
-                                    @if($qrisPayload)
-                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ urlencode($qrisPayload) }}" alt="QRIS" class="img-fluid rounded border shadow-sm">
+                                    @if($dynamicQris)
+                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{ urlencode($dynamicQris) }}" alt="QRIS Dinamis" class="img-fluid rounded border shadow-sm">
+                                        <div class="mt-2 text-muted small">Nominal sudah terisi otomatis</div>
                                     @else
                                         <div class="text-danger"><i class="fas fa-times-circle"></i> Admin belum mengatur QRIS.</div>
                                     @endif
@@ -135,4 +135,48 @@
         @endif
     </div>
 </div>
+
+@if($pendingTopup)
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        @php
+            $remainingSeconds = 300 - \Carbon\Carbon::now()->diffInSeconds($pendingTopup->created_at);
+            if ($remainingSeconds < 0) $remainingSeconds = 0;
+        @endphp
+        
+        var remainingSeconds = {{ $remainingSeconds }};
+        var targetTime = new Date().getTime() + (remainingSeconds * 1000);
+
+        var countdownElement = document.getElementById('countdown');
+
+        var interval = setInterval(function() {
+            var now = new Date().getTime();
+            var distance = targetTime - now;
+
+            if (distance < 0) {
+                clearInterval(interval);
+                if(countdownElement) countdownElement.innerHTML = "WAKTU HABIS";
+                window.location.reload();
+                return;
+            }
+
+            var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            minutes = minutes < 10 ? "0" + minutes : minutes;
+            seconds = seconds < 10 ? "0" + seconds : seconds;
+
+            if(countdownElement) countdownElement.innerHTML = minutes + ":" + seconds;
+        }, 1000);
+        
+        // Auto refresh page every 15 seconds to check payment status
+        setInterval(function() {
+            window.location.reload();
+        }, 15000);
+    });
+</script>
+@endpush
+@endif
+
 @endsection

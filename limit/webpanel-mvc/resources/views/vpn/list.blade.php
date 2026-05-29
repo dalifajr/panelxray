@@ -467,37 +467,6 @@
         document.getElementById('createPriceDisplay').innerText = 'Rp ' + total.toLocaleString('id-ID');
     }
 
-    document.querySelectorAll('.create-day-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.create-day-btn').forEach(b => {
-                b.classList.remove('btn-primary', 'text-white');
-                b.classList.add('btn-outline-primary');
-                if (b.dataset.trial) {
-                    b.classList.remove('btn-success', 'text-white');
-                    b.classList.add('btn-outline-success');
-                }
-            });
-            
-            if (this.dataset.trial) {
-                this.classList.remove('btn-outline-success');
-                this.classList.add('btn-success', 'text-white');
-                document.getElementById('createExpiredInput').value = this.dataset.days;
-                if (document.getElementById('payTrial')) {
-                    document.getElementById('payTrial').checked = true;
-                }
-            } else {
-                this.classList.remove('btn-outline-primary');
-                this.classList.add('btn-primary', 'text-white');
-                document.getElementById('createExpiredInput').value = this.dataset.days;
-                if (document.getElementById('paySaldo') && document.getElementById('payTrial') && document.getElementById('payTrial').checked) {
-                    document.getElementById('paySaldo').checked = true;
-                }
-            }
-            
-            calculateCreatePrice();
-        });
-    });
-
     function initPricing(btnClass, inputId, displayId) {
         const btns = document.querySelectorAll(btnClass);
         const input = document.getElementById(inputId);
@@ -539,6 +508,37 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         initPricing('.renew-day-btn', 'renewExpiredInput', 'renewPriceDisplay');
+
+        document.querySelectorAll('.create-day-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.create-day-btn').forEach(b => {
+                    b.classList.remove('btn-primary', 'text-white');
+                    b.classList.add('btn-outline-primary');
+                    if (b.dataset.trial) {
+                        b.classList.remove('btn-success', 'text-white');
+                        b.classList.add('btn-outline-success');
+                    }
+                });
+                
+                if (this.dataset.trial) {
+                    this.classList.remove('btn-outline-success');
+                    this.classList.add('btn-success', 'text-white');
+                    document.getElementById('createExpiredInput').value = this.dataset.days;
+                    if (document.getElementById('payTrial')) {
+                        document.getElementById('payTrial').checked = true;
+                    }
+                } else {
+                    this.classList.remove('btn-outline-primary');
+                    this.classList.add('btn-primary', 'text-white');
+                    document.getElementById('createExpiredInput').value = this.dataset.days;
+                    if (document.getElementById('paySaldo') && document.getElementById('payTrial') && document.getElementById('payTrial').checked) {
+                        document.getElementById('paySaldo').checked = true;
+                    }
+                }
+                
+                calculateCreatePrice();
+            });
+        });
         
         const defaultCreateBtn = document.querySelector('.create-day-btn[data-days="30"]');
         if (defaultCreateBtn) {

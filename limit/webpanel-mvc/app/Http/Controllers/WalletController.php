@@ -8,6 +8,8 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Setting;
 use Illuminate\Support\Str;
+use App\Helpers\QrisHelper;
+use Carbon\Carbon;
 
 class WalletController extends Controller
 {
@@ -17,9 +19,23 @@ class WalletController extends Controller
         
         // Find pending topup
         $pendingTopup = Auth::user()->transactions()->where('status', 'pending')->where('type', 'topup')->first();
+        
+        if ($pendingTopup) {
+            // Check if 5 minutes expired
+            if (Carbon::now()->diffInMinutes($pendingTopup->created_at) >= 5) {
+                $pendingTopup->update(['status' => 'cancelled']);
+                return redirect()->route('wallet.index')->with('sweet_error', 'Waktu pembayaran topup telah habis. Dibatalkan.');
+            }
+        }
+
         $qrisPayload = Setting::where('key', 'qris_payload')->value('value');
         
-        return view('customer.wallet', compact('transactions', 'pendingTopup', 'qrisPayload'));
+        $dynamicQris = null;
+        if ($qrisPayload && $pendingTopup) {
+            $dynamicQris = QrisHelper::generateDynamic($qrisPayload, $pendingTopup->total_amount);
+        }
+        
+        return view('customer.wallet', compact('transactions', 'pendingTopup', 'qrisPayload', 'dynamicQris'));
     }
 
     public function topup(Request $request)
