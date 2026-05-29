@@ -458,14 +458,7 @@
                     </div>
                     @else
                     <input type="hidden" name="password" value="auto">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold text-secondary">Custom SNI</label>
-                        <select name="sni_config" class="form-select form-select-sm">
-                            <option value="3">Tanpa konfigurasi (Default)</option>
-                            <option value="1">support.zoom.us</option>
-                            <option value="2">live.iflix.com</option>
-                        </select>
-                    </div>
+                    <input type="hidden" name="sni_config" value="3">
                     @endif
                     <div class="row mb-3">
                         <div class="col-6">
