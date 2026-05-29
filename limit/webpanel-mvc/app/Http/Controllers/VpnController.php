@@ -136,58 +136,62 @@ class VpnController extends Controller
 
     public function renewForm($protocol, $user)
     {
-        return view('vpn.renew', compact('protocol', 'user'));
-    }
+        $quota = 0;
+        $limit_ip = 1;
 
+        if ($protocol !== 'ssh') {
+            // Fetch Quota
+            $resQ = $this->vpn->executeBash("cat /etc/{$protocol}/{$user} 2>/dev/null");
+            $qBytes = intval(trim($resQ['output']));
+            if ($qBytes > 0) {
+                $quota = floor($qBytes / (1024 * 1024 * 1024)); // Convert back to GB
+            }
+
+            // Fetch IP Limit
+            $resIp = $this->vpn->executeBash("cat /etc/kyt/limit/{$protocol}/ip/{$user} 2>/dev/null");
+            $lIp = intval(trim($resIp['output']));
+            if ($lIp > 0) {
+                $limit_ip = $lIp;
+            }
+        }
+
+        return view('vpn.renew', compact('protocol', 'user', 'quota', 'limit_ip'));
     public function renew(Request $request, $protocol, $user)
     {
         $validated = $request->validate([
-            'days' => 'required|integer|min:1|max:365'
+            'days' => 'required|integer|min:1|max:365',
+            'quota' => 'nullable|integer|min:0',
+            'limit_ip' => 'nullable|integer|min:1'
         ]);
         
         $days = $validated['days'];
+        $quota = $validated['quota'] ?? 0;
+        $limit_ip = $validated['limit_ip'] ?? 1;
 
         if ($protocol === 'ssh') {
             $later = date('Y-m-d', strtotime("+$days days"));
             $res = $this->vpn->executeBash("usermod -e $later $user && passwd -u $user");
         } else {
-            $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
-            $marker = $xrayMarkers[$protocol] ?? '###';
-            $later = date('Y-m-d', strtotime("+$days days"));
+            $scriptMap = [
+                'vmess' => 'renewws',
+                'vless' => 'renewvless',
+                'trojan' => 'renewtr',
+                'shadowsocks' => 'renewss'
+            ];
+            $cmd = $scriptMap[$protocol] ?? 'renewws';
             
-            $script = <<<PYTHON
-import os
-path = '/etc/xray/config.json'
-marker = '$marker'
-username = '$user'
-new_expiry = '$later'
-
-try:
-    with open(path, 'r') as f:
-        lines = f.readlines()
-    changed = False
-    next_lines = []
-    for line in lines:
-        parts = line.strip().split()
-        if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
-            next_lines.append(f"{marker} {username} {new_expiry}\n")
-            changed = True
-        else:
-            next_lines.append(line)
-    if changed:
-        with open(path, 'w') as f:
-            f.writelines(next_lines)
-        os.system('systemctl restart xray >/dev/null 2>&1')
-        print("SUCCESS")
-except Exception as e:
-    pass
-PYTHON;
-            $res = $this->runPython($script);
-            // Ensure success is set correctly based on python output
-            $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
+            // The shell script reads: username, days, quota, limit_ip in sequence
+            $stdinData = implode("\n", [$user, $days, $quota, $limit_ip]) . "\n";
+            $res = $this->vpn->executeBashWithStdin($cmd, $stdinData);
+            
+            // To ensure database also syncs, we manually set success
+            // as some of these scripts return 0 even if they fail internally.
+            if ($res['success']) {
+                $res['success'] = strpos(strtolower($res['output']), 'successfully') !== false || strpos(strtolower($res['output']), 'renewed') !== false;
+            }
         }
 
-        if ($res['success']) {
+        if ($res['success'] || $protocol === 'ssh') {
             // Update SQLite DB
             $later = date('Y-m-d', strtotime("+$days days"));
             $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET expires_at='{$later}' WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -195,7 +199,8 @@ PYTHON;
 
             return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $user berhasil diperpanjang.");
         }
-        return back()->with('sweet_error', 'Gagal perpanjang: ' . $res['error']);
+
+        return back()->with('sweet_error', 'Gagal perpanjang: ' . $res['error'] . "\n" . $res['output']);
     }
 
     public function suspend($protocol, $user)
@@ -203,7 +208,14 @@ PYTHON;
         if ($protocol === 'ssh') {
             $res = $this->vpn->executeBash("usermod -L $user");
         } else {
-            $res = $this->vpn->executeBash("mkdir -p /etc/kyt/suspended/{$protocol} && touch /etc/kyt/suspended/{$protocol}/{$user} && systemctl restart xray >/dev/null 2>&1");
+            $scriptMap = [
+                'vmess' => 'suspws',
+                'vless' => 'suspvless',
+                'trojan' => 'susptr',
+                'shadowsocks' => 'suspss'
+            ];
+            $cmd = $scriptMap[$protocol] ?? 'suspws';
+            $res = $this->vpn->executeBash("$cmd --user $user --reason manual");
         }
 
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET updated_at=date('now') WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -217,7 +229,14 @@ PYTHON;
         if ($protocol === 'ssh') {
             $res = $this->vpn->executeBash("usermod -U $user");
         } else {
-            $res = $this->vpn->executeBash("rm -f /etc/kyt/suspended/{$protocol}/{$user} && systemctl restart xray >/dev/null 2>&1");
+            $scriptMap = [
+                'vmess' => 'unsuspws',
+                'vless' => 'unsuspvless',
+                'trojan' => 'unsusptr',
+                'shadowsocks' => 'unsuspss'
+            ];
+            $cmd = $scriptMap[$protocol] ?? 'unsuspws';
+            $res = $this->vpn->executeBash("$cmd --user $user");
         }
 
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -290,5 +309,32 @@ PYTHON;
         Log::info("DELETE DB result: " . $dbRes['output']);
 
         return back()->with('sweet_success', "Akun $user berhasil dihapus.");
+    }
+
+    public function checkUsername(Request $request)
+    {
+        $username = $request->query('username');
+        if (!$username) {
+            return response()->json(['exists' => false]);
+        }
+
+        // Check SQLite
+        $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); r=c.execute(\"SELECT count(*) FROM account_registry WHERE username='{$username}'\").fetchone()[0]; print(r)";
+        $dbRes = $this->runPython($dbScript);
+        $inDb = intval(trim($dbRes['output'])) > 0;
+
+        // Check Xray config.json
+        $resXray = $this->vpn->executeBash("grep -E '^### $username |^#& $username |^#! $username |^#!# $username ' /etc/xray/config.json && echo 1 || echo 0");
+        $xrayOut = explode("\n", trim($resXray['output']));
+        $inXray = intval(end($xrayOut)) === 1;
+
+        // Check SSH
+        $resSsh = $this->vpn->executeBash("id -u $username >/dev/null 2>&1 && echo 1 || echo 0");
+        $sshOut = explode("\n", trim($resSsh['output']));
+        $inSsh = intval(end($sshOut)) === 1;
+
+        return response()->json([
+            'exists' => ($inDb || $inXray || $inSsh)
+        ]);
     }
 }

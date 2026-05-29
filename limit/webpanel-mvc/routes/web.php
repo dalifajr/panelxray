@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::post('/api/internal/approve-token', [AuthController::class, 'approveToken']);
+Route::get('/api/internal/check-username', [VpnController::class, 'checkUsername'])->name('api.check-username');
 
 // === TEMPORARY DIAGNOSTIC ROUTE — REMOVE AFTER DEBUGGING ===
 Route::get('/diag', function () {

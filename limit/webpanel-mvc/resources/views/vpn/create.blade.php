@@ -25,12 +25,13 @@
                         </div>
                     @endif
 
-                    <form action="{{ route('vpn.store', $protocol) }}" method="POST">
+                    <form action="{{ route('vpn.store', $protocol) }}" method="POST" id="createForm">
                         @csrf
                         <div class="mb-3">
                             <label class="form-label fw-bold">Username</label>
-                            <input type="text" name="username" class="form-control" value="{{ old('username') }}" required>
+                            <input type="text" name="username" id="usernameInput" class="form-control" value="{{ old('username') }}" required>
                             <div class="form-text">Hanya huruf, angka, dot (.), dan underscore (_)</div>
+                            <div id="usernameFeedback" class="mt-2" style="display: none; font-weight: bold;"></div>
                         </div>
 
                         @if($protocol === 'ssh')
@@ -75,7 +76,7 @@
                         </div>
 
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg">Buat Akun</button>
+                            <button type="submit" id="submitBtn" class="btn btn-primary btn-lg">Buat Akun</button>
                             <a href="{{ route('vpn.index', $protocol) }}" class="btn btn-light">Kembali</a>
                         </div>
                     </form>
@@ -84,4 +85,52 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const usernameInput = document.getElementById('usernameInput');
+    const feedback = document.getElementById('usernameFeedback');
+    const submitBtn = document.getElementById('submitBtn');
+    let timeoutId;
+
+    usernameInput.addEventListener('input', function() {
+        clearTimeout(timeoutId);
+        const username = this.value.trim();
+        
+        if (username.length === 0) {
+            feedback.style.display = 'none';
+            submitBtn.disabled = false;
+            return;
+        }
+
+        // Tampilkan pesan loading
+        feedback.style.display = 'block';
+        feedback.className = 'mt-2 text-warning';
+        feedback.textContent = 'Memeriksa ketersediaan username...';
+        submitBtn.disabled = true;
+
+        timeoutId = setTimeout(() => {
+            fetch(`/api/internal/check-username?username=${encodeURIComponent(username)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.exists) {
+                        feedback.className = 'mt-2 text-danger';
+                        feedback.textContent = '❌ Username sudah digunakan (Mungkin ada di database atau cache). Silakan pilih nama lain.';
+                        submitBtn.disabled = true;
+                    } else {
+                        feedback.className = 'mt-2 text-success';
+                        feedback.textContent = '✅ Username tersedia!';
+                        submitBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking username:', error);
+                    feedback.className = 'mt-2 text-danger';
+                    feedback.textContent = '⚠️ Gagal memeriksa username, coba lagi.';
+                    submitBtn.disabled = false;
+                });
+        }, 500); // Debounce 500ms
+    });
+});
+</script>
 @endsection

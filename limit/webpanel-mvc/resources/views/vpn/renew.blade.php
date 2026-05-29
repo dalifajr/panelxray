@@ -31,6 +31,20 @@
                             <input type="number" name="days" class="form-control" value="30" min="1" max="365" required>
                         </div>
 
+                        @if($protocol !== 'ssh')
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Perbarui Quota (GB)</label>
+                            <input type="number" name="quota" class="form-control" value="{{ $quota ?? 0 }}" min="0">
+                            <div class="form-text">Masukkan 0 untuk unlimited. Nilai saat ini: {{ $quota ?? 0 }} GB</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Perbarui Limit IP</label>
+                            <input type="number" name="limit_ip" class="form-control" value="{{ $limit_ip ?? 1 }}" min="1">
+                            <div class="form-text">Jumlah maksimal IP yang dapat login bersamaan. Nilai saat ini: {{ $limit_ip ?? 1 }}</div>
+                        </div>
+                        @endif
+
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-info text-white btn-lg">Perpanjang Sekarang</button>
                             <a href="{{ route('vpn.index', $protocol) }}" class="btn btn-light">Batal</a>
