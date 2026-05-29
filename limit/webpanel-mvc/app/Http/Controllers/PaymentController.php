@@ -62,8 +62,8 @@ class PaymentController extends Controller
             ->first();
 
         if (!$transaction) {
-            Log::warning("Payment Listener: No pending transaction found for amount $amount from app $sourceApp");
-            return response()->json(['status' => 'error', 'message' => 'Transaction not found'], 404);
+            Log::info("Payment Listener: No pending transaction found for amount $amount from app $sourceApp (Ignored)");
+            return response()->json(['status' => 'ignored', 'message' => 'Transaction not found, but payload received'], 200);
         }
 
         // Update metadata dengan info pembayaran
@@ -283,6 +283,31 @@ PYTHON;
             }
         }
 
-        return response()->json(['status' => 'success', 'message' => 'Payment processed']);
+        return response()->json(['status' => 'success']);
+    }
+
+    public function testConnection(Request $request)
+    {
+        $secretKey = Setting::where('key', 'payment_secret_key')->value('value');
+
+        $timestamp = $request->header('X-Timestamp');
+        $signature = $request->header('X-Signature');
+
+        if (!$timestamp || !$signature) {
+            return response()->json(['status' => 'error', 'message' => 'Missing required headers'], 400);
+        }
+
+        if (!$secretKey) {
+            return response()->json(['status' => 'error', 'message' => 'Secret key is not configured in system'], 500);
+        }
+
+        $body = $request->getContent();
+        $expectedSignature = hash_hmac('sha256', $timestamp . '.' . $body, $secretKey);
+
+        if (!hash_equals($expectedSignature, $signature)) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized: Invalid signature'], 401);
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Connection OK']);
     }
 }

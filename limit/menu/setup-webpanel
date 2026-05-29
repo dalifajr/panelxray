@@ -156,6 +156,13 @@ systemctl daemon-reload
 systemctl restart nginx
 systemctl restart php8.4-fpm
 
+# Setup Cron Job for Laravel Scheduler
+echo -e "[\e[32mINFO\e[0m] Mengkonfigurasi Cron Job untuk Web Panel..."
+CRON_FILE="/etc/cron.d/vpnxray-webpanel"
+echo "* * * * * root cd /var/www/webpanel-mvc && php artisan schedule:run >> /dev/null 2>&1" > "$CRON_FILE"
+chmod 644 "$CRON_FILE"
+systemctl restart cron || systemctl restart crond
+
 echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses langsung melalui https://$DOMAIN"
 echo -e "[\e[32mINFO\e[0m] Pastikan Bot Telegram Anda sedang berjalan untuk proses otentikasi."
 

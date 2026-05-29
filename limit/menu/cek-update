@@ -749,6 +749,13 @@ sync_laravel_webpanel() {
     chown -R www-data:www-data "$web_dir" 2>/dev/null || true
     mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
     chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
+    
+    # Setup Cron Job for Laravel Scheduler
+    echo -e "${yellow}Mengkonfigurasi Cron Job untuk Web Panel...${NC}"
+    local cron_file="/etc/cron.d/vpnxray-webpanel"
+    echo "* * * * * root cd $web_dir && php artisan schedule:run >> /dev/null 2>&1" > "$cron_file"
+    chmod 644 "$cron_file"
+    systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null || true
   fi
 }
 

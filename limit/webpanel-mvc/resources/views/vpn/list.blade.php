@@ -409,6 +409,12 @@
         const checkBtn = document.getElementById('btnCheckUsername');
 
         if (checkBtn && usernameInput) {
+            usernameInput.addEventListener('input', function() {
+                if (createBtn) createBtn.disabled = true;
+                feedback.innerHTML = '<span class="text-secondary">Silakan cek ketersediaan username</span>';
+                usernameInput.classList.remove('is-valid', 'is-invalid');
+            });
+
             checkBtn.addEventListener('click', function () {
                 const username = usernameInput.value.trim();
 
@@ -533,6 +539,11 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         initPricing('.renew-day-btn', 'renewExpiredInput', 'renewPriceDisplay');
+        
+        const defaultCreateBtn = document.querySelector('.create-day-btn[data-days="30"]');
+        if (defaultCreateBtn) {
+            defaultCreateBtn.click();
+        }
     });
 </script>
 
@@ -627,7 +638,7 @@
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary px-4" id="btnSubmitCreate">Buat Akun</button>
+                    <button type="submit" class="btn btn-primary px-4" id="btnSubmitCreate" disabled>Buat Akun</button>
                 </div>
             </form>
         </div>

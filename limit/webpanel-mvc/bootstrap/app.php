@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'api/*',
             'listener/payment',
+            'listener/test-connection',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

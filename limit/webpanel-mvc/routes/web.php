@@ -25,6 +25,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Webhook listener payment from Notification Listener app
 Route::post('/listener/payment', [\App\Http\Controllers\PaymentController::class, 'processListener']);
+Route::post('/listener/test-connection', [\App\Http\Controllers\PaymentController::class, 'testConnection']);
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
