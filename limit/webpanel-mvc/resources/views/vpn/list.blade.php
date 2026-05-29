@@ -79,6 +79,7 @@
             <select id="statusFilter" class="form-select">
                 <option value="all">Semua Status</option>
                 <option value="active">Aktif</option>
+                <option value="pending">Menunggu Pembayaran</option>
                 <option value="almost_expired">Hampir Expired</option>
                 <option value="expired">Expired</option>
                 <option value="suspended">Disuspend</option>

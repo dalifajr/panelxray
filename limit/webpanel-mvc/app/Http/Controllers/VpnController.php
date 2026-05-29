@@ -75,10 +75,13 @@ class VpnController extends Controller
                     
                     $parsedUsers[] = [
                         'username' => $meta['username'] ?? 'unknown',
-                        'exp' => \Carbon\Carbon::now()->addDays($meta['days'] ?? 0)->format('Y-m-d'),
+                        'created_at' => $tx->created_at->format('Y-m-d'),
+                        'expires_at' => \Carbon\Carbon::now()->addDays($meta['days'] ?? 0)->format('Y-m-d'),
+                        'ip_limit' => $meta['limit_ip'] ?? 1,
+                        'quota' => $meta['quota'] ?? 0,
                         'status' => 'Menunggu Pembayaran',
                         'is_pending_payment' => true,
-                        'active' => 0, // Fallback active status for list view
+                        'active' => 0,
                         'transaction_id' => $tx->id,
                         'creator_name' => $authUser->role === 'admin' ? ($tx->user?->username ?? $tx->user?->name ?? 'Unknown') : 'Anda'
                     ];

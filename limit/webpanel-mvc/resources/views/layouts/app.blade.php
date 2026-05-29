@@ -287,8 +287,8 @@
                   {{ substr(Auth::user()->name, 0, 1) }}
                 </div>
                 <div class="user-info d-none d-md-block">
-                    <div class="fw-bold text-white">{{ Auth::user()->name }}</div>
-                    <div class="text-white-50 small">{{ Auth::user()->role === 'admin' ? 'Administrator' : 'Customer' }}</div>
+                    <div class="fw-bold text-dark">{{ Auth::user()->name }}</div>
+                    <div class="text-muted small">{{ Auth::user()->role === 'admin' ? 'Administrator' : 'Customer' }}</div>
                 </div>
             </div>
             <div class="px-3 mb-3 d-none d-md-block">
