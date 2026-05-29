@@ -419,7 +419,7 @@
 
                 feedback.innerHTML = '<span class="text-secondary"><i class="fas fa-spinner fa-spin me-1"></i>Mengecek...</span>';
 
-                fetch(`/vpn/check-username?username=${encodeURIComponent(username)}`)
+                fetch(`/api/internal/check-username?username=${encodeURIComponent(username)}`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.exists) {

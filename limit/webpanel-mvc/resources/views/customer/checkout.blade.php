@@ -48,10 +48,13 @@
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Waktu pembuatan transaksi dalam milliseconds
-        var createdAt = new Date("{{ $transaction->created_at->toIso8601String() }}").getTime();
-        // Target adalah 5 menit dari created_at
-        var targetTime = createdAt + (5 * 60 * 1000);
+        @php
+            $remainingSeconds = 300 - \Carbon\Carbon::now()->diffInSeconds($transaction->created_at);
+            if ($remainingSeconds < 0) $remainingSeconds = 0;
+        @endphp
+        
+        var remainingSeconds = {{ $remainingSeconds }};
+        var targetTime = new Date().getTime() + (remainingSeconds * 1000);
 
         var countdownElement = document.getElementById('countdown');
 

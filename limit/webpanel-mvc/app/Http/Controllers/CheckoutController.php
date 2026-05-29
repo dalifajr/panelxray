@@ -13,14 +13,16 @@ class CheckoutController extends Controller
     {
         $transaction = Transaction::where('id', $id)
             ->where('user_id', auth()->id())
-            ->where('type', 'vpn_purchase_qris')
+            ->whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
             ->where('status', 'pending')
             ->firstOrFail();
 
         // Check if 5 minutes expired
         if (Carbon::now()->diffInMinutes($transaction->created_at) >= 5) {
             $transaction->update(['status' => 'cancelled']);
-            return redirect()->route('vpn.master')->with('sweet_error', 'Waktu pembayaran telah habis. Pesanan dibatalkan.');
+            $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+            $protocol = $meta['protocol'] ?? 'vmess';
+            return redirect()->route('vpn.index', $protocol)->with('sweet_error', 'Waktu pembayaran telah habis. Pesanan dibatalkan.');
         }
 
         $settings = \App\Models\Setting::pluck('value', 'key')->toArray();
@@ -38,11 +40,13 @@ class CheckoutController extends Controller
     {
         $transaction = Transaction::where('id', $id)
             ->where('user_id', auth()->id())
-            ->where('type', 'vpn_purchase_qris')
+            ->whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
             ->where('status', 'pending')
             ->firstOrFail();
 
         $transaction->update(['status' => 'cancelled']);
-        return redirect()->route('vpn.master')->with('sweet_success', 'Pesanan berhasil dibatalkan.');
+        $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+        $protocol = $meta['protocol'] ?? 'vmess';
+        return redirect()->route('vpn.index', $protocol)->with('sweet_success', 'Pesanan berhasil dibatalkan.');
     }
 }
