@@ -156,6 +156,8 @@ class VpnController extends Controller
         }
 
         return view('vpn.renew', compact('protocol', 'user', 'quota', 'limit_ip'));
+    }
+
     public function renew(Request $request, $protocol, $user)
     {
         $validated = $request->validate([
