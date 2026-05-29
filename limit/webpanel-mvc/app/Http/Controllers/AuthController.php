@@ -48,7 +48,8 @@ class AuthController extends Controller
         // Store in cache for 10 minutes as pending
         Cache::put('login_token_' . $token, [
             'status' => 'pending',
-            'tg_id' => null
+            'tg_id' => null,
+            'user_id' => Auth::check() ? Auth::id() : null
         ], now()->addMinutes(10));
 
         // Redirect to Telegram Bot with the token
@@ -76,10 +77,24 @@ class AuthController extends Controller
             return response()->json(['error' => 'Token expired or invalid'], 404);
         }
 
-        Cache::put($cacheKey, [
-            'status' => 'approved',
-            'tg_id' => $tgId
-        ], now()->addMinutes(10));
+        $tokenData = Cache::get($cacheKey);
+
+        if (!empty($tokenData['user_id'])) {
+            $existingTgUser = User::where('telegram_id', $tgId)
+                                  ->where('id', '!=', $tokenData['user_id'])
+                                  ->first();
+            if ($existingTgUser) {
+                return response()->json([
+                    'error' => 'duplicate', 
+                    'message' => "Akun Telegram ini sudah tertaut dengan user: " . ($existingTgUser->username ?? 'Tidak diketahui')
+                ], 400);
+            }
+        }
+
+        $tokenData['status'] = 'approved';
+        $tokenData['tg_id'] = $tgId;
+
+        Cache::put($cacheKey, $tokenData, now()->addMinutes(10));
 
         return response()->json(['success' => true]);
     }

@@ -43,22 +43,13 @@ async def start(event):
 
 async def handle_login_token(event, token):
     logging.info("Entering handle_login_token with token: %s for sender_id: %s", token, event.sender_id)
-    try:
-        is_admin = is_admin_user(str(event.sender_id))
-        logging.info("is_admin_user returned: %s", is_admin)
-    except Exception as e:
-        logging.error("is_admin_user crashed: %s", e)
-        is_admin = False
-
-    if not is_admin:
-        await event.reply("⛔ Hanya admin yang dapat login ke Web Panel.")
-        return
         
     try:
         domain = globals().get("DOMAIN", "localhost")
         logging.info("Using domain: %s", domain)
         # Call Laravel API to approve token
         import urllib.request
+        import urllib.error
         import json
         import ssl
         req = urllib.request.Request(
@@ -70,18 +61,26 @@ async def handle_login_token(event, token):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
-            res_data = json.loads(response.read().decode())
-            logging.info("API response: %s", res_data)
-            
-        await event.reply(
-            f"✅ **Login Berhasil!**\n\n"
-            f"Token `{token}` telah diotorisasi untuk sesi admin Anda.\n"
-            f"Silakan kembali ke browser Anda atau klik link di bawah ini:",
-            buttons=[[Button.url("Buka Web Panel", f"https://{domain}/login/verify?token={token.replace('login_', '')}")]]
-        )
+        try:
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
+                res_data = json.loads(response.read().decode())
+                logging.info("API response: %s", res_data)
+                
+            await event.reply(
+                f"✅ **Berhasil!**\n\n"
+                f"Token `{token}` telah diotorisasi.\n"
+                f"Silakan kembali ke browser Anda atau klik link di bawah ini:",
+                buttons=[[Button.url("Buka Web Panel", f"https://{domain}/login/verify?token={token.replace('login_', '')}")]]
+            )
+        except urllib.error.HTTPError as e:
+            try:
+                err_data = json.loads(e.read().decode())
+                err_msg = err_data.get('message', err_data.get('error', str(e)))
+                await event.reply(f"❌ **Gagal:**\n{err_msg}")
+            except Exception:
+                await event.reply(f"❌ Gagal memproses token login (HTTP {e.code})")
     except Exception as e:
         logging.error("Exception in handle_login_token: %s", e)
-        await event.reply(f"❌ Gagal memproses token login: {e}")
+        await event.reply(f"❌ Terjadi kesalahan internal: {e}")
 
 

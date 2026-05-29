@@ -131,7 +131,7 @@
                             <td class="ps-3 text-muted py-2" data-label="No.">{{ $index + 1 }}</td>
                             <td class="fw-bold text-primary py-2" data-label="Username">{{ $user['username'] }}</td>
                             @if(auth()->user()->role === 'admin')
-                            <td class="py-2 text-secondary" data-label="Pembuat"><span class="badge bg-secondary rounded-pill"><i class="fas fa-user-circle me-1"></i>{{ $user['creator_name'] ?? 'Sistem' }}</span></td>
+                            <td class="py-2 text-secondary" data-label="Pembuat">{{ $user['creator_name'] ?? 'Sistem' }}</td>
                             @endif
                             <td class="py-2 fw-medium text-secondary" data-label="Limit IP">{{ $user['ip_limit'] ?? 1 }}</td>
                             <td class="py-2 text-secondary" data-label="Dibuat">{{ $formattedCreated }}</td>
@@ -471,10 +471,12 @@
                             <label class="form-label fw-bold text-secondary">Masa Aktif (Hari)</label>
                             <input type="number" name="expired" class="form-control form-control-sm" value="30" min="1" max="365" required>
                         </div>
+                        @if(auth()->user()->role === 'admin')
                         <div class="col-6">
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
                             <input type="number" name="limit_ip" class="form-control form-control-sm" value="1" min="1">
                         </div>
+                        @endif
                     </div>
                     @if($protocol !== 'ssh')
                     <div class="mb-3">
@@ -514,10 +516,12 @@
                             <label class="form-label fw-bold text-secondary">Masa Aktif (Hari)</label>
                             <input type="number" name="days" class="form-control form-control-sm" value="30" min="1" max="365" required>
                         </div>
+                        @if(auth()->user()->role === 'admin')
                         <div class="col-6">
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
                             <input type="number" name="limit_ip" class="form-control form-control-sm" value="1" min="1">
                         </div>
+                        @endif
                     </div>
                     @if($protocol !== 'ssh')
                     <div class="mb-3">
