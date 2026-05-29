@@ -236,8 +236,26 @@ PYTHON;
     {
         $later = date('Y-m-d', strtotime("+$expiredDays days"));
         $isTrialStr = $isTrial ? '1' : '0';
-        $script = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"INSERT OR REPLACE INTO account_registry (tg_id, service, username, is_trial, created_at, expires_at) VALUES ('{$tg_id}', '{$service}', '{$username}', {$isTrialStr}, date('now'), '{$later}')\"); c.commit(); print('OK')";
-        return $this->runPython($script);
+        $category = ($service === 'ssh') ? 'ssh' : 'xray';
+        $script = <<<PYTHON
+import sqlite3
+import sys
+try:
+    c = sqlite3.connect('/usr/bin/kyt/database.db')
+    c.execute(
+        "INSERT OR REPLACE INTO account_registry (tg_id, service, category, username, is_trial, created_at, expires_at, active) "
+        "VALUES ('{$tg_id}', '{$service}', '{$category}', '{$username}', {$isTrialStr}, date('now', 'localtime'), '{$later}', 1)"
+    )
+    c.commit()
+    print('OK')
+except Exception as e:
+    print(f'ERROR: {e}')
+PYTHON;
+        $res = $this->runPython($script);
+        if (strpos($res['output'], 'ERROR:') !== false) {
+            \Illuminate\Support\Facades\Log::error("Failed to register account to DB: " . $res['output']);
+        }
+        return $res;
     }
 
     /**

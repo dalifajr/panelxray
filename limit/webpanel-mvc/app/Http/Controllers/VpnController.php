@@ -173,27 +173,72 @@ class VpnController extends Controller
         if ($protocol === 'ssh') {
             $later = date('Y-m-d', strtotime("+$days days"));
             $res = $this->vpn->executeBash("usermod -e $later $user && passwd -u $user");
+            $res['success'] = $res['rc'] == 0;
         } else {
-            $scriptMap = [
-                'vmess' => 'renewws',
-                'vless' => 'renewvless',
-                'trojan' => 'renewtr',
-                'shadowsocks' => 'renewss'
-            ];
-            $cmd = $scriptMap[$protocol] ?? 'renewws';
+            $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+            $marker = $xrayMarkers[$protocol] ?? '###';
+            $later = date('Y-m-d', strtotime("+$days days"));
             
-            // The shell script reads: username, days, quota, limit_ip in sequence
-            $stdinData = implode("\n", [$user, $days, $quota, $limit_ip]) . "\n";
-            $res = $this->vpn->executeBashWithStdin($cmd, $stdinData);
+            $script = <<<PYTHON
+import os
+path = '/etc/xray/config.json'
+marker = '$marker'
+username = '$user'
+new_expiry = '$later'
+protocol = '$protocol'
+quota = '$quota'
+limit_ip = '$limit_ip'
+
+# If suspended, unsuspend first by calling the script
+if os.path.exists(f"/etc/kyt/suspended/{protocol}/{username}"):
+    script_map = {'vmess': 'unsuspws', 'vless': 'unsuspvless', 'trojan': 'unsusptr', 'shadowsocks': 'unsuspss'}
+    cmd = script_map.get(protocol, 'unsuspws')
+    os.system(f"{cmd} --user {username} >/dev/null 2>&1")
+
+try:
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    changed = False
+    next_lines = []
+    for line in lines:
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[0] == marker and parts[1].lower() == username.lower():
+            next_lines.append(f"{marker} {username} {new_expiry}\\n")
+            changed = True
+        else:
+            next_lines.append(line)
+    
+    if not changed:
+        print("ERROR: User not found in config.json")
+    else:
+        with open(path, 'w') as f:
+            f.writelines(next_lines)
             
-            // To ensure database also syncs, we manually set success
-            // as some of these scripts return 0 even if they fail internally.
-            if ($res['success']) {
-                $res['success'] = strpos(strtolower($res['output']), 'successfully') !== false || strpos(strtolower($res['output']), 'renewed') !== false;
-            }
+        # Update limits
+        os.system(f"mkdir -p /etc/kyt/limit/{protocol}/ip")
+        os.system(f"echo {limit_ip} > /etc/kyt/limit/{protocol}/ip/{username}")
+        
+        os.system(f"mkdir -p /etc/{protocol}")
+        if str(quota) != "0":
+            q_bytes = int(quota) * 1024 * 1024 * 1024
+            os.system(f"echo {q_bytes} > /etc/{protocol}/{username}")
+        else:
+            os.system(f"rm -f /etc/{protocol}/{username}")
+            
+        # Update .db file
+        os.system(f"awk -v user='{username}' -v exp='{new_expiry}' '{{ if ($1 == \\"{marker}\\" && $2 == user) {{ $3 = exp }} print }}' /etc/{protocol}/.{protocol}.db > /etc/{protocol}/.{protocol}.db.tmp && mv /etc/{protocol}/.{protocol}.db.tmp /etc/{protocol}/.{protocol}.db")
+        
+        # Restart
+        os.system('systemctl restart xray >/dev/null 2>&1')
+        print("SUCCESS")
+except Exception as e:
+    print(f"ERROR: {e}")
+PYTHON;
+            $res = $this->runPython($script);
+            $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
         }
 
-        if ($res['success'] || $protocol === 'ssh') {
+        if (!empty($res['success'])) {
             // Update SQLite DB
             $later = date('Y-m-d', strtotime("+$days days"));
             $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET expires_at='{$later}' WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -288,16 +333,13 @@ try:
             f.writelines(next_lines)
         os.system('systemctl restart xray >/dev/null 2>&1')
         
-        # Clean up cache and limit files
-        srv = protocol
-        os.system(f"rm -rf /etc/kyt/limit/{srv}/ip/{username}")
-        os.system(f"rm -rf /etc/{srv}/{username}")
-        os.system(f"sed -i '/\\b{username}\\b/d' /etc/{srv}/.{srv}.db 2>/dev/null")
-        os.system(f"rm -f /etc/kyt/suspended/{srv}/{username}")
-        
-        print("SUCCESS")
-    else:
-        print("NOT_FOUND")
+    # Clean up cache, limit, and suspended files regardless of whether it was in config.json
+    srv = protocol
+    os.system(f"rm -f /etc/kyt/suspended/{srv}/{username}")
+    os.system(f"rm -rf /etc/kyt/limit/{srv}/ip/{username}")
+    os.system(f"rm -rf /etc/{srv}/{username}")
+    os.system(f"sed -i '/\\b{username}\\b/d' /etc/{srv}/.{srv}.db 2>/dev/null")
+    print("SUCCESS")
 except Exception as e:
     print(f"ERROR: {e}")
 PYTHON;

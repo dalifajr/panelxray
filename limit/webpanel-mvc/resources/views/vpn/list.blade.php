@@ -21,6 +21,8 @@
             <select id="statusFilter" class="form-select">
                 <option value="all">Semua Status</option>
                 <option value="active">Aktif</option>
+                <option value="almost_expired">Hampir Expired</option>
+                <option value="expired">Expired</option>
                 <option value="suspended">Disuspend</option>
             </select>
         </div>
@@ -39,36 +41,49 @@
                             <th>Limit IP</th>
                             <th>Dibuat</th>
                             <th>Kedaluwarsa</th>
+                            <th>Status</th>
                             <th class="text-end pe-4">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($parsedUsers as $index => $user)
-                        <tr class="account-row" data-username="{{ strtolower($user['username']) }}" data-status="{{ $user['active'] == 1 ? 'active' : 'suspended' }}">
+                        @php
+                            $createdStr = $user['created_at'] ?? '';
+                            $formattedCreated = !empty($createdStr) ? \Carbon\Carbon::parse($createdStr)->format('d M Y') : '-';
+                            $expStr = $user['expires_at'] ?? '';
+                            $formattedExp = !empty($expStr) ? \Carbon\Carbon::parse($expStr)->format('d M Y') : '-';
+                            
+                            $daysLeft = 0;
+                            if(!empty($expStr)) {
+                                $daysLeft = \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($expStr), false);
+                            }
+                            
+                            $status = 'active';
+                            if ($user['active'] == 0) {
+                                $status = 'suspended';
+                            } elseif ($daysLeft <= 3 && $daysLeft >= 0) {
+                                $status = 'almost_expired';
+                            } elseif ($daysLeft < 0) {
+                                $status = 'expired';
+                            }
+                        @endphp
+                        <tr class="account-row" data-username="{{ strtolower($user['username']) }}" data-status="{{ $status }}">
                             <td class="ps-4 text-muted">{{ $index + 1 }}</td>
                             <td class="fw-bold text-primary">{{ $user['username'] }}</td>
                             <td><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
                             <td><span class="badge bg-info text-dark">{{ $user['ip_limit'] ?? 1 }}</span></td>
-                            @php
-                                $createdStr = $user['created_at'] ?? '';
-                                $formattedCreated = !empty($createdStr) ? \Carbon\Carbon::parse($createdStr)->format('d M Y') : '-';
-                            @endphp
                             <td>{{ $formattedCreated }}</td>
+                            <td>{{ $formattedExp }}</td>
                             <td>
-                                @php
-                                    $expStr = $user['expires_at'] ?? '';
-                                    if (!empty($expStr)) {
-                                        $expDate = \Carbon\Carbon::parse($expStr);
-                                        $isExpired = $expDate->isPast();
-                                        $formattedExp = $expDate->format('d M Y');
-                                    } else {
-                                        $isExpired = false;
-                                        $formattedExp = '-';
-                                    }
-                                @endphp
-                                <span class="badge {{ $isExpired ? 'bg-danger' : 'bg-success' }}">
-                                    {{ $formattedExp }}
-                                </span>
+                                @if($status === 'suspended')
+                                    <span class="badge bg-danger">Disuspend</span>
+                                @elseif($status === 'almost_expired')
+                                    <span class="badge bg-warning text-dark">Hampir Expired</span>
+                                @elseif($status === 'expired')
+                                    <span class="badge bg-secondary">Expired</span>
+                                @else
+                                    <span class="badge bg-success">Aktif</span>
+                                @endif
                             </td>
                             <td class="text-end pe-4">
                                 @if($user['active'] == 1)
