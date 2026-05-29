@@ -259,13 +259,13 @@
             <span>VPN XRAY <span class="fw-light text-secondary fs-6 d-none d-sm-inline">| Panel Admin</span></span>
         </div>
     </div>
-      <div class="ms-auto d-flex align-items-center gap-3">
-          @php
-              $unreadCount = Auth::user()->notifications()->where('is_read', false)->count();
-          @endphp
-          <a href="{{ route('notifications.index') }}" class="btn btn-link text-decoration-none text-light position-relative p-0" style="margin-right: 15px;">
-              <i class="fas fa-bell fs-5"></i>
-              @if($unreadCount > 0)
+        <div class="ms-auto d-flex align-items-center gap-3">
+            @php
+                $unreadCount = Auth::user()->notifications()->where('is_read', false)->count();
+            @endphp
+            <a href="{{ route('notifications.index') }}" class="btn btn-link text-decoration-none text-dark position-relative p-0" style="margin-right: 15px;">
+                <i class="fas fa-bell fs-5"></i>
+                @if($unreadCount > 0)
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.65rem;">
                   {{ $unreadCount > 99 ? '99+' : $unreadCount }}
               </span>
@@ -282,22 +282,22 @@
 
 <div class="app-container" style="padding-top: 0;">
     <div class="sidebar" id="sidebar">
-        <div class="sidebar-header d-flex align-items-center gap-3">
-            <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px; text-transform: uppercase;">
-                {{ substr(Auth::user()->name, 0, 1) }}
-              </div>
-              <div class="user-info d-none d-md-block">
-                  <div class="fw-bold text-white">{{ Auth::user()->name }}</div>
-                  <div class="text-secondary small">{{ Auth::user()->role === 'admin' ? 'Administrator' : 'Customer' }}</div>
-              </div>
-          </div>
-          <div class="px-3 mb-3 d-none d-md-block">
-              <div class="bg-dark p-2 rounded border border-secondary text-center">
-                  <div class="text-secondary small mb-1">Saldo Akun</div>
-                  <div class="fw-bold text-white mb-2">Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }}</div>
-                  <a href="{{ route('wallet.index') }}" class="btn btn-sm btn-primary w-100"><i class="fas fa-plus-circle me-1"></i>Top Up</a>
-              </div>
-          </div>
+            <div class="sidebar-header d-flex align-items-center gap-3">
+                <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px; text-transform: uppercase;">
+                  {{ substr(Auth::user()->name, 0, 1) }}
+                </div>
+                <div class="user-info d-none d-md-block">
+                    <div class="fw-bold text-dark">{{ Auth::user()->name }}</div>
+                    <div class="text-secondary small">{{ Auth::user()->role === 'admin' ? 'Administrator' : 'Customer' }}</div>
+                </div>
+            </div>
+            <div class="px-3 mb-3 d-none d-md-block">
+                <div class="bg-light p-2 rounded border text-center">
+                    <div class="text-secondary small mb-1">Saldo Akun</div>
+                    <div class="fw-bold text-dark mb-2">Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }}</div>
+                    <a href="{{ route('wallet.index') }}" class="btn btn-sm btn-primary w-100"><i class="fas fa-plus-circle me-1"></i>Top Up</a>
+                </div>
+            </div>
           <div class="menu-list">
               <div class="menu-group">
                 <a href="{{ route('dashboard') }}" class="menu-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">

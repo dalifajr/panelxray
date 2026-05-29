@@ -55,6 +55,16 @@ class WalletController extends Controller
         return back()->with('sweet_success', 'Instruksi top up berhasil dibuat. Silakan lakukan pembayaran!');
     }
 
+    public function cancelTopup()
+    {
+        $pending = Auth::user()->transactions()->where('status', 'pending')->where('type', 'topup')->first();
+        if ($pending) {
+            $pending->update(['status' => 'cancelled']);
+            return back()->with('sweet_success', 'Transaksi top up berhasil dibatalkan.');
+        }
+        return back()->with('sweet_error', 'Tidak ada transaksi yang dapat dibatalkan.');
+    }
+
     public function adminFinance(Request $request)
     {
         $filter = $request->get('filter', 'all'); // harian, mingguan, bulanan, all

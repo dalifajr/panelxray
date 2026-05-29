@@ -13,10 +13,10 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="text-white-50 small mb-1">Total Saldo Aktif</div>
+                            <div class="text-white mb-1">Total Saldo Aktif</div>
                             <h3 class="mb-0 fw-bold">Rp {{ number_format(Auth::user()->balance, 0, ',', '.') }}</h3>
                         </div>
-                        <div class="fs-1 text-white-50 opacity-50">
+                        <div class="fs-1 text-white">
                             <i class="fas fa-wallet"></i>
                         </div>
                     </div>
@@ -41,7 +41,7 @@
                                 <p class="mb-1 text-dark fw-bold">Kode Unik / Total: Rp {{ number_format($pendingTopup->total_amount, 0, ',', '.') }}</p>
                                 <p class="small text-dark mb-3">Silakan bayar menggunakan QRIS di bawah ini dengan nominal <b>TEPAT SESUAI TOTAL TRANSFER</b> hingga 3 digit terakhir.</p>
                                 
-                                <div class="text-center p-3 bg-white rounded">
+                                <div class="text-center p-3 bg-white rounded mb-3">
                                     <h6 class="text-dark fw-bold mb-3">QRIS Pembayaran</h6>
                                     @if($qrisPayload)
                                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ urlencode($qrisPayload) }}" alt="QRIS" class="img-fluid rounded border shadow-sm">
@@ -49,6 +49,11 @@
                                         <div class="text-danger"><i class="fas fa-times-circle"></i> Admin belum mengatur QRIS.</div>
                                     @endif
                                 </div>
+                                
+                                <form action="{{ route('wallet.cancel') }}" method="POST" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-danger w-100"><i class="fas fa-times-circle me-1"></i>Batalkan Top Up Ini</button>
+                                </form>
                             </div>
                         </div>
                     @else
@@ -92,7 +97,7 @@
                         @forelse($transactions as $trx)
                         <tr>
                             <td class="px-4 text-secondary small">{{ $trx->created_at->format('d M Y H:i') }}</td>
-                            <td class="px-4 font-monospace small text-info">{{ $trx->reference }}</td>
+                            <td class="px-4 font-monospace small">{{ $trx->reference }}</td>
                             <td class="px-4">
                                 @if($trx->type == 'topup')
                                 <span class="badge bg-primary">Top Up</span>
