@@ -1,5 +1,85 @@
 @extends('layouts.app')
 
+@push('styles')
+<style>
+.btn-group {
+    position: relative;
+    display: inline-flex;
+    vertical-align: middle;
+}
+
+.btn-group-sm > .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 0.375rem;
+}
+
+.table .btn {
+    display: inline-block;
+    font-weight: 500;
+    line-height: 1.5;
+    color: #4a5568;
+    text-align: center;
+    vertical-align: middle;
+    cursor: pointer;
+    user-select: none;
+    background-color: #f8f9fa;
+    border: 0.8px solid #e2e8f0;
+    padding: 9.6px 19.2px;
+    font-size: 12px;
+    border-radius: 10px;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.table .btn-group > .btn:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+}
+
+.table .btn-group > .btn:not(:first-child):not(:last-child) {
+    border-radius: 0;
+}
+
+.table .btn-group > .btn:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
+.table .btn-outline-success:hover {
+    color: #fff;
+    background-color: #198754;
+    border-color: #198754;
+}
+
+.table .btn-outline-danger:hover {
+    color: #fff;
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.table .text-end {
+    text-align: right !important;
+}
+
+.table .pe-3 {
+    padding-right: 1rem !important;
+}
+
+.table .py-2 {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+}
+
+.table td {
+    vertical-align: middle;
+}
+</style>
+@endpush
+
 @section('content')
 <div class="container-fluid py-4">
     <div class="row mb-4">
@@ -96,11 +176,11 @@
                                     <div class="btn-group btn-group-sm">
                                         <form action="{{ route('admin.orders.approve', $order->id) }}" method="POST" class="d-inline approve-form">
                                             @csrf
-                                            <button type="button" class="btn btn-success btn-approve" title="Lunasi & Setujui">
+                                            <button type="button" class="btn btn-outline-success btn-approve" title="Lunasi & Setujui">
                                                 <i class="fas fa-check"></i>
                                             </button>
                                         </form>
-                                        <button type="button" class="btn btn-danger btn-cancel-order" data-id="{{ $order->id }}" title="Batalkan">
+                                        <button type="button" class="btn btn-outline-danger btn-cancel-order" data-id="{{ $order->id }}" title="Batalkan">
                                             <i class="fas fa-times"></i>
                                         </button>
                                     </div>

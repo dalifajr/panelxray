@@ -140,13 +140,7 @@
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        @php
-            $remainingSeconds = 300 - \Carbon\Carbon::now()->diffInSeconds($pendingTopup->created_at);
-            if ($remainingSeconds < 0) $remainingSeconds = 0;
-        @endphp
-        
-        var remainingSeconds = {{ $remainingSeconds }};
-        var targetTime = new Date().getTime() + (remainingSeconds * 1000);
+        var targetTime = {{ $pendingTopup->created_at->addMinutes(5)->timestamp * 1000 }};
 
         var countdownElement = document.getElementById('countdown');
 
