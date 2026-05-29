@@ -24,9 +24,19 @@ fi
 # 2. Setup Laravel Project Directory
 WEB_DIR="/var/www/webpanel-mvc"
 mkdir -p /var/www
-if [ -d "/root/vpnxray-main/limit/webpanel-mvc" ]; then
+
+echo -e "[\e[32mINFO\e[0m] Mengunduh source code Web Panel terbaru..."
+TMP_REPO="/tmp/panelxray-webpanel-setup"
+rm -rf $TMP_REPO
+git clone https://github.com/dalifajr/panelxray.git $TMP_REPO
+
+if [ -d "$TMP_REPO/limit/webpanel-mvc" ]; then
     rm -rf /var/www/webpanel-mvc
-    cp -r /root/vpnxray-main/limit/webpanel-mvc /var/www/
+    cp -r $TMP_REPO/limit/webpanel-mvc /var/www/
+    rm -rf $TMP_REPO
+else
+    echo -e "[\e[31mERROR\e[0m] Gagal mengunduh source code Web Panel."
+    exit 1
 fi
 
 cd $WEB_DIR
