@@ -443,7 +443,55 @@
 
     // Modal Pricing Logic
     const basePrice = {{ $basePrice ?? 0 }};
+    const ipPrice = 5000;
     
+    function calculateCreatePrice() {
+        let days = parseInt(document.getElementById('createExpiredInput').value) || 0;
+        let ip = document.getElementById('createLimitIpInput') ? parseInt(document.getElementById('createLimitIpInput').value) || 1 : 1;
+        
+        let isTrial = false;
+        if (document.getElementById('payTrial') && document.getElementById('payTrial').checked) {
+            isTrial = true;
+        }
+
+        let priceVpn = Math.round((basePrice / 30) * days);
+        let priceIp = ip > 1 ? (ipPrice * (ip - 1)) : 0;
+        
+        let total = isTrial ? 0 : (priceVpn + priceIp);
+        document.getElementById('createPriceDisplay').innerText = 'Rp ' + total.toLocaleString('id-ID');
+    }
+
+    document.querySelectorAll('.create-day-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.create-day-btn').forEach(b => {
+                b.classList.remove('btn-primary', 'text-white');
+                b.classList.add('btn-outline-primary');
+                if (b.dataset.trial) {
+                    b.classList.remove('btn-success', 'text-white');
+                    b.classList.add('btn-outline-success');
+                }
+            });
+            
+            if (this.dataset.trial) {
+                this.classList.remove('btn-outline-success');
+                this.classList.add('btn-success', 'text-white');
+                document.getElementById('createExpiredInput').value = this.dataset.days;
+                if (document.getElementById('payTrial')) {
+                    document.getElementById('payTrial').checked = true;
+                }
+            } else {
+                this.classList.remove('btn-outline-primary');
+                this.classList.add('btn-primary', 'text-white');
+                document.getElementById('createExpiredInput').value = this.dataset.days;
+                if (document.getElementById('paySaldo') && document.getElementById('payTrial') && document.getElementById('payTrial').checked) {
+                    document.getElementById('paySaldo').checked = true;
+                }
+            }
+            
+            calculateCreatePrice();
+        });
+    });
+
     function initPricing(btnClass, inputId, displayId) {
         const btns = document.querySelectorAll(btnClass);
         const input = document.getElementById(inputId);
@@ -484,7 +532,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        initPricing('.create-day-btn', 'createExpiredInput', 'createPriceDisplay');
         initPricing('.renew-day-btn', 'renewExpiredInput', 'renewPriceDisplay');
     });
 </script>
@@ -523,10 +570,16 @@
                             <label class="form-label fw-bold text-secondary">Masa Aktif (Hari)</label>
                             <input type="hidden" name="expired" id="createExpiredInput" value="30">
                             <div class="d-flex flex-wrap gap-2">
+                                @if(auth()->user()->role === 'customer')
+                                    <button type="button" class="btn btn-outline-success create-day-btn" data-days="1" data-trial="true">Trial (15 Menit)</button>
+                                @endif
                                 @foreach([1, 3, 7, 14, 30, 60] as $day)
                                     <button type="button" class="btn btn-outline-primary create-day-btn" data-days="{{ $day }}">{{ $day }} Hari</button>
                                 @endforeach
                             </div>
+                            @if(auth()->user()->role === 'customer')
+                                <small class="text-muted d-block mt-2"><i class="fas fa-info-circle me-1"></i>Akun trial dibatasi maksimal 3 kali pembuatan per minggu.</small>
+                            @endif
                         </div>
                         @if(auth()->user()->role === 'admin')
                         <div class="col-6">
@@ -554,6 +607,10 @@
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="payment_method" id="payQris" value="qris">
                                 <label class="form-check-label" for="payQris">QRIS (Otomatis)</label>
+                            </div>
+                            <div class="form-check d-none">
+                                <input class="form-check-input" type="radio" name="payment_method" id="payTrial" value="trial">
+                                <label class="form-check-label" for="payTrial">Trial (Gratis)</label>
                             </div>
                         </div>
                     </div>

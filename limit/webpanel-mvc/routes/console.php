@@ -6,3 +6,85 @@ use Illuminate\Support\Facades\Artisan;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Facades\Log;
+use App\Models\VpnAccount;
+use App\Services\VpnService;
+
+Schedule::call(function () {
+    $expiredTrials = VpnAccount::where('is_trial', true)
+        ->where('created_at', '<=', now()->subMinutes(15))
+        ->get();
+
+    if ($expiredTrials->isEmpty()) {
+        return;
+    }
+
+    $vpnService = app(VpnService::class);
+
+    foreach ($expiredTrials as $acc) {
+        $protocol = $acc->service;
+        $user = $acc->vpn_username;
+        
+        Log::info("Trial cleaner: Hapus $protocol $user (Expired trial)");
+
+        if ($protocol === 'ssh') {
+            $vpnService->executeBash("userdel -f $user 2>/dev/null; rm -f /etc/kyt/limit/ssh/ip/$user");
+        } else {
+            $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+            $marker = $xrayMarkers[$protocol] ?? '###';
+            
+            $script = <<<PYTHON
+import os, re
+path = '/etc/xray/config.json'
+marker = '$marker'
+username = '$user'
+protocol = '$protocol'
+
+try:
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    changed = False
+    next_lines = []
+    skip_next = False
+    for line in lines:
+        if skip_next:
+            if '},{"' in line or '},{\"' in line or '"password"' in line or '"id"' in line or '"method"' in line:
+                changed = True
+                skip_next = False
+                continue
+            skip_next = False
+        stripped = line.strip()
+        parts = stripped.split()
+        if len(parts) >= 2 and parts[0] == marker and parts[1].lower() == username.lower():
+            changed = True
+            skip_next = True
+            continue
+        next_lines.append(line)
+    if changed:
+        with open(path, 'w') as f:
+            f.writelines(next_lines)
+        os.system('systemctl restart xray >/dev/null 2>&1')
+        
+    srv = protocol
+    os.system(f"rm -f /etc/kyt/suspended/{srv}/{username}")
+    os.system(f"rm -rf /etc/kyt/limit/{srv}/ip/{username}")
+    os.system(f"rm -rf /etc/{srv}/{username}")
+    os.system(f"sed -i '/\\\\b{username}\\\\b/d' /etc/{srv}/.{srv}.db 2>/dev/null")
+except Exception as e:
+    pass
+PYTHON;
+            // Cannot use $this->runPython here easily since it's inside a closure without controller trait,
+            // so we use executeBashWithStdin
+            $vpnService->executeBashWithStdin("python3 -", $script);
+        }
+
+        // Clean from SQLite DB
+        $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
+        $vpnService->executeBashWithStdin("python3 -", $dbScript);
+        
+        // Remove from local vpn_accounts tracking
+        $acc->delete();
+    }
+})->everyMinute();

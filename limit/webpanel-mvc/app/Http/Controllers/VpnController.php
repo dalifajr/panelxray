@@ -144,7 +144,7 @@ class VpnController extends Controller
             'expired' => 'required|integer|min:1|max:365',
             'sni_config' => 'nullable|string|in:1,2,3',
             'quota' => 'nullable|integer|min:0',
-            'payment_method' => 'nullable|string|in:saldo,qris'
+            'payment_method' => 'nullable|string|in:saldo,qris,trial'
         ]);
 
         $userStr = $validated['username'];
@@ -154,6 +154,11 @@ class VpnController extends Controller
         $sni = $validated['sni_config'] ?? '3';
         $quota = $validated['quota'] ?? '0';
         $paymentMethod = $validated['payment_method'] ?? 'saldo';
+        
+        $isTrial = $paymentMethod === 'trial';
+        if ($isTrial) {
+            $exp = 1; // Untuk backend Xray/SSH, kita paksa 1 hari karena tidak mendukung menit.
+        }
 
         $authUser = auth()->user();
 
@@ -176,12 +181,24 @@ class VpnController extends Controller
             
             $totalPrice = $vpnCost + $extraIpCost;
 
-            if ($totalPrice <= 0) {
-                return back()->with('sweet_error', "Gagal membuat akun: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
-            }
+            // Jika trial, lewati pengecekan harga dan cek limit trial
+            if ($isTrial) {
+                $totalPrice = 0;
+                $trialCount = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                    ->where('is_trial', true)
+                    ->where('created_at', '>=', now()->subDays(7))
+                    ->count();
+                if ($trialCount >= 3) {
+                    return back()->with('sweet_error', "Batas pembuatan akun Trial tercapai (3 kali per minggu).")->withInput();
+                }
+            } else {
+                if ($totalPrice <= 0) {
+                    return back()->with('sweet_error', "Gagal membuat akun: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
+                }
 
-            if ($paymentMethod === 'saldo' && $authUser->balance < $totalPrice) {
-                return back()->with('sweet_error', "Saldo tidak mencukupi. Total tagihan Rp " . number_format($totalPrice, 0, ',', '.') . ", sedangkan saldo Anda Rp " . number_format($authUser->balance, 0, ',', '.'))->withInput();
+                if ($paymentMethod === 'saldo' && $authUser->balance < $totalPrice) {
+                    return back()->with('sweet_error', "Saldo tidak mencukupi. Total tagihan Rp " . number_format($totalPrice, 0, ',', '.') . ", sedangkan saldo Anda Rp " . number_format($authUser->balance, 0, ',', '.'))->withInput();
+                }
             }
         }
 
@@ -258,7 +275,7 @@ class VpnController extends Controller
         }
 
         if ($res && $res['success']) {
-            if ($authUser->role === 'customer' && $totalPrice > 0) {
+            if ($paymentMethod === 'saldo' && $totalPrice > 0 && !$isTrial) {
                 $authUser->balance -= $totalPrice;
                 $authUser->save();
 
@@ -267,16 +284,9 @@ class VpnController extends Controller
                     'user_id' => $authUser->id,
                     'type' => 'vpn_purchase',
                     'amount' => $totalPrice,
-                    'unique_code' => 0,
                     'total_amount' => $totalPrice,
                     'status' => 'success',
-                    'description' => "Pembelian VPN $protocol ($userStr) $exp Hari",
-                    'metadata' => [
-                        'protocol' => $protocol,
-                        'username' => $userStr,
-                        'days' => $exp,
-                        'limit_ip' => $ip
-                    ]
+                    'description' => "Pembuatan VPN $protocol ($userStr) $exp Hari"
                 ]);
 
                 \App\Models\Notification::create([
@@ -294,10 +304,11 @@ class VpnController extends Controller
             \App\Models\VpnAccount::create([
                 'user_id' => auth()->id(),
                 'vpn_username' => $userStr,
-                'service' => $protocol
+                'service' => $protocol,
+                'is_trial' => $isTrial
             ]);
 
-            return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $userStr berhasil dibuat!");
+            return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $userStr berhasil dibuat!" . ($isTrial ? ' (Trial 15 Menit)' : ''));
         }
 
         $debugError = $res['error'] ?? 'Unknown error';
@@ -623,8 +634,53 @@ PYTHON;
         $dbRes = $this->runPython($dbScript);
         Log::info("DELETE DB result: " . $dbRes['output']);
         
-        // Remove from local vpn_accounts tracking
-        \App\Models\VpnAccount::where('vpn_username', $user)->where('service', $protocol)->delete();
+        // Remove from local vpn_accounts tracking and process refund if applicable
+        $acc = \App\Models\VpnAccount::where('vpn_username', $user)->where('service', $protocol)->first();
+        if ($acc) {
+            $isRefunded = false;
+            if (!$acc->is_trial && $acc->created_at && $acc->created_at->diffInMinutes(now()) <= 15) {
+                // Find related purchase transaction
+                $tx = \App\Models\Transaction::where('user_id', $acc->user_id)
+                    ->whereIn('type', ['vpn_purchase', 'vpn_purchase_qris'])
+                    ->where('status', 'success')
+                    ->where(function($q) use ($user, $protocol) {
+                        $q->where('metadata', 'LIKE', '%"username":"'.$user.'"%')
+                          ->orWhere('description', 'LIKE', "Pembuatan VPN $protocol ($user) %Hari%");
+                    })
+                    ->latest()
+                    ->first();
+
+                if ($tx && $tx->amount > 0) {
+                    $owner = \App\Models\User::find($acc->user_id);
+                    if ($owner) {
+                        $owner->balance += $tx->amount;
+                        $owner->save();
+                        
+                        \App\Models\Transaction::create([
+                            'reference' => 'REFUND-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                            'user_id' => $owner->id,
+                            'type' => 'refund',
+                            'amount' => $tx->amount,
+                            'total_amount' => $tx->amount,
+                            'status' => 'success',
+                            'description' => "Refund Hapus VPN $protocol ($user) < 15 Menit"
+                        ]);
+                        
+                        \App\Models\Notification::create([
+                            'user_id' => $owner->id,
+                            'type' => 'order',
+                            'message' => "Akun VPN $protocol ($user) dihapus dalam batas 15 menit. Dana Rp " . number_format($tx->amount, 0, ',', '.') . " telah dikembalikan ke Saldo Akun."
+                        ]);
+                        $isRefunded = true;
+                    }
+                }
+            }
+            $acc->delete();
+            
+            if ($isRefunded) {
+                return back()->with('sweet_success', "Akun $user berhasil dihapus dan saldo telah direfund ke akun Anda.");
+            }
+        }
 
         return back()->with('sweet_success', "Akun $user berhasil dihapus.");
     }
