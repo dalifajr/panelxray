@@ -308,9 +308,18 @@
 
         <!-- Info Section -->
         <div class="info-section">
-            <h2 class="info-title">Keamanan Terjamin</h2>
+            @php
+                $announcement = \App\Models\Setting::where('key', 'login_announcement')->value('value');
+                if (!$announcement) {
+                    $announcement = "Keamanan Terjamin\nLogin diotomatisasi melalui integrasi bot Telegram untuk memastikan hanya admin berwenang yang dapat mengakses kontrol panel server.";
+                }
+                $parts = explode("\n", str_replace("\r", "", $announcement), 2);
+                $title = $parts[0] ?? 'Keamanan Terjamin';
+                $desc = $parts[1] ?? 'Login diotomatisasi melalui integrasi bot Telegram untuk memastikan hanya admin berwenang yang dapat mengakses kontrol panel server.';
+            @endphp
+            <h2 class="info-title">{{ $title }}</h2>
             <p class="info-desc">
-                Login diotomatisasi melalui integrasi bot Telegram untuk memastikan hanya admin berwenang yang dapat mengakses kontrol panel server.
+                {!! nl2br(e($desc)) !!}
             </p>
             <div class="info-alert">
                 <i class="fas fa-info-circle"></i>
