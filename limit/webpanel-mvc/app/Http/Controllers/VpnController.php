@@ -92,6 +92,19 @@ class VpnController extends Controller
         $sni = $validated['sni_config'] ?? '3';
         $quota = $validated['quota'] ?? '0';
 
+        // Pre-flight check: ensure username doesn't already exist
+        if ($protocol !== 'ssh') {
+            $resCheck = $this->vpn->executeBash("grep -w \"$user\" /etc/xray/config.json | wc -l");
+            if (intval(trim($resCheck['output'])) > 0) {
+                return back()->with('sweet_error', "Gagal membuat akun: Username '$user' sudah terdaftar di konfigurasi Xray!")->withInput();
+            }
+        } else {
+            $resCheck = $this->vpn->executeBash("id -u $user >/dev/null 2>&1 && echo 1 || echo 0");
+            if (intval(trim($resCheck['output'])) === 1) {
+                return back()->with('sweet_error', "Gagal membuat akun: Username '$user' sudah terdaftar di sistem SSH!")->withInput();
+            }
+        }
+
         $res = null;
 
         if ($protocol === 'ssh') {

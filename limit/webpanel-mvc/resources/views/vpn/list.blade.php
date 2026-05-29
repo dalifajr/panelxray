@@ -114,7 +114,6 @@
                         <tr>
                             <th class="ps-3 py-2">No.</th>
                             <th class="py-2">Username</th>
-                            <th class="py-2">Password / UUID</th>
                             <th class="py-2">Limit IP</th>
                             <th class="py-2">Dibuat</th>
                             <th class="py-2">Kedaluwarsa</th>
@@ -147,7 +146,6 @@
                         <tr class="account-row border-bottom" data-username="{{ strtolower($user['username']) }}" data-status="{{ $status }}">
                             <td class="ps-3 text-muted py-2">{{ $index + 1 }}</td>
                             <td class="fw-bold text-primary py-2">{{ $user['username'] }}</td>
-                            <td class="py-2"><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
                             <td class="py-2 fw-medium text-secondary">{{ $user['ip_limit'] ?? 1 }}</td>
                             <td class="py-2 text-secondary">{{ $formattedCreated }}</td>
                             <td class="py-2 text-secondary">{{ $formattedExp }}</td>

@@ -1,5 +1,6 @@
 @extends('layouts.app')
 
+@section('content')
 <style>
 /* Menghilangkan radius sudut pada tombol di dalam form di tengah grup */
 .btn-group-sm > form:not(:last-child) > .btn {
@@ -74,7 +75,6 @@
                             <th class="ps-3 py-2">No.</th>
                             <th class="py-2">Protokol</th>
                             <th class="py-2">Username</th>
-                            <th class="py-2">Password / UUID</th>
                             <th class="py-2">Status</th>
                             <th class="py-2">Limit IP</th>
                             <th class="py-2">Kedaluwarsa</th>
@@ -87,7 +87,6 @@
                             <td class="ps-3 text-muted py-2">{{ $index + 1 }}</td>
                             <td class="py-2"><span class="badge bg-secondary text-uppercase">{{ $user['service'] }}</span></td>
                             <td class="fw-bold text-primary py-2">{{ $user['username'] }}</td>
-                            <td class="py-2"><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
                             <td class="py-2">
                                 @if($user['active'] == 1)
                                     <span class="badge bg-success">Aktif</span>

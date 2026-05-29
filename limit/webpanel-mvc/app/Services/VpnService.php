@@ -118,9 +118,9 @@ import sqlite3, json, os, glob
 ip_limits = {}
 for path in glob.glob('/etc/kyt/limit/*/ip/*'):
     parts = path.split('/')
-    if len(parts) >= 6:
+    if len(parts) >= 7:
         svc = parts[4]
-        user = parts[5]
+        user = parts[6]
         try:
             with open(path, 'r') as f:
                 val = f.read().strip()
