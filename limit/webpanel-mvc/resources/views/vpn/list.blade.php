@@ -19,6 +19,63 @@
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
+
+/* Merapikan tabel detail di dalam SweetAlert */
+#swal2-html-container table td {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+    padding-left: 0 !important;
+    vertical-align: top;
+}
+
+#swal2-html-container table td:first-child {
+    width: 130px !important;
+    font-weight: 600;
+    color: #495057;
+    white-space: nowrap;
+}
+
+/* Gradien pada Header Modal */
+.modal-header {
+    background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%) !important;
+    border: none !important;
+}
+
+/* Gradien pada Tombol Utama Modal */
+.modal-content .btn-primary {
+    background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%) !important;
+    border: none !important;
+    box-shadow: 0 4px 15px rgba(13, 71, 161, 0.3) !important;
+    transition: all 0.2s ease !important;
+}
+
+.modal-content .btn-primary:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(13, 71, 161, 0.4) !important;
+}
+
+/* Gaya Tombol Tabel Minimalis */
+.btn-group-sm > .btn, 
+.btn-group-sm > form > .btn {
+    background: #f8f9fa !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #4a5568 !important;
+    font-size: 0.75rem !important;
+}
+
+/* Efek Hover Lembut */
+.btn-group-sm > .btn:hover, 
+.btn-group-sm > form > .btn:hover {
+    background: #edf2f7 !important;
+    color: #2d3748 !important;
+}
+
+/* Khusus Tombol Hapus saat Hover */
+.btn-group-sm .btn-delete:hover {
+    color: #e53e3e !important;
+    background: #fff5f5 !important;
+    border-color: #feb2b2 !important;
+}
 </style>
 
 <div class="container py-4">
@@ -244,7 +301,7 @@
                         };
                         link = "vmess://" + btoa(JSON.stringify(vmessObj));
                     } else if (protocol === 'vless') {
-                        link = `vless://${info.uuid}@${info.domain}:443?path=/vless&security=tls&encryption=none&type=ws#${info.username}`;
+                        link = `vless://${info.uuid}@${info.domain}:443?path=/vless&security=tls&encryption=none&type=ws&sni=${info.domain}#${info.username}`;
                     } else if (protocol === 'trojan') {
                         link = `trojan://${info.uuid}@${info.domain}:443?path=/trojan-ws&security=tls&type=ws&sni=${info.domain}#${info.username}`;
                     } else {

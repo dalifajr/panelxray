@@ -1,6 +1,63 @@
 @extends('layouts.app')
 
-@section('content')
+<style>
+/* Menghilangkan radius sudut pada tombol di dalam form di tengah grup */
+.btn-group-sm > form:not(:last-child) > .btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.btn-group-sm > form:not(:first-child) > .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 0; /* Menghilangkan border ganda */
+}
+
+/* Jika tombol pertama bukan form tapi setelahnya ada form */
+.btn-group-sm > .btn:first-child:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* Merapikan tabel detail di dalam SweetAlert */
+#swal2-html-container table td {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+    padding-left: 0 !important;
+    vertical-align: top;
+}
+
+#swal2-html-container table td:first-child {
+    width: 130px !important;
+    font-weight: 600;
+    color: #495057;
+    white-space: nowrap;
+}
+
+/* Gaya Tombol Tabel Minimalis */
+.btn-group-sm > .btn, 
+.btn-group-sm > form > .btn {
+    background: #f8f9fa !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #4a5568 !important;
+    font-size: 0.75rem !important;
+}
+
+/* Efek Hover Lembut */
+.btn-group-sm > .btn:hover, 
+.btn-group-sm > form > .btn:hover {
+    background: #edf2f7 !important;
+    color: #2d3748 !important;
+}
+
+/* Khusus Tombol Hapus saat Hover */
+.btn-group-sm .btn-delete:hover {
+    color: #e53e3e !important;
+    background: #fff5f5 !important;
+    border-color: #feb2b2 !important;
+}
+</style>
+
 <div class="container py-4">
     <div class="row mb-4 align-items-center">
         <div class="col-md-6">
@@ -11,35 +68,35 @@
     <div class="card shadow-sm border-0">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" id="masterTable">
+                <table class="table table-hover table-sm table-borderless align-middle mb-0" id="masterTable">
                     <thead class="table-light">
                         <tr>
-                            <th>No.</th>
-                            <th>Protokol</th>
-                            <th>Username</th>
-                            <th>Password / UUID</th>
-                            <th>Status</th>
-                            <th>Limit IP</th>
-                            <th>Kedaluwarsa</th>
-                            <th class="text-end">Aksi</th>
+                            <th class="ps-3 py-2">No.</th>
+                            <th class="py-2">Protokol</th>
+                            <th class="py-2">Username</th>
+                            <th class="py-2">Password / UUID</th>
+                            <th class="py-2">Status</th>
+                            <th class="py-2">Limit IP</th>
+                            <th class="py-2">Kedaluwarsa</th>
+                            <th class="text-end pe-3 py-2">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($parsedUsers as $index => $user)
-                        <tr>
-                            <td class="text-muted">{{ $index + 1 }}</td>
-                            <td><span class="badge bg-secondary text-uppercase">{{ $user['service'] }}</span></td>
-                            <td class="fw-bold text-primary">{{ $user['username'] }}</td>
-                            <td><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
-                            <td>
+                        <tr class="border-bottom">
+                            <td class="ps-3 text-muted py-2">{{ $index + 1 }}</td>
+                            <td class="py-2"><span class="badge bg-secondary text-uppercase">{{ $user['service'] }}</span></td>
+                            <td class="fw-bold text-primary py-2">{{ $user['username'] }}</td>
+                            <td class="py-2"><span class="text-muted font-monospace small" style="user-select: all;">{{ $user['uuid'] ?? '***' }}</span></td>
+                            <td class="py-2">
                                 @if($user['active'] == 1)
                                     <span class="badge bg-success">Aktif</span>
                                 @else
-                                    <span class="badge bg-warning text-dark">Suspended</span>
+                                    <span class="badge bg-danger">Disuspend</span>
                                 @endif
                             </td>
-                            <td><span class="badge bg-info text-dark">{{ $user['ip_limit'] ?? 1 }}</span></td>
-                            <td>
+                            <td class="py-2 fw-medium text-secondary">{{ $user['ip_limit'] ?? 1 }}</td>
+                            <td class="py-2 text-secondary">
                                 @php
                                     $expStr = $user['expires_at'] ?? '';
                                     if (!empty($expStr)) {
@@ -55,42 +112,38 @@
                                     $formattedCreated = !empty($createdStr) ? \Carbon\Carbon::parse($createdStr)->format('d M Y') : '-';
                                 @endphp
                                 @if($isExpired)
-                                    <span class="badge bg-danger">{{ $formattedExp }} (Expired)</span>
+                                    <span class="badge bg-danger">Expired</span>
                                 @else
-                                    <span class="badge bg-success">{{ $formattedExp }}</span>
+                                    {{ $formattedExp }}
                                 @endif
                             </td>
-                            <td class="text-end">
+                            <td class="text-end pe-3 py-2">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-info" onclick="viewConfig('{{ $user['service'] }}', '{{ $user['username'] }}')" title="Lihat Konfigurasi">
+                                        <i class="fas fa-qrcode"></i>
+                                    </button>
                                 @if($user['active'] == 1)
-                                <form action="{{ route('vpn.suspend', [$user['service'], $user['username']]) }}" method="POST" class="d-inline">
+                                <form action="{{ route('vpn.suspend', [$user['service'], $user['username']]) }}" method="POST" class="d-inline mb-0">
                                     @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-warning" title="Suspend">
-                                        <i class="fas fa-pause"></i>
+                                    <button type="submit" class="btn btn-outline-warning" title="Suspend Akun">
+                                        <i class="fas fa-ban"></i>
                                     </button>
                                 </form>
                                 @else
-                                <form action="{{ route('vpn.unsuspend', [$user['service'], $user['username']]) }}" method="POST" class="d-inline">
+                                <form action="{{ route('vpn.unsuspend', [$user['service'], $user['username']]) }}" method="POST" class="d-inline mb-0">
                                     @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Unsuspend">
+                                    <button type="submit" class="btn btn-outline-success" title="Aktifkan Kembali">
                                         <i class="fas fa-play"></i>
                                     </button>
                                 </form>
                                 @endif
-
-                                <a href="{{ route('vpn.renew', [$user['service'], $user['username']]) }}" class="btn btn-sm btn-outline-info" title="Renew">
-                                    <i class="fas fa-sync"></i>
-                                </a>
-
-                                <button type="button" class="btn btn-sm btn-outline-dark" onclick="viewConfig('{{ $user['service'] }}', '{{ $user['username'] }}')" title="View Config">
-                                    <i class="fas fa-qrcode"></i>
-                                </button>
-
-                                <form action="{{ route('vpn.delete', [$user['service'], $user['username']]) }}" method="POST" class="d-inline action-delete">
+                                <form action="{{ route('vpn.delete', [$user['service'], $user['username']]) }}" method="POST" class="d-inline mb-0">
                                     @csrf
-                                    <button type="button" class="btn btn-sm btn-outline-danger btn-delete" data-user="{{ $user['username'] }}" title="Hapus">
+                                    <button type="button" class="btn btn-outline-danger btn-delete" data-user="{{ $user['username'] }}" title="Hapus Akun">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </form>
+                                </div>
                             </td>
                         </tr>
                         @endforeach
@@ -161,10 +214,69 @@
             .then(data => {
                 if(data.error) {
                     Swal.fire('Error', data.error, 'error');
+                } else if (data.config && typeof data.config === 'object') {
+                    // For the updated JSON response
+                    const info = data.config;
+                    let link = '';
+                    
+                    if (protocol === 'vmess') {
+                        const vmessObj = {
+                            "v": "2",
+                            "ps": info.username,
+                            "add": info.domain,
+                            "port": "443",
+                            "id": info.uuid,
+                            "aid": "0",
+                            "net": "ws",
+                            "path": "/vmess",
+                            "type": "none",
+                            "host": info.domain,
+                            "tls": "tls",
+                            "sni": info.domain,
+                            "allowInsecure": true
+                        };
+                        link = "vmess://" + btoa(JSON.stringify(vmessObj));
+                    } else if (protocol === 'vless') {
+                        link = `vless://${info.uuid}@${info.domain}:443?path=/vless&security=tls&encryption=none&type=ws&sni=${info.domain}#${info.username}`;
+                    } else if (protocol === 'trojan') {
+                        link = `trojan://${info.uuid}@${info.domain}:443?path=/trojan-ws&security=tls&type=ws&sni=${info.domain}#${info.username}`;
+                    } else {
+                        link = `ss://${info.uuid}@${info.domain}:443#${info.username}`; // Simplified SS
+                    }
+                    
+                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(link)}`;
+                    
+                    const htmlContent = `
+                        <div class="text-center mb-3">
+                            <img src="${qrUrl}" alt="QR Code" class="img-fluid border p-2 bg-white rounded shadow-sm" style="max-width: 200px;">
+                        </div>
+                        <div class="text-start bg-light p-3 rounded border">
+                            <table class="table table-sm table-borderless mb-0">
+                                <tr><td class="text-muted" width="80">Username</td><td class="fw-bold text-dark">: ${info.username}</td></tr>
+                                <tr><td class="text-muted">Protocol</td><td class="fw-bold text-dark text-uppercase">: ${protocol}</td></tr>
+                                <tr><td class="text-muted">Domain</td><td class="fw-bold text-dark">: ${info.domain}</td></tr>
+                                <tr><td class="text-muted">Limit IP</td><td class="fw-bold text-dark">: ${info.ip_limit}</td></tr>
+                                <tr><td class="text-muted">Quota</td><td class="fw-bold text-dark">: ${info.quota} GB</td></tr>
+                            </table>
+                        </div>
+                        <div class="mt-3 text-start">
+                            <label class="form-label fw-bold text-secondary small mb-1">Link Konfigurasi (TLS):</label>
+                            <textarea class="form-control font-monospace small bg-dark text-light" rows="3" readonly style="font-size:0.8rem; resize:none;">${link}</textarea>
+                        </div>
+                    `;
+                    
+                    Swal.fire({
+                        title: `<span class="fw-bold"><i class="fas fa-qrcode text-primary me-2"></i>Detail ${protocol.toUpperCase()}</span>`,
+                        html: htmlContent,
+                        width: 500,
+                        confirmButtonText: 'Tutup',
+                        confirmButtonColor: '#0d6efd'
+                    });
                 } else {
+                    // Fallback for old string response
                     Swal.fire({
                         title: `Konfigurasi ${username}`,
-                        html: `<pre class="text-start bg-light p-3 rounded font-monospace" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem; user-select: all;">${data.config}</pre>`,
+                        html: `<pre class="text-start bg-dark text-light p-3 rounded font-monospace" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem; user-select: all;">${data.config}</pre>`,
                         width: 600,
                         confirmButtonText: 'Tutup'
                     });
