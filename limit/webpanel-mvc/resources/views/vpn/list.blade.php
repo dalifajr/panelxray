@@ -258,40 +258,82 @@
                 if(data.error) {
                     Swal.fire('Error', data.error, 'error');
                 } else if (data.config && typeof data.config === 'object') {
-                    // For the updated JSON response
                     const info = data.config;
-                    let link = '';
                     
-                    if (protocol === 'vmess') {
-                        const vmessObj = {
-                            "v": "2",
-                            "ps": info.username,
-                            "add": info.domain,
-                            "port": "443",
-                            "id": info.uuid,
-                            "aid": "0",
-                            "net": "ws",
-                            "path": "/vmess",
-                            "type": "none",
-                            "host": info.domain,
-                            "tls": "tls",
-                            "sni": info.domain,
-                            "allowInsecure": true
-                        };
-                        link = "vmess://" + btoa(JSON.stringify(vmessObj));
-                    } else if (protocol === 'vless') {
-                        link = `vless://${info.uuid}@${info.domain}:443?path=/vless&security=tls&encryption=none&type=ws&sni=${info.domain}#${info.username}`;
-                    } else if (protocol === 'trojan') {
-                        link = `trojan://${info.uuid}@${info.domain}:443?path=/trojan-ws&security=tls&type=ws&sni=${info.domain}#${info.username}`;
-                    } else {
-                        link = `ss://${info.uuid}@${info.domain}:443#${info.username}`; // Simplified SS
-                    }
+                    window.generateVpnLink = function(sniType) {
+                        let addr = info.domain;
+                        let host = info.domain;
+                        let sni = info.domain;
+                        let label = info.username;
+                        
+                        if (sniType === '1') {
+                            addr = "support.zoom.us";
+                            host = "support.zoom.us." + info.domain;
+                            sni = "support.zoom.us." + info.domain;
+                            label = info.username + " (Zoom)";
+                        } else if (sniType === '2') {
+                            addr = info.domain;
+                            host = info.domain;
+                            sni = "live.iflix.com";
+                            label = info.username + " (Iflix)";
+                        }
+                        
+                        let genLink = '';
+                        if (protocol === 'vmess') {
+                            const vmessObj = {
+                                "v": "2",
+                                "ps": label,
+                                "add": addr,
+                                "port": "443",
+                                "id": info.uuid,
+                                "aid": "0",
+                                "net": "ws",
+                                "path": "/vmess",
+                                "type": "none",
+                                "host": host,
+                                "tls": "tls",
+                                "sni": sni,
+                                "allowInsecure": true
+                            };
+                            genLink = "vmess://" + btoa(JSON.stringify(vmessObj));
+                        } else if (protocol === 'vless') {
+                            genLink = `vless://${info.uuid}@${addr}:443?path=/vless&security=tls&encryption=none&type=ws&host=${host}&sni=${sni}#${label}`;
+                        } else if (protocol === 'trojan') {
+                            genLink = `trojan://${info.uuid}@${addr}:443?path=/trojan-ws&security=tls&type=ws&host=${host}&sni=${sni}#${label}`;
+                        } else {
+                            genLink = `ss://${info.uuid}@${addr}:443#${label}`;
+                        }
+                        return genLink;
+                    };
+
+                    window.updateConfigModal = function() {
+                        const sniType = document.getElementById('sniSelector').value;
+                        const newLink = window.generateVpnLink(sniType);
+                        document.getElementById('swalConfigLink').value = newLink;
+                        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(newLink)}`;
+                        document.getElementById('swalQrCode').src = qrUrl;
+                    };
                     
+                    let link = window.generateVpnLink('3');
                     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(link)}`;
                     
+                    let sniSelectorHtml = '';
+                    if (protocol !== 'ssh' && protocol !== 'shadowsocks') {
+                        sniSelectorHtml = `
+                        <div class="mt-3 text-start">
+                            <label class="form-label fw-bold text-secondary small mb-1">Pilih Mode SNI / Payload:</label>
+                            <select id="sniSelector" class="form-select form-select-sm mb-2" onchange="window.updateConfigModal()">
+                                <option value="3">Tanpa konfigurasi (Default SNI)</option>
+                                <option value="1">support.zoom.us</option>
+                                <option value="2">live.iflix.com</option>
+                            </select>
+                        </div>
+                        `;
+                    }
+
                     const htmlContent = `
                         <div class="text-center mb-3">
-                            <img src="${qrUrl}" alt="QR Code" class="img-fluid border p-2 bg-white rounded shadow-sm" style="max-width: 200px;">
+                            <img src="${qrUrl}" id="swalQrCode" alt="QR Code" class="img-fluid border p-2 bg-white rounded shadow-sm" style="max-width: 200px; transition: all 0.3s;">
                         </div>
                         <div class="text-start bg-light p-3 rounded border">
                             <table class="table table-sm table-borderless mb-0">
@@ -303,9 +345,10 @@
                                 <tr><td class="text-muted">Quota</td><td class="fw-bold text-dark">: ${info.quota == 0 ? 'Unlimited' : info.quota} GB</td></tr>
                             </table>
                         </div>
+                        ${sniSelectorHtml}
                         <div class="mt-3 text-start">
                             <label class="form-label fw-bold text-secondary small mb-1">Link Konfigurasi (TLS):</label>
-                            <textarea class="form-control font-monospace small bg-dark text-light" rows="3" readonly style="font-size:0.8rem; resize:none;">${link}</textarea>
+                            <textarea id="swalConfigLink" class="form-control font-monospace small bg-dark text-light" rows="3" readonly style="font-size:0.8rem; resize:none;">${link}</textarea>
                         </div>
                     `;
                     
