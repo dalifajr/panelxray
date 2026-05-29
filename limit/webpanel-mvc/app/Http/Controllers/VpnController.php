@@ -68,7 +68,7 @@ class VpnController extends Controller
                 $meta = is_string($tx->metadata) ? json_decode($tx->metadata, true) : $tx->metadata;
                 if (isset($meta['protocol']) && $meta['protocol'] === $protocol) {
                     // Check if expired
-                    if (\Carbon\Carbon::now()->diffInMinutes($tx->created_at) >= 5) {
+                    if (\Carbon\Carbon::now()->diffInSeconds($tx->created_at) >= 300) {
                         $tx->update(['status' => 'cancelled']);
                         continue;
                     }

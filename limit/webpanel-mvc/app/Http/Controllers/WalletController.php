@@ -22,7 +22,7 @@ class WalletController extends Controller
         
         if ($pendingTopup) {
             // Check if 5 minutes expired
-            if (Carbon::now()->diffInMinutes($pendingTopup->created_at) >= 5) {
+            if (Carbon::now()->diffInSeconds($pendingTopup->created_at) >= 300) {
                 $pendingTopup->update(['status' => 'cancelled']);
                 return redirect()->route('wallet.index')->with('sweet_error', 'Waktu pembayaran topup telah habis. Dibatalkan.');
             }
