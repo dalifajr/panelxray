@@ -116,6 +116,7 @@ class VpnService
 import sqlite3, json, os, glob
 
 ip_limits = {}
+quotas = {}
 for path in glob.glob('/etc/kyt/limit/*/ip/*'):
     parts = path.split('/')
     if len(parts) >= 7:
@@ -129,21 +130,36 @@ for path in glob.glob('/etc/kyt/limit/*/ip/*'):
         except:
             pass
 
+for path in glob.glob('/etc/kyt/limit/*/quota/*'):
+    parts = path.split('/')
+    if len(parts) >= 7:
+        svc = parts[4]
+        user = parts[6]
+        try:
+            with open(path, 'r') as f:
+                val = f.read().strip()
+                if val:
+                    quotas[f"{svc}_{user}"] = int(val)
+        except:
+            pass
+
 try:
     c = sqlite3.connect('/usr/bin/kyt/database.db')
     c.row_factory = sqlite3.Row
     db_rows = c.execute("SELECT * FROM account_registry").fetchall()
     print(json.dumps({
         'db': [dict(r) for r in db_rows],
-        'ip_limits': ip_limits
+        'ip_limits': ip_limits,
+        'quotas': quotas
     }))
 except Exception as e:
-    print(json.dumps({'db': [], 'ip_limits': ip_limits}))
+    print(json.dumps({'db': [], 'ip_limits': ip_limits, 'quotas': quotas}))
 PYTHON;
         $resDb = $this->runPython($pythonScript);
-        $parsed = json_decode(trim($resDb['output']), true) ?? ['db' => [], 'ip_limits' => []];
+        $parsed = json_decode(trim($resDb['output']), true) ?? ['db' => [], 'ip_limits' => [], 'quotas' => []];
         $dbRows = $parsed['db'] ?? [];
         $ipLimits = $parsed['ip_limits'] ?? [];
+        $quotas = $parsed['quotas'] ?? [];
         
         $dbMap = [];
         foreach ($dbRows as $r) {
@@ -174,7 +190,8 @@ PYTHON;
                     'active' => isset($suspendedSsh[$user]) ? 0 : 1,
                     'created_at' => $dbInfo['created_at'] ?? '',
                     'expires_at' => $dbInfo['expires_at'] ?? '',
-                    'ip_limit' => $ipLimits["ssh_{$user}"] ?? 1
+                    'ip_limit' => $ipLimits["ssh_{$user}"] ?? 1,
+                    'quota' => $quotas["ssh_{$user}"] ?? 0
                 ];
             }
         }
@@ -216,7 +233,8 @@ PYTHON;
                         'active' => 1, // Since they are in config.json, they are active
                         'created_at' => $dbInfo['created_at'] ?? '',
                         'expires_at' => $parts[1] ?? ($dbInfo['expires_at'] ?? ''),
-                        'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1
+                        'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1,
+                        'quota' => $quotas["{$svc}_{$user}"] ?? 0
                     ];
                 }
 
@@ -239,7 +257,8 @@ PYTHON;
                         'active' => 0, // They are suspended
                         'created_at' => $dbInfo['created_at'] ?? '',
                         'expires_at' => $suspExp ?: ($dbInfo['expires_at'] ?? ''),
-                        'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1
+                        'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1,
+                        'quota' => $quotas["{$svc}_{$user}"] ?? 0
                     ];
                 }
             }

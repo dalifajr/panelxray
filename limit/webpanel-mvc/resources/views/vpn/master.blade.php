@@ -256,7 +256,7 @@
                                 <tr><td class="text-muted">Protocol</td><td class="fw-bold text-dark text-uppercase">: ${protocol}</td></tr>
                                 <tr><td class="text-muted">Domain</td><td class="fw-bold text-dark">: ${info.domain}</td></tr>
                                 <tr><td class="text-muted">Limit IP</td><td class="fw-bold text-dark">: ${info.ip_limit}</td></tr>
-                                <tr><td class="text-muted">Quota</td><td class="fw-bold text-dark">: ${info.quota} GB</td></tr>
+                                <tr><td class="text-muted">Quota</td><td class="fw-bold text-dark">: ${info.quota == 0 ? 'Unlimited' : info.quota} GB</td></tr>
                             </table>
                         </div>
                         <div class="mt-3 text-start">

@@ -300,7 +300,7 @@
                                 <tr><td class="text-muted">Protocol</td><td class="fw-bold text-dark text-uppercase">: ${protocol}</td></tr>
                                 <tr><td class="text-muted">Domain</td><td class="fw-bold text-dark">: ${info.domain}</td></tr>
                                 <tr><td class="text-muted">Limit IP</td><td class="fw-bold text-dark">: ${info.ip_limit}</td></tr>
-                                <tr><td class="text-muted">Quota</td><td class="fw-bold text-dark">: ${info.quota} GB</td></tr>
+                                <tr><td class="text-muted">Quota</td><td class="fw-bold text-dark">: ${info.quota == 0 ? 'Unlimited' : info.quota} GB</td></tr>
                             </table>
                         </div>
                         <div class="mt-3 text-start">
@@ -345,6 +345,50 @@
         const modal = new bootstrap.Modal(document.getElementById('renewModal'));
         modal.show();
     }
+
+    // Live Username Check
+    document.addEventListener('DOMContentLoaded', function () {
+        const usernameInput = document.getElementById('createUsername');
+        const feedback = document.getElementById('usernameFeedback');
+        const createBtn = document.getElementById('btnSubmitCreate');
+        let timeout = null;
+
+        if (usernameInput) {
+            usernameInput.addEventListener('input', function () {
+                clearTimeout(timeout);
+                const username = this.value.trim();
+
+                if (username.length < 3) {
+                    feedback.innerHTML = '';
+                    if (createBtn) createBtn.disabled = false;
+                    return;
+                }
+
+                feedback.innerHTML = '<span class="text-secondary"><i class="fas fa-spinner fa-spin me-1"></i>Mengecek ketersediaan...</span>';
+
+                timeout = setTimeout(() => {
+                    fetch(`/vpn/check-username?username=${encodeURIComponent(username)}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.exists) {
+                                feedback.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle me-1"></i>Username sudah terpakai</span>';
+                                usernameInput.classList.add('is-invalid');
+                                usernameInput.classList.remove('is-valid');
+                                if (createBtn) createBtn.disabled = true;
+                            } else {
+                                feedback.innerHTML = '<span class="text-success"><i class="fas fa-check-circle me-1"></i>Username tersedia</span>';
+                                usernameInput.classList.add('is-valid');
+                                usernameInput.classList.remove('is-invalid');
+                                if (createBtn) createBtn.disabled = false;
+                            }
+                        })
+                        .catch(error => {
+                            feedback.innerHTML = '';
+                        });
+                }, 500); // Debounce 500ms
+            });
+        }
+    });
 </script>
 
 @push('modals')
@@ -361,7 +405,8 @@
                 <div class="modal-body p-4">
                     <div class="mb-3">
                         <label class="form-label fw-bold text-secondary">Username</label>
-                        <input type="text" name="username" class="form-control form-control-sm" required>
+                        <input type="text" name="username" id="createUsername" class="form-control form-control-sm" required>
+                        <small id="usernameFeedback" class="form-text mt-1"></small>
                     </div>
                     @if($protocol === 'ssh')
                     <div class="mb-3">
@@ -399,7 +444,7 @@
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary px-4">Buat Akun</button>
+                    <button type="submit" class="btn btn-primary px-4" id="btnSubmitCreate">Buat Akun</button>
                 </div>
             </form>
         </div>
