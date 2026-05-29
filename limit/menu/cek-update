@@ -705,6 +705,10 @@ detect_bot_asset_changes() {
 
 sync_laravel_webpanel() {
   local web_dir="/var/www/webpanel-mvc"
+  
+  # Hindari error "chdir: error retrieving current directory" jika user mengeksekusi update dari dalam folder web_dir
+  cd /tmp || true
+
   if [ -d "$TMP_DIR/limit/webpanel-mvc" ]; then
     mkdir -p /var/www
     
