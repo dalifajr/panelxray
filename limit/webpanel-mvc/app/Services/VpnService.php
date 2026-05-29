@@ -113,17 +113,37 @@ class VpnService
     {
         // Fetch all accounts from SQLite database
         $pythonScript = <<<PYTHON
-import sqlite3, json
+import sqlite3, json, os, glob
+
+ip_limits = {}
+for path in glob.glob('/etc/kyt/limit/*/ip/*'):
+    parts = path.split('/')
+    if len(parts) >= 6:
+        svc = parts[4]
+        user = parts[5]
+        try:
+            with open(path, 'r') as f:
+                val = f.read().strip()
+                if val:
+                    ip_limits[f"{svc}_{user}"] = int(val)
+        except:
+            pass
+
 try:
     c = sqlite3.connect('/usr/bin/kyt/database.db')
     c.row_factory = sqlite3.Row
     db_rows = c.execute("SELECT * FROM account_registry").fetchall()
-    print(json.dumps([dict(r) for r in db_rows]))
+    print(json.dumps({
+        'db': [dict(r) for r in db_rows],
+        'ip_limits': ip_limits
+    }))
 except Exception as e:
-    print("[]")
+    print(json.dumps({'db': [], 'ip_limits': ip_limits}))
 PYTHON;
         $resDb = $this->runPython($pythonScript);
-        $dbRows = json_decode(trim($resDb['output']), true) ?? [];
+        $parsed = json_decode(trim($resDb['output']), true) ?? ['db' => [], 'ip_limits' => []];
+        $dbRows = $parsed['db'] ?? [];
+        $ipLimits = $parsed['ip_limits'] ?? [];
         
         $dbMap = [];
         foreach ($dbRows as $r) {
@@ -153,7 +173,8 @@ PYTHON;
                     'username' => $user,
                     'active' => isset($suspendedSsh[$user]) ? 0 : 1,
                     'created_at' => $dbInfo['created_at'] ?? '',
-                    'expires_at' => $dbInfo['expires_at'] ?? ''
+                    'expires_at' => $dbInfo['expires_at'] ?? '',
+                    'ip_limit' => $ipLimits["ssh_{$user}"] ?? 1
                 ];
             }
         }
@@ -194,7 +215,8 @@ PYTHON;
                         'username' => $user,
                         'active' => 1, // Since they are in config.json, they are active
                         'created_at' => $dbInfo['created_at'] ?? '',
-                        'expires_at' => $parts[1] ?? ($dbInfo['expires_at'] ?? '')
+                        'expires_at' => $parts[1] ?? ($dbInfo['expires_at'] ?? ''),
+                        'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1
                     ];
                 }
 
@@ -216,7 +238,8 @@ PYTHON;
                         'username' => $user,
                         'active' => 0, // They are suspended
                         'created_at' => $dbInfo['created_at'] ?? '',
-                        'expires_at' => $suspExp ?: ($dbInfo['expires_at'] ?? '')
+                        'expires_at' => $suspExp ?: ($dbInfo['expires_at'] ?? ''),
+                        'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1
                     ];
                 }
             }
@@ -227,9 +250,84 @@ PYTHON;
 
     public function getAccountConfig($service, $username)
     {
-        $script = "import sys, os; sys.stderr = open(os.devnull, 'w'); sys.path.insert(0, '/usr/bin'); from kyt import account_detail_text; print(account_detail_text('{$service}', '{$username}'))";
+        $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+        $marker = $xrayMarkers[$service] ?? '###';
+        
+        $script = <<<PYTHON
+import json
+import os
+
+try:
+    with open('/etc/xray/domain', 'r') as f:
+        domain = f.read().strip()
+except:
+    domain = ''
+
+uuid = ''
+quota = '0'
+ip_limit = '1'
+
+try:
+    # Read UUID from config.json
+    with open('/etc/xray/config.json', 'r') as f:
+        lines = f.readlines()
+        
+    found_user = False
+    for i, line in enumerate(lines):
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[0] == '$marker' and parts[1] == '$username':
+            found_user = True
+            # The next line contains the UUID in JSON format
+            if i + 1 < len(lines):
+                next_line = lines[i+1].strip()
+                if next_line.endswith(','):
+                    next_line = next_line[:-1]
+                try:
+                    obj = json.loads("{" + next_line + "}")
+                    if 'id' in obj:
+                        uuid = obj['id']
+                    elif 'password' in obj:
+                        uuid = obj['password']
+                except:
+                    # Fallback regex extraction
+                    import re
+                    m = re.search(r'"(id|password)":\s*"([^"]+)"', next_line)
+                    if m:
+                        uuid = m.group(2)
+            break
+            
+    # Read Quota
+    try:
+        with open(f'/etc/{service}/{username}', 'r') as f:
+            val = int(f.read().strip())
+            quota = str(val // (1024*1024*1024))
+    except:
+        quota = 'Unlimited'
+        
+    # Read IP limit
+    try:
+        with open(f'/etc/kyt/limit/{service}/ip/{username}', 'r') as f:
+            ip_limit = f.read().strip()
+    except:
+        ip_limit = '1'
+
+    print(json.dumps({
+        'success': True,
+        'domain': domain,
+        'uuid': uuid,
+        'quota': quota,
+        'ip_limit': ip_limit,
+        'username': '$username',
+        'service': '$service'
+    }))
+except Exception as e:
+    print(json.dumps({'success': False, 'error': str(e)}))
+PYTHON;
         $res = $this->runPython($script);
-        return $res['success'] ? $res['output'] : "Failed to fetch config.";
+        if ($res['success']) {
+            return json_decode($res['output'], true);
+        }
+        return ['success' => false];
     }
 
     public function registerAccountToDb($tg_id, $service, $username, $expiredDays, $isTrial = false)
