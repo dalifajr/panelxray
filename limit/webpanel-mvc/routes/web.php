@@ -97,5 +97,25 @@ Route::get('/diag', function () {
     $results['13_apparmor'] = trim(shell_exec('aa-status 2>&1 | head -5 || echo "no apparmor"'));
     $results['14_selinux'] = trim(shell_exec('getenforce 2>&1 || echo "no selinux"'));
 
+    // Test 15: nsenter to escape mount namespace — write to /etc/xray
+    $output4 = [];
+    $rc4 = 0;
+    exec("sudo nsenter --mount=/proc/1/ns/mnt -- bash -c 'touch /etc/xray/diag_nsenter_test && echo NSENTER_WRITE_OK && rm /etc/xray/diag_nsenter_test' 2>&1", $output4, $rc4);
+    $results['15_nsenter_write_etc'] = "rc=$rc4 output=" . implode(' ', $output4);
+
+    // Test 16: nsenter + python — write to SQLite
+    $pyScript16 = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute('SELECT count(*) FROM account_registry'); print('READ_OK'); c.execute(\"UPDATE account_registry SET updated_at=updated_at WHERE id=1\"); c.commit(); print('WRITE_OK')";
+    $b64_16 = base64_encode($pyScript16);
+    $output5 = [];
+    $rc5 = 0;
+    exec("sudo nsenter --mount=/proc/1/ns/mnt -- bash -c 'echo $b64_16 | base64 -d | /usr/bin/kyt/.venv/bin/python' 2>&1", $output5, $rc5);
+    $results['16_nsenter_python_sqlite'] = "rc=$rc5 output=" . implode(' ', $output5);
+
+    // Test 17: nsenter + addws test (just check it can read config.json with sed)
+    $output6 = [];
+    $rc6 = 0;
+    exec("sudo nsenter --mount=/proc/1/ns/mnt -- bash -c 'head -1 /etc/xray/config.json && echo CONFIG_READ_OK' 2>&1", $output6, $rc6);
+    $results['17_nsenter_config_read'] = "rc=$rc6 output=" . implode(' ', $output6);
+
     return response()->json($results, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 });
