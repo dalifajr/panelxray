@@ -38,11 +38,15 @@
                             <div class="form-text">Masukkan 0 untuk unlimited. Nilai saat ini: {{ $quota ?? 0 }} GB</div>
                         </div>
 
+                        @if(Auth::user()->role === 'admin')
                         <div class="mb-4">
                             <label class="form-label fw-bold">Perbarui Limit IP</label>
                             <input type="number" name="limit_ip" class="form-control" value="{{ $limit_ip ?? 1 }}" min="1">
                             <div class="form-text">Jumlah maksimal IP yang dapat login bersamaan. Nilai saat ini: {{ $limit_ip ?? 1 }}</div>
                         </div>
+                        @else
+                        <input type="hidden" name="limit_ip" value="{{ $limit_ip ?? 1 }}">
+                        @endif
                         @endif
 
                         <div class="d-grid gap-2">

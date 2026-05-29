@@ -5,14 +5,22 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\VpnController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\RegisterController;
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
 });
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::get('/login/telegram', [AuthController::class, 'generateTelegramToken'])->name('auth.telegram');
 Route::get('/login/verify', [AuthController::class, 'verifyLogin'])->name('login.verify');
+
+Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
+Route::post('/register', [RegisterController::class, 'register'])->name('register.post');
+Route::get('/api/check-username', [RegisterController::class, 'checkUsername'])->name('api.check-username-register');
+
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::middleware('auth')->group(function () {
@@ -20,6 +28,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
     Route::post('/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
+    Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
+    Route::delete('/admin/users/{user}', [AdminController::class, 'deleteUser'])->name('admin.users.delete');
 
     Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');

@@ -69,11 +69,15 @@
                         </div>
                         @endif
 
+                        @if(Auth::user()->role === 'admin')
                         <div class="mb-4">
                             <label class="form-label fw-bold">Limit IP</label>
                             <input type="number" name="limit_ip" class="form-control" value="{{ old('limit_ip', '1') }}" min="1">
                             <div class="form-text">Jumlah maksimal IP yang dapat login bersamaan. Biarkan 1 untuk keamanan.</div>
                         </div>
+                        @else
+                        <input type="hidden" name="limit_ip" value="1">
+                        @endif
 
                         <div class="d-grid gap-2">
                             <button type="submit" id="submitBtn" class="btn btn-primary btn-lg">Buat Akun</button>

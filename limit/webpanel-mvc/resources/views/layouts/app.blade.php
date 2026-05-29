@@ -277,7 +277,7 @@
             </div>
             <div class="d-flex flex-column">
                 <span class="fw-bold text-body" style="font-size: 0.9rem;">{{ Auth::user()->name }}</span>
-                <small class="text-secondary" style="font-size: 0.75rem;">ID: {{ explode('@', Auth::user()->email)[0] }}</small>
+                <small class="text-secondary" style="font-size: 0.75rem;">Username: {{ Auth::user()->username ?? 'N/A' }} | Role: {{ ucfirst(Auth::user()->role) }}</small>
             </div>
         </div>
 
@@ -286,9 +286,14 @@
                 <a href="{{ route('dashboard') }}" class="menu-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
                     <i class="fas fa-home"></i> <span>Dashboard</span>
                 </a>
+                @if(Auth::user()->role === 'admin')
                 <a href="{{ route('vpn.master') }}" class="menu-item {{ request()->routeIs('vpn.master') ? 'active' : '' }}">
                     <i class="fas fa-database text-info"></i> <span>Master Data VPN</span>
                 </a>
+                <a href="{{ route('admin.users') }}" class="menu-item {{ request()->routeIs('admin.users') ? 'active' : '' }}">
+                    <i class="fas fa-users text-warning"></i> <span>Manajemen User</span>
+                </a>
+                @endif
                 <a href="{{ route('profile') }}" class="menu-item {{ request()->routeIs('profile') ? 'active' : '' }}">
                     <i class="fas fa-user-circle text-primary"></i> <span>Profil Pengguna</span>
                 </a>

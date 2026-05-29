@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - VPN XRAY Panel</title>
+    <title>Register - VPN XRAY Panel</title>
     
     <!-- External Resources -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -107,14 +107,11 @@
             box-shadow: 0 10px 15px -3px rgba(13, 71, 161, 0.3);
         }
 
-        .btn-telegram {
-            background: #0088cc;
-            color: white;
-            margin-top: 1rem;
-        }
-
-        .btn-telegram:hover {
-            background: #0077b5;
+        .btn-primary:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
         .form-group {
@@ -144,26 +141,61 @@
             box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.1);
         }
 
-        .divider {
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .form-check {
             display: flex;
             align-items: center;
-            text-align: center;
-            margin: 2rem 0;
-            color: var(--text-muted);
-        }
-
-        .divider::before, .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid #cbd5e1;
-        }
-
-        .divider:not(:empty)::before {
-            margin-right: .5em;
-        }
-
-        .divider:not(:empty)::after {
-            margin-left: .5em;
+            gap: 1rem;
+            margin-top: 1rem;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: var(--radius-md);
+            border: 1px solid #e2e8f0;
         }
 
         .info-section {
@@ -204,30 +236,6 @@
             z-index: 1;
         }
 
-        .info-alert {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 1.5rem;
-            border-radius: var(--radius-md);
-            backdrop-filter: blur(10px);
-            position: relative;
-            z-index: 1;
-            display: flex;
-            align-items: flex-start;
-            gap: 1rem;
-        }
-
-        .info-alert i {
-            color: var(--accent-color);
-            font-size: 1.5rem;
-            margin-top: 0.2rem;
-        }
-
-        .info-alert p {
-            margin: 0;
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
-
         .alert-error {
             background-color: #fee2e2;
             color: #991b1b;
@@ -238,12 +246,16 @@
             border: 1px solid #f87171;
         }
 
-        .footer-text {
-            text-align: center;
-            color: var(--text-muted);
+        .username-status {
             font-size: 0.875rem;
-            margin-top: 3rem;
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
+
+        .status-available { color: #16a34a; }
+        .status-taken { color: #dc2626; }
 
         @media (max-width: 968px) {
             .login-wrapper { flex-direction: column; }
@@ -259,64 +271,109 @@
         <div class="login-section">
             <div class="brand-header">
                 <h1 class="brand-title"><i class="fas fa-shield-alt"></i> VPN XRAY</h1>
-                <p class="brand-subtitle">Panel Admin Server</p>
+                <p class="brand-subtitle">Daftar Akun Baru</p>
             </div>
             
             <div style="margin-bottom: 2rem;">
-                <h2 style="color: var(--text-dark); font-size: 1.5rem; margin: 0 0 0.5rem 0; font-weight: 600;">Selamat Datang</h2>
-                <p style="color: var(--text-muted); margin: 0;">Silakan login untuk mengakses panel.</p>
+                <h2 style="color: var(--text-dark); font-size: 1.5rem; margin: 0 0 0.5rem 0; font-weight: 600;">Buat Akun</h2>
+                <p style="color: var(--text-muted); margin: 0;">Silakan isi formulir di bawah ini.</p>
             </div>
 
-            @if(session('error'))
+            @if($errors->any())
             <div class="alert-error">
-                <i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i> {{ session('error') }}
+                <i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i> Ada kesalahan pada input Anda.
+                <ul style="margin: 0.5rem 0 0 1.5rem; padding: 0;">
+                    @foreach($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
             </div>
             @endif
 
-            <form action="{{ route('login.post') }}" method="POST">
+            <form action="{{ route('register.post') }}" method="POST" id="registerForm">
                 @csrf
                 <div class="form-group">
                     <label class="form-label">Username</label>
-                    <input type="text" name="username" class="form-control" required placeholder="Masukkan username">
+                    <input type="text" name="username" id="usernameInput" class="form-control" required placeholder="Pilih username" autocomplete="off" value="{{ old('username') }}">
+                    <div id="usernameStatus" class="username-status"></div>
                 </div>
                 
                 <div class="form-group">
                     <label class="form-label">Password</label>
-                    <input type="password" name="password" class="form-control" required placeholder="Masukkan password">
+                    <input type="password" name="password" class="form-control" required placeholder="Buat password (min. 6 karakter)">
                 </div>
 
-                <button type="submit" class="btn-primary">
-                    Login
+                <div class="form-check">
+                    <label class="toggle-switch">
+                        <input type="checkbox" name="link_telegram" value="1" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <div>
+                        <div style="font-weight: 500; color: var(--text-dark);">Tautkan dengan Telegram</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">Izinkan login cepat dengan 1 klik via bot Telegram setelah mendaftar.</div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    Daftar Sekarang
                 </button>
             </form>
 
-            <div class="divider">ATAU</div>
-
-            <a href="{{ route('auth.telegram') }}" class="btn-primary btn-telegram">
-                <i class="fab fa-telegram-plane fs-5"></i> 
-                <span>Login via Telegram</span>
-            </a>
-
-            <div style="text-align: center; margin-top: 1.5rem;">
-                <p style="color: var(--text-muted);">Belum punya akun? <a href="{{ route('register') }}" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">Daftar Sekarang</a></p>
-            </div>
-            
-            <div class="footer-text">
-                &copy; {{ date('Y') }} VPN Xray Panel. All rights reserved.
+            <div style="text-align: center; margin-top: 2rem;">
+                <p style="color: var(--text-muted);">Sudah punya akun? <a href="{{ route('login') }}" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">Login di sini</a></p>
             </div>
         </div>
 
         <!-- Info Section -->
         <div class="info-section">
-            <h2 class="info-title">Keamanan Terjamin</h2>
+            <h2 class="info-title">Satu Klik untuk Masuk</h2>
             <p class="info-desc">
-                Login diotomatisasi melalui integrasi bot Telegram untuk memastikan hanya admin berwenang yang dapat mengakses kontrol panel server.
+                Dengan menautkan akun Anda ke Telegram, Anda tidak perlu lagi mengingat password. Cukup satu klik untuk mengakses panel VPN Anda.
             </p>
-            <div class="info-alert">
-                <i class="fas fa-info-circle"></i>
-                <p>Klik tombol login, lalu mulai (start) bot untuk mendapatkan link akses masuk langsung ke dashboard.</p>
-            </div>
+            <img src="https://core.telegram.org/file/464001154/1/1l7kQ-k2l_A.135242/57da6b38c0316ec504" alt="Telegram integration" style="max-width: 200px; margin-top: 2rem; opacity: 0.9; border-radius: var(--radius-md);">
         </div>
     </div>
+
+    <script>
+        const usernameInput = document.getElementById('usernameInput');
+        const usernameStatus = document.getElementById('usernameStatus');
+        const submitBtn = document.getElementById('submitBtn');
+        let timeout = null;
+
+        usernameInput.addEventListener('input', function() {
+            clearTimeout(timeout);
+            const username = this.value.trim();
+
+            if (username.length < 3) {
+                usernameStatus.innerHTML = '';
+                submitBtn.disabled = true;
+                return;
+            }
+
+            usernameStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mengecek ketersediaan...';
+            usernameStatus.className = 'username-status';
+            submitBtn.disabled = true;
+
+            timeout = setTimeout(() => {
+                fetch(`{{ route('api.check-username-register') }}?username=${encodeURIComponent(username)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.available) {
+                            usernameStatus.innerHTML = '<i class="fas fa-check-circle"></i> Username tersedia';
+                            usernameStatus.className = 'username-status status-available';
+                            submitBtn.disabled = false;
+                        } else {
+                            usernameStatus.innerHTML = '<i class="fas fa-times-circle"></i> Username sudah terdaftar';
+                            usernameStatus.className = 'username-status status-taken';
+                            submitBtn.disabled = true;
+                        }
+                    })
+                    .catch(err => {
+                        usernameStatus.innerHTML = '';
+                        submitBtn.disabled = false;
+                    });
+            }, 500);
+        });
+    </script>
 </body>
 </html>

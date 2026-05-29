@@ -18,6 +18,29 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
+    public function login(Request $request)
+    {
+        $credentials = $request->validate([
+            'username' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
+
+            if (Auth::user()->status === 'suspended') {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+                return back()->with('error', 'Akun Anda telah disuspend oleh Administrator.');
+            }
+
+            return redirect()->route('dashboard');
+        }
+
+        return back()->with('error', 'Username atau Password salah.')->onlyInput('username');
+    }
+
     public function generateTelegramToken()
     {
         $token = Str::random(8);
@@ -81,7 +104,7 @@ class AuthController extends Controller
         $script = "import sqlite3, json; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.row_factory=sqlite3.Row; r=c.execute('SELECT username, full_name FROM telegram_users WHERE tg_id = ?', ('{$tokenData['tg_id']}',)).fetchone(); print(json.dumps(dict(r) if r else {}))";
         $res = $vpn->execute('/usr/bin/kyt/.venv/bin/python', ['-c', $script]);
         
-        $fullName = 'Admin Panel';
+        $fullName = 'User Panel';
         if ($res['success']) {
             $botUser = json_decode($res['output'], true);
             if (!empty($botUser['full_name'])) {
@@ -91,24 +114,42 @@ class AuthController extends Controller
             }
         }
 
-        // Login the user (Create dummy user on the fly if needed, or find by tg_id)
-        $user = User::firstOrCreate(
-            ['email' => $tokenData['tg_id'] . '@telegram.local'],
-            [
-                'name' => $fullName,
-                'password' => bcrypt(Str::random(24))
-            ]
-        );
+        if (isset($tokenData['user_id'])) {
+            // Ini adalah token dari proses pendaftaran untuk menautkan Telegram
+            $user = User::find($tokenData['user_id']);
+            if ($user) {
+                $user->telegram_id = $tokenData['tg_id'];
+                $user->save();
+            }
+            Auth::login($user);
+        } else {
+            // Login langsung menggunakan Telegram
+            $user = User::where('telegram_id', $tokenData['tg_id'])->first();
+            
+            if (!$user) {
+                // Buat user baru otomatis sebagai customer
+                $user = User::create([
+                    'name' => $fullName,
+                    'username' => 'tg_' . $tokenData['tg_id'],
+                    'email' => $tokenData['tg_id'] . '@telegram.local',
+                    'password' => bcrypt(Str::random(24)),
+                    'role' => 'customer',
+                    'telegram_id' => $tokenData['tg_id']
+                ]);
+            } else {
+                if ($user->name === 'Admin Panel' && $fullName !== 'Admin Panel') {
+                    $user->name = $fullName;
+                    $user->save();
+                }
+            }
 
-        // Update the name if they changed it in Telegram (optional, but good for sync)
-        // Wait, if they edit it locally in Profile, we shouldn't overwrite it automatically.
-        // Or we only overwrite if it's currently 'Admin Panel'.
-        if ($user->name === 'Admin Panel' && $fullName !== 'Admin Panel') {
-            $user->name = $fullName;
-            $user->save();
+            if ($user->status === 'suspended') {
+                Cache::forget($cacheKey);
+                return redirect()->route('login')->with('error', 'Akun Anda telah disuspend oleh Administrator.');
+            }
+
+            Auth::login($user);
         }
-
-        Auth::login($user);
         
         // Clear token
         Cache::forget($cacheKey);

@@ -24,6 +24,19 @@ class VpnController extends Controller
 
         $parsedUsers = $this->vpn->getAccounts($protocol);
         
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $ownedVpnUsernames = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->pluck('vpn_username')
+                ->map(fn($name) => strtolower($name))
+                ->toArray();
+                
+            $parsedUsers = array_filter($parsedUsers, function($user) use ($ownedVpnUsernames) {
+                return in_array(strtolower($user['username']), $ownedVpnUsernames);
+            });
+        }
+        
         return view('vpn.list', compact('protocol', 'parsedUsers'));
     }
 
@@ -85,23 +98,35 @@ class VpnController extends Controller
             'quota' => 'nullable|integer|min:0'
         ]);
 
-        $user = $validated['username'];
+        $userStr = $validated['username'];
         $exp = $validated['expired'];
         $pw = $validated['password'] ?? '1';
         $ip = $validated['limit_ip'] ?? '1';
         $sni = $validated['sni_config'] ?? '3';
         $quota = $validated['quota'] ?? '0';
 
+        $authUser = auth()->user();
+
+        // Cek limit pembuatan akun bagi customer
+        if ($authUser->role === 'customer') {
+            $activeCount = \App\Models\VpnAccount::where('user_id', $authUser->id)->count();
+            if ($activeCount >= $authUser->vpn_account_limit) {
+                return back()->with('sweet_error', "Gagal membuat akun: Anda telah mencapai batas maksimal pembuatan akun VPN ({$authUser->vpn_account_limit} akun aktif).")->withInput();
+            }
+            // Customer dipaksa limit IP 1
+            $ip = '1';
+        }
+
         // Pre-flight check: ensure username doesn't already exist
         if ($protocol !== 'ssh') {
-            $resCheck = $this->vpn->executeBash("grep -w \"$user\" /etc/xray/config.json | wc -l");
+            $resCheck = $this->vpn->executeBash("grep -w \"$userStr\" /etc/xray/config.json | wc -l");
             if (intval(trim($resCheck['output'])) > 0) {
-                return back()->with('sweet_error', "Gagal membuat akun: Username '$user' sudah terdaftar di konfigurasi Xray!")->withInput();
+                return back()->with('sweet_error', "Gagal membuat akun: Username '$userStr' sudah terdaftar di konfigurasi Xray!")->withInput();
             }
         } else {
-            $resCheck = $this->vpn->executeBash("id -u $user >/dev/null 2>&1 && echo 1 || echo 0");
+            $resCheck = $this->vpn->executeBash("id -u $userStr >/dev/null 2>&1 && echo 1 || echo 0");
             if (intval(trim($resCheck['output'])) === 1) {
-                return back()->with('sweet_error', "Gagal membuat akun: Username '$user' sudah terdaftar di sistem SSH!")->withInput();
+                return back()->with('sweet_error', "Gagal membuat akun: Username '$userStr' sudah terdaftar di sistem SSH!")->withInput();
             }
         }
 
@@ -110,9 +135,9 @@ class VpnController extends Controller
         if ($protocol === 'ssh') {
             // SSH creation (useradd)
             $later = date('Y-m-d', strtotime("+$exp days"));
-            $res = $this->vpn->executeBash("useradd -e $later -s /bin/false -M $user && echo \"$user:$pw\" | chpasswd");
+            $res = $this->vpn->executeBash("useradd -e $later -s /bin/false -M $userStr && echo \"$userStr:$pw\" | chpasswd");
             if ($res['success']) {
-                $this->vpn->executeBash("mkdir -p /etc/kyt/limit/ssh/ip && echo \"$ip\" > /etc/kyt/limit/ssh/ip/$user");
+                $this->vpn->executeBash("mkdir -p /etc/kyt/limit/ssh/ip && echo \"$ip\" > /etc/kyt/limit/ssh/ip/$userStr");
             }
         } else {
             // Xray protocols: pipe input lines to the appropriate add script
@@ -130,7 +155,7 @@ class VpnController extends Controller
             // 3. masaaktif (expiry days)
             // 4. Quota (GB)
             // 5. iplimit
-            $inputLines = [$sni, $user, $exp, $quota, $ip];
+            $inputLines = [$sni, $userStr, $exp, $quota, $ip];
 
             Log::info("CREATE: Piping to $cmd with inputs: " . json_encode($inputLines));
             $res = $this->pipeInputToCommand($inputLines, $cmd);
@@ -139,9 +164,17 @@ class VpnController extends Controller
 
         if ($res && $res['success']) {
             // Register to SQLite database
-            $tgId = auth()->user()->email ? explode('@', auth()->user()->email)[0] : '0';
-            $this->vpn->registerAccountToDb($tgId, $protocol, $user, $exp, false);
-            return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $user berhasil dibuat!");
+            $tgId = auth()->user()->telegram_id ?? '0';
+            $this->vpn->registerAccountToDb($tgId, $protocol, $userStr, $exp, false);
+            
+            // Catat kepemilikan di database Laravel
+            \App\Models\VpnAccount::create([
+                'user_id' => auth()->id(),
+                'vpn_username' => $userStr,
+                'service' => $protocol
+            ]);
+
+            return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $userStr berhasil dibuat!");
         }
 
         $debugError = $res['error'] ?? 'Unknown error';
@@ -180,6 +213,15 @@ class VpnController extends Controller
 
     public function renew(Request $request, $protocol, $user)
     {
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $user)
+                ->exists();
+            if (!$owns) abort(403, 'Unauthorized action.');
+        }
+
         $validated = $request->validate([
             'days' => 'required|integer|min:1|max:365',
             'quota' => 'nullable|integer|min:0',
@@ -272,6 +314,15 @@ PYTHON;
 
     public function suspend($protocol, $user)
     {
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $user)
+                ->exists();
+            if (!$owns) abort(403, 'Unauthorized action.');
+        }
+
         if ($protocol === 'ssh') {
             $res = $this->vpn->executeBash("usermod -L $user");
         } else {
@@ -293,6 +344,15 @@ PYTHON;
 
     public function unsuspend($protocol, $user)
     {
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $user)
+                ->exists();
+            if (!$owns) abort(403, 'Unauthorized action.');
+        }
+
         if ($protocol === 'ssh') {
             $res = $this->vpn->executeBash("usermod -U $user");
         } else {
@@ -314,6 +374,15 @@ PYTHON;
 
     public function delete($protocol, $user)
     {
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $user)
+                ->exists();
+            if (!$owns) abort(403, 'Unauthorized action.');
+        }
+
         if ($protocol === 'ssh') {
             $this->vpn->executeBash("userdel -f $user 2>/dev/null; rm -f /etc/kyt/limit/ssh/ip/$user");
         } else {
@@ -371,6 +440,9 @@ PYTHON;
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"); c.commit(); print('DB_OK')";
         $dbRes = $this->runPython($dbScript);
         Log::info("DELETE DB result: " . $dbRes['output']);
+        
+        // Remove from local vpn_accounts tracking
+        \App\Models\VpnAccount::where('vpn_username', $user)->where('service', $protocol)->delete();
 
         return back()->with('sweet_success', "Akun $user berhasil dihapus.");
     }
