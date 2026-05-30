@@ -61,13 +61,21 @@
                         @if(Auth::user()->role === 'admin')
                         <div class="mb-4">
                             <label class="form-label fw-bold">Perbarui Limit IP</label>
-                            <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control" value="{{ $limit_ip ?? 1 }}" min="1">
+                            <div class="input-group">
+                                <button class="btn btn-outline-secondary" type="button" onclick="decrementInput('renewLimitIpInput')">-</button>
+                                <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control text-center" value="{{ $limit_ip ?? 1 }}" min="1">
+                                <button class="btn btn-outline-secondary" type="button" onclick="incrementInput('renewLimitIpInput')">+</button>
+                            </div>
                             <div class="form-text">Jumlah maksimal IP yang dapat login bersamaan. Nilai saat ini: {{ $limit_ip ?? 1 }}</div>
                         </div>
                         @else
                         <div class="mb-4">
                             <label class="form-label fw-bold">Perbarui Limit IP</label>
-                            <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control" value="{{ $limit_ip ?? 1 }}" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
+                            <div class="input-group">
+                                <button class="btn btn-outline-secondary" type="button" onclick="decrementInput('renewLimitIpInput')">-</button>
+                                <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control text-center" value="{{ $limit_ip ?? 1 }}" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
+                                <button class="btn btn-outline-secondary" type="button" onclick="incrementInput('renewLimitIpInput')">+</button>
+                            </div>
                             <div class="form-text">
                                 Nilai saat ini: {{ $limit_ip ?? 1 }}.
                                 @if($maxIpLimit > 0)
@@ -91,6 +99,31 @@
 </div>
 
 <script>
+window.decrementInput = function(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const min = parseInt(input.getAttribute('min')) || 1;
+    let val = parseInt(input.value) || 1;
+    if (val > min) {
+        input.value = val - 1;
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new Event('change'));
+    }
+};
+
+window.incrementInput = function(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const maxAttr = input.getAttribute('max');
+    const max = maxAttr ? parseInt(maxAttr) : Infinity;
+    let val = parseInt(input.value) || 1;
+    if (val < max) {
+        input.value = val + 1;
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new Event('change'));
+    }
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     // Pricing Logic
     const basePrice = {{ isset($basePrice) ? $basePrice : 0 }};
