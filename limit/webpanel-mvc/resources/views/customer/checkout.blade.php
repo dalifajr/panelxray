@@ -35,7 +35,7 @@
                         <p class="mb-0"><strong>Masa Aktif:</strong> {{ $transaction->metadata['days'] }} Hari</p>
                     </div>
 
-                    <form action="{{ route('checkout.cancel', $transaction->id) }}" method="POST">
+                    <form action="{{ route('checkout.cancel', $transaction->id) }}" method="POST" id="autoCancelForm">
                         @csrf
                         <button type="submit" class="btn btn-outline-danger w-100"><i class="fas fa-times-circle me-1"></i>Batalkan Pesanan</button>
                     </form>
@@ -48,19 +48,29 @@
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        var targetTime = {{ $transaction->created_at->addMinutes(5)->timestamp * 1000 }};
+        var targetTime = {{ $transaction->created_at->copy()->addSeconds(300)->timestamp * 1000 }};
 
         var countdownElement = document.getElementById('countdown');
 
+        var cancelTriggered = false;
         var interval = setInterval(function() {
             var now = new Date().getTime();
             var distance = targetTime - now;
 
-            if (distance < 0) {
+            if (distance <= 0) {
                 clearInterval(interval);
-                countdownElement.innerHTML = "WAKTU HABIS";
-                // Redirect otomatis untuk membatalkan
-                window.location.reload();
+                if (countdownElement) {
+                    countdownElement.innerHTML = "WAKTU HABIS";
+                }
+                if (!cancelTriggered) {
+                    cancelTriggered = true;
+                    var cancelForm = document.getElementById('autoCancelForm');
+                    if (cancelForm) {
+                        cancelForm.submit();
+                    } else {
+                        window.location.href = "{{ route('checkout.cancelled', $transaction->id) }}";
+                    }
+                }
                 return;
             }
 

@@ -65,6 +65,18 @@ body {
     border-bottom: 1px solid var(--bs-border-color);
 }
 
+/* Memastikan info user terlihat dan berwarna gelap */
+.sidebar-header .user-info {
+    display: block !important;
+    color: #1e293b !important;
+}
+
+@media (max-width: 767.98px) {
+    .sidebar-header .user-info {
+        font-size: 0.9rem;
+    }
+}
+
 .menu-group {
     margin-bottom: 1rem;
     padding: 0 1rem;

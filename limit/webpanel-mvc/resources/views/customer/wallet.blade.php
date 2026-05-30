@@ -50,7 +50,7 @@
                                     @endif
                                 </div>
                                 
-                                <form action="{{ route('wallet.cancel') }}" method="POST" class="d-inline">
+                                <form action="{{ route('wallet.cancel') }}" method="POST" class="d-inline" id="autoCancelTopupForm">
                                     @csrf
                                     <button type="submit" class="btn btn-sm btn-outline-danger w-100"><i class="fas fa-times-circle me-1"></i>Batalkan Top Up Ini</button>
                                 </form>
@@ -140,18 +140,27 @@
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        var targetTime = {{ $pendingTopup->created_at->addMinutes(5)->timestamp * 1000 }};
+        var targetTime = {{ $pendingTopup->created_at->copy()->addSeconds(300)->timestamp * 1000 }};
 
         var countdownElement = document.getElementById('countdown');
 
+        var cancelTriggered = false;
         var interval = setInterval(function() {
             var now = new Date().getTime();
             var distance = targetTime - now;
 
-            if (distance < 0) {
+            if (distance <= 0) {
                 clearInterval(interval);
                 if(countdownElement) countdownElement.innerHTML = "WAKTU HABIS";
-                window.location.reload();
+                if (!cancelTriggered) {
+                    cancelTriggered = true;
+                    var cancelForm = document.getElementById('autoCancelTopupForm');
+                    if (cancelForm) {
+                        cancelForm.submit();
+                    } else {
+                        window.location.href = "{{ route('wallet.index') }}";
+                    }
+                }
                 return;
             }
 

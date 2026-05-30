@@ -286,7 +286,7 @@
                 <div class="user-avatar rounded-circle d-flex align-items-center justify-content-center fw-bold text-white bg-primary" style="width: 40px; height: 40px; text-transform: uppercase;">
                   {{ substr(Auth::user()->name, 0, 1) }}
                 </div>
-                <div class="user-info d-none d-md-block">
+                <div class="user-info">
                     <div class="fw-bold text-dark">{{ Auth::user()->name }}</div>
                     <div class="text-muted small">{{ Auth::user()->role === 'admin' ? 'Administrator' : 'Customer' }}</div>
                 </div>
