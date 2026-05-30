@@ -645,8 +645,8 @@
                         @else
                         <div class="col-6">
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
-                            <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
-                            <small class="text-muted">@if($maxIpLimit > 0)Maks {{ $maxIpLimit }} IP@endif</small>
+                            <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm" value="1" min="1" {{ $maxIpLimit > 0 ? 'max=' . $maxIpLimit : '' }}>
+                            <small class="text-muted">{{ $maxIpLimit > 0 ? 'Maks ' . $maxIpLimit . ' IP' : '' }}</small>
                         </div>
                         @endif
                     </div>
@@ -730,8 +730,8 @@
                         @else
                         <div class="col-6">
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
-                            <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
-                            <small class="text-muted">@if($maxIpLimit > 0)Maks {{ $maxIpLimit }} IP@endif</small>
+                            <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm" value="1" min="1" {{ $maxIpLimit > 0 ? 'max=' . $maxIpLimit : '' }}>
+                            <small class="text-muted">{{ $maxIpLimit > 0 ? 'Maks ' . $maxIpLimit . ' IP' : '' }}</small>
                         </div>
                         @endif
                     </div>
