@@ -327,7 +327,7 @@ class VpnController extends Controller
 
             // Register to SQLite database
             $tgId = auth()->user()->telegram_id ?? '0';
-            $this->vpn->registerAccountToDb($tgId, $protocol, $userStr, $exp, false);
+            $this->vpn->registerAccountToDb($tgId, $protocol, $userStr, $exp, $isTrial);
             
             // Catat kepemilikan di database Laravel
             \App\Models\VpnAccount::create([
@@ -471,6 +471,25 @@ class VpnController extends Controller
                 $this->vpn->updateAccountExpiry($protocol, $user, $newExpiry);
             }
 
+            // Reactivate/Unsuspend and convert to normal account if it was a trial
+            $acc = \App\Models\VpnAccount::where('service', $protocol)->where('vpn_username', $user)->first();
+            if ($acc && $acc->is_trial) {
+                if ($protocol === 'ssh') {
+                    $this->vpn->executeBash("usermod -U $user");
+                } else {
+                    $scriptMap = ['vmess' => 'unsuspws', 'vless' => 'unsuspvless', 'trojan' => 'unsusptr', 'shadowsocks' => 'unsuspss'];
+                    $cmd = $scriptMap[$protocol] ?? 'unsuspws';
+                    $this->vpn->executeBash("$cmd --user $user");
+                }
+                
+                $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1, is_trial=0 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
+                $this->runPython($dbScript);
+
+                $acc->is_trial = false;
+                $acc->admin_suspended = false;
+                $acc->save();
+            }
+
             if ($authUser->role === 'customer' && $paymentMethod === 'saldo' && $totalPrice > 0) {
                 $authUser->balance -= $totalPrice;
                 $authUser->save();
@@ -544,6 +563,9 @@ class VpnController extends Controller
                 ->where('vpn_username', $user)
                 ->first();
             if (!$owns) abort(403, 'Unauthorized action.');
+            if ($owns->is_trial) {
+                return back()->with('sweet_error', 'Akun trial yang telah ditangguhkan tidak dapat diaktifkan kembali secara manual. Silakan lakukan perpanjangan (renew) akun untuk mengaktifkannya kembali.');
+            }
             if ($owns->admin_suspended) {
                 return back()->with('sweet_error', 'Akun ini disuspend oleh Admin. Anda tidak dapat mengaktifkannya sendiri.');
             }

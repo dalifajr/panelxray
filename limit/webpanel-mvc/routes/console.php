@@ -13,21 +13,48 @@ use App\Models\VpnAccount;
 use App\Services\VpnService;
 
 Schedule::call(function () {
-    $expiredTrials = VpnAccount::where('is_trial', true)
+    $vpnService = app(VpnService::class);
+
+    // 1. Suspend expired trials (created > 15 mins ago, not suspended yet)
+    $trialsToSuspend = VpnAccount::where('is_trial', true)
+        ->where('admin_suspended', false)
         ->where('created_at', '<=', now()->subMinutes(15))
         ->get();
 
-    if ($expiredTrials->isEmpty()) {
-        return;
-    }
-
-    $vpnService = app(VpnService::class);
-
-    foreach ($expiredTrials as $acc) {
+    foreach ($trialsToSuspend as $acc) {
         $protocol = $acc->service;
         $user = $acc->vpn_username;
         
-        Log::info("Trial cleaner: Hapus $protocol $user (Expired trial)");
+        Log::info("Trial scheduler: Suspending $protocol $user (Expired trial)");
+
+        if ($protocol === 'ssh') {
+            $vpnService->executeBash("usermod -L $user");
+        } else {
+            $scriptMap = ['vmess' => 'suspws', 'vless' => 'suspvless', 'trojan' => 'susptr', 'shadowsocks' => 'suspss'];
+            $cmd = $scriptMap[$protocol] ?? 'suspws';
+            $vpnService->executeBash("$cmd --user $user --reason trial_expired");
+        }
+        
+        // Update SQLite DB
+        $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=0 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
+        $vpnService->executeBashWithStdin("python3 -", $dbScript);
+
+        // Update Laravel DB
+        $acc->admin_suspended = true;
+        $acc->save();
+    }
+
+    // 2. Delete trial accounts suspended for more than 1 day
+    $trialsToDelete = VpnAccount::where('is_trial', true)
+        ->where('admin_suspended', true)
+        ->where('updated_at', '<=', now()->subDay())
+        ->get();
+
+    foreach ($trialsToDelete as $acc) {
+        $protocol = $acc->service;
+        $user = $acc->vpn_username;
+        
+        Log::info("Trial scheduler: Deleting $protocol $user (Trial suspended > 1 day)");
 
         if ($protocol === 'ssh') {
             $vpnService->executeBash("userdel -f $user 2>/dev/null; rm -f /etc/kyt/limit/ssh/ip/$user");
@@ -75,8 +102,6 @@ try:
 except Exception as e:
     pass
 PYTHON;
-            // Cannot use $this->runPython here easily since it's inside a closure without controller trait,
-            // so we use executeBashWithStdin
             $vpnService->executeBashWithStdin("python3 -", $script);
         }
 
