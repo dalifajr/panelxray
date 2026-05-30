@@ -6,10 +6,22 @@
         <h2 class="mb-0 text-dark fw-bold">Dompet Keuangan</h2>
     </div>
 
+    @if(session('sweet_success'))
+        <div class="alert alert-success border-0 shadow-sm mb-4">
+            <i class="fas fa-check-circle me-2"></i>{{ session('sweet_success') }}
+        </div>
+    @endif
+
+    @if(session('sweet_error'))
+        <div class="alert alert-danger border-0 shadow-sm mb-4">
+            <i class="fas fa-exclamation-triangle me-2"></i>{{ session('sweet_error') }}
+        </div>
+    @endif
+
     <div class="row">
         <!-- Saldo Info -->
         <div class="col-md-4 mb-4">
-            <div class="card bg-primary text-white border-0 shadow-sm lift-hover">
+            <div class="card bg-primary text-white border-0 shadow-sm lift-hover mb-4">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -20,6 +32,23 @@
                             <i class="fas fa-wallet"></i>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Klaim Voucher Card -->
+            <div class="card border-0 shadow-sm lift-hover">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-ticket-alt me-2 text-danger"></i>Klaim Kode Voucher</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form action="{{ route('wallet.voucher.redeem') }}" method="POST">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-secondary">Masukkan Kode Voucher</label>
+                            <input type="text" name="voucher_code" class="form-control border text-uppercase" placeholder="MISAL: FREE5K" required style="text-transform: uppercase;">
+                        </div>
+                        <button type="submit" class="btn btn-danger w-100 fw-bold"><i class="fas fa-gift me-1"></i>Klaim Sekarang</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -67,7 +96,15 @@
                                 </div>
                                 <div class="form-text">Masukkan nominal kelipatan 5000.</div>
                             </div>
-                            <button type="submit" class="btn btn-success w-100">Buat Instruksi Pembayaran</button>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold text-secondary">Kode Voucher <span class="badge bg-light text-muted fw-normal">Opsional</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border"><i class="fas fa-ticket-alt text-secondary"></i></span>
+                                    <input type="text" name="voucher_code" class="form-control border text-uppercase" placeholder="MISAL: DOUBLEMAX" style="text-transform: uppercase;">
+                                </div>
+                                <div class="form-text">Masukkan kode voucher (seperti Double Saldo) jika ada.</div>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100 fw-bold"><i class="fas fa-plus-circle me-1"></i>Buat Instruksi Pembayaran</button>
                         </form>
                     @endif
                 </div>

@@ -58,6 +58,52 @@ class OrderController extends Controller
                     'type' => 'order',
                     'message' => "Top Up Saldo senilai Rp " . number_format($transaction->total_amount, 0, ',', '.') . " telah disetujui oleh Admin.",
                 ]);
+
+                // Check double_saldo voucher
+                $meta = $transaction->metadata;
+                if (isset($meta['applied_voucher']) && $meta['applied_voucher']['type'] === 'double_saldo') {
+                    $vCode = $meta['applied_voucher']['code'];
+                    $benefitValue = floatval($meta['applied_voucher']['benefit_value'] ?? 0);
+
+                    $voucher = \App\Models\Voucher::where('code', $vCode)->first();
+                    if ($voucher && $voucher->is_active && $voucher->used_count < $voucher->usage_limit) {
+                        $bonus = $transaction->amount;
+                        if ($benefitValue > 0 && $bonus > $benefitValue) {
+                            $bonus = $benefitValue;
+                        }
+
+                        if ($bonus > 0) {
+                            $user->balance += $bonus;
+                            $user->save();
+
+                            \App\Models\VoucherUsage::create([
+                                'user_id' => $user->id,
+                                'voucher_id' => $voucher->id,
+                                'benefit_type' => 'double_saldo',
+                                'benefit_amount' => $bonus,
+                            ]);
+
+                            $voucher->increment('used_count');
+
+                            Transaction::create([
+                                'reference' => 'VCH-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                                'user_id' => $user->id,
+                                'type' => 'topup',
+                                'amount' => $bonus,
+                                'unique_code' => 0,
+                                'total_amount' => $bonus,
+                                'status' => 'success',
+                                'description' => "Bonus Double Saldo Voucher ({$voucher->code})",
+                            ]);
+
+                            Notification::create([
+                                'user_id' => $user->id,
+                                'type' => 'order',
+                                'message' => "Selamat! Anda mendapatkan bonus Double Saldo sebesar Rp " . number_format($bonus, 0, ',', '.') . " dari voucher {$voucher->code}.",
+                            ]);
+                        }
+                    }
+                }
             } elseif ($transaction->type === 'vpn_purchase_qris') {
                 $vpnService = app(VpnService::class);
                 $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;

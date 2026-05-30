@@ -325,6 +325,9 @@
                   <a href="{{ route('admin.orders') }}" class="menu-item {{ request()->routeIs('admin.orders') ? 'active' : '' }}">
                       <i class="fas fa-shopping-cart text-info"></i> <span>Daftar Pesanan</span>
                   </a>
+                  <a href="{{ route('admin.vouchers') }}" class="menu-item {{ request()->routeIs('admin.vouchers') ? 'active' : '' }}">
+                      <i class="fas fa-ticket-alt text-danger"></i> <span>Kelola Voucher</span>
+                  </a>
                   <a href="{{ route('admin.settings') }}" class="menu-item {{ request()->routeIs('admin.settings') ? 'active' : '' }}">
                       <i class="fas fa-cog text-secondary"></i> <span>Pengaturan Sistem</span>
                   </a>

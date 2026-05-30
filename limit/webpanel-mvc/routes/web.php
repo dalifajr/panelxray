@@ -57,6 +57,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/admin/orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel'])->name('admin.orders.cancel');
 
         Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
+
+        // Admin Vouchers
+        Route::get('/admin/vouchers', [\App\Http\Controllers\VoucherController::class, 'index'])->name('admin.vouchers');
+        Route::post('/admin/vouchers', [\App\Http\Controllers\VoucherController::class, 'store'])->name('admin.vouchers.store');
+        Route::delete('/admin/vouchers/{voucher}', [\App\Http\Controllers\VoucherController::class, 'destroy'])->name('admin.vouchers.destroy');
     });
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');
 
@@ -76,6 +81,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/wallet', [\App\Http\Controllers\WalletController::class, 'index'])->name('wallet.index');
     Route::post('/wallet/topup', [\App\Http\Controllers\WalletController::class, 'topup'])->name('wallet.topup');
     Route::post('/wallet/cancel', [\App\Http\Controllers\WalletController::class, 'cancelTopup'])->name('wallet.cancel');
+    Route::post('/wallet/voucher', [\App\Http\Controllers\WalletController::class, 'redeemVoucher'])->name('wallet.voucher.redeem');
 
     Route::get('/checkout/{id}', [\App\Http\Controllers\CheckoutController::class, 'show'])->name('checkout.show');
     Route::post('/checkout/{id}/cancel', [\App\Http\Controllers\CheckoutController::class, 'cancel'])->name('checkout.cancel');
