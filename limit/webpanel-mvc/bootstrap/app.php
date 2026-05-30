@@ -18,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'listener/payment',
             'listener/test-connection',
         ]);
+
+        $middleware->alias([
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

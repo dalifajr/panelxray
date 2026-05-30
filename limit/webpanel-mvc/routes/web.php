@@ -34,28 +34,30 @@ Route::middleware('auth')->group(function () {
     Route::post('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::post('/profile/unlink', [ProfileController::class, 'unlinkTelegram'])->name('profile.unlink');
 
-    Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
-    Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
-    Route::post('/admin/users/{user}/reset-password', [AdminController::class, 'resetPassword'])->name('admin.users.reset-password');
-    Route::post('/admin/users/{user}/unlink-telegram', [AdminController::class, 'unlinkTelegram'])->name('admin.users.unlink-telegram');
-    Route::post('/admin/users/{user}/inject-balance', [AdminController::class, 'injectBalance'])->name('admin.users.inject-balance');
-    Route::post('/admin/users/{user}/block-balance', [AdminController::class, 'blockBalance'])->name('admin.users.block-balance');
-    Route::delete('/admin/users/{user}', [AdminController::class, 'deleteUser'])->name('admin.users.delete');
+    Route::middleware('admin')->group(function () {
+        Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
+        Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
+        Route::post('/admin/users/{user}/reset-password', [AdminController::class, 'resetPassword'])->name('admin.users.reset-password');
+        Route::post('/admin/users/{user}/unlink-telegram', [AdminController::class, 'unlinkTelegram'])->name('admin.users.unlink-telegram');
+        Route::post('/admin/users/{user}/inject-balance', [AdminController::class, 'injectBalance'])->name('admin.users.inject-balance');
+        Route::post('/admin/users/{user}/block-balance', [AdminController::class, 'blockBalance'])->name('admin.users.block-balance');
+        Route::delete('/admin/users/{user}', [AdminController::class, 'deleteUser'])->name('admin.users.delete');
 
-    Route::get('/admin/settings', [\App\Http\Controllers\SettingController::class, 'index'])->name('admin.settings');
-    Route::post('/admin/settings/prices', [\App\Http\Controllers\SettingController::class, 'updatePrices'])->name('admin.settings.prices');
-    Route::post('/admin/settings/payment', [\App\Http\Controllers\SettingController::class, 'updatePayment'])->name('admin.settings.payment');
-    Route::post('/admin/settings/announcement', [\App\Http\Controllers\SettingController::class, 'updateAnnouncement'])->name('admin.settings.announcement');
-    Route::post('/admin/notifications/broadcast', [\App\Http\Controllers\NotificationController::class, 'broadcast'])->name('admin.notifications.broadcast');
+        Route::get('/admin/settings', [\App\Http\Controllers\SettingController::class, 'index'])->name('admin.settings');
+        Route::post('/admin/settings/prices', [\App\Http\Controllers\SettingController::class, 'updatePrices'])->name('admin.settings.prices');
+        Route::post('/admin/settings/payment', [\App\Http\Controllers\SettingController::class, 'updatePayment'])->name('admin.settings.payment');
+        Route::post('/admin/settings/announcement', [\App\Http\Controllers\SettingController::class, 'updateAnnouncement'])->name('admin.settings.announcement');
+        Route::post('/admin/notifications/broadcast', [\App\Http\Controllers\NotificationController::class, 'broadcast'])->name('admin.notifications.broadcast');
 
-    Route::get('/admin/finance', [\App\Http\Controllers\WalletController::class, 'adminFinance'])->name('admin.finance');
-    
-    // Admin Orders
-    Route::get('/admin/orders', [\App\Http\Controllers\OrderController::class, 'index'])->name('admin.orders');
-    Route::post('/admin/orders/{id}/approve', [\App\Http\Controllers\OrderController::class, 'approve'])->name('admin.orders.approve');
-    Route::post('/admin/orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel'])->name('admin.orders.cancel');
+        Route::get('/admin/finance', [\App\Http\Controllers\WalletController::class, 'adminFinance'])->name('admin.finance');
+        
+        // Admin Orders
+        Route::get('/admin/orders', [\App\Http\Controllers\OrderController::class, 'index'])->name('admin.orders');
+        Route::post('/admin/orders/{id}/approve', [\App\Http\Controllers\OrderController::class, 'approve'])->name('admin.orders.approve');
+        Route::post('/admin/orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel'])->name('admin.orders.cancel');
 
-    Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
+        Route::get('/vpn/master', [VpnController::class, 'master'])->name('vpn.master');
+    });
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');
 
     Route::prefix('vpn/{protocol}')->name('vpn.')->group(function () {

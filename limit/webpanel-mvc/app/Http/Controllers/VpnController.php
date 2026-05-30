@@ -107,6 +107,18 @@ class VpnController extends Controller
         if (!in_array($protocol, $this->protocols)) {
             return response()->json(['error' => 'Invalid protocol'], 400);
         }
+
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $username)
+                ->exists();
+            if (!$owns) {
+                return response()->json(['error' => 'Unauthorized action.'], 403);
+            }
+        }
+
         $configText = $this->vpn->getAccountConfig($protocol, $username);
         return response()->json(['config' => $configText]);
     }
@@ -340,6 +352,17 @@ class VpnController extends Controller
 
     public function renewForm($protocol, $user)
     {
+        $authUser = auth()->user();
+        if ($authUser->role === 'customer') {
+            $owns = \App\Models\VpnAccount::where('user_id', $authUser->id)
+                ->where('service', $protocol)
+                ->where('vpn_username', $user)
+                ->exists();
+            if (!$owns) {
+                abort(403, 'Unauthorized action.');
+            }
+        }
+
         $quota = 0;
         $limit_ip = 1;
 
