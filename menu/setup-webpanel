@@ -58,6 +58,25 @@ if [ ! -f .env ]; then
     sed -i 's/APP_DEBUG=true/APP_DEBUG=false/' .env
 fi
 
+# Setup Cloudflare Turnstile Captcha Keys
+echo -e "\n=== PENGATURAN CLOUDFLARE TURNSTILE CAPTCHA ==="
+echo -e "Untuk melindungi website dari spammer pada halaman login & register."
+echo -e "Silakan masukkan Site Key dan Secret Key Turnstile Anda."
+echo -e "Jika tidak ingin mengaktifkan Captcha, langsung tekan [ENTER].\n"
+
+read -p "Masukkan Cloudflare Turnstile SITE KEY: " SITE_KEY
+read -p "Masukkan Cloudflare Turnstile SECRET KEY: " SECRET_KEY
+
+if [ -n "$SITE_KEY" ] && [ -n "$SECRET_KEY" ]; then
+    echo -e "[\e[32mINFO\e[0m] Mengonfigurasi Cloudflare Turnstile Captcha..."
+    grep -q "^TURNSTILE_SITE_KEY=" .env && sed -i "s/^TURNSTILE_SITE_KEY=.*/TURNSTILE_SITE_KEY=\"${SITE_KEY}\"/" .env || echo "TURNSTILE_SITE_KEY=\"${SITE_KEY}\"" >> .env
+    grep -q "^TURNSTILE_SECRET_KEY=" .env && sed -i "s/^TURNSTILE_SECRET_KEY=.*/TURNSTILE_SECRET_KEY=\"${SECRET_KEY}\"/" .env || echo "TURNSTILE_SECRET_KEY=\"${SECRET_KEY}\"" >> .env
+else
+    echo -e "[\e[33mINFO\e[0m] Cloudflare Turnstile dilewati (Captcha dinonaktifkan)."
+    sed -i '/^TURNSTILE_SITE_KEY=/d' .env 2>/dev/null || true
+    sed -i '/^TURNSTILE_SECRET_KEY=/d' .env 2>/dev/null || true
+fi
+
 # Auto-detect Telegram Bot Username
 BOT_USERNAME="vpnxray_bot"
 if [ -f "/usr/bin/kyt/var.txt" ]; then

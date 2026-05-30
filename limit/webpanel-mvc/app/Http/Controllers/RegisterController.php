@@ -34,6 +34,30 @@ class RegisterController extends Controller
             'password' => ['required', 'string', 'min:6'],
         ]);
 
+        if (env('TURNSTILE_SECRET_KEY') && env('TURNSTILE_SITE_KEY')) {
+            $token = $request->input('cf-turnstile-response');
+            if (!$token) {
+                return back()->withErrors(['captcha' => 'Silakan selesaikan Cloudflare Captcha.'])->withInput();
+            }
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, "https://challenges.cloudflare.com/turnstile/v0/siteverify");
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+                'secret' => env('TURNSTILE_SECRET_KEY'),
+                'response' => $token,
+                'remoteip' => $request->ip()
+            ]));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response = curl_exec($ch);
+            curl_close($ch);
+            
+            $res = json_decode($response, true);
+            if (!($res['success'] ?? false)) {
+                return back()->withErrors(['captcha' => 'Verifikasi keamanan Cloudflare Captcha gagal. Silakan coba lagi.'])->withInput();
+            }
+        }
+
         $user = User::create([
             'name' => $request->username,
             'username' => $request->username,

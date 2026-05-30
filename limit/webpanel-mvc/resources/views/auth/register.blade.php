@@ -264,6 +264,9 @@
             body { padding: 1rem; }
         }
     </style>
+    @if(env('TURNSTILE_SITE_KEY'))
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    @endif
 </head>
 <body>
     <div class="login-wrapper">
@@ -313,6 +316,11 @@
                         <div style="font-size: 0.85rem; color: var(--text-muted);">Izinkan login cepat dengan 1 klik via bot Telegram setelah mendaftar.</div>
                     </div>
                 </div>
+                @if(env('TURNSTILE_SITE_KEY'))
+                    <div class="form-group mb-3" style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
+                        <div class="cf-turnstile" data-sitekey="{{ env('TURNSTILE_SITE_KEY') }}" data-theme="light"></div>
+                    </div>
+                @endif
 
                 <button type="submit" class="btn-primary" id="submitBtn">
                     Daftar Sekarang

@@ -285,6 +285,9 @@
             100% { transform: scale(1); opacity: 1; }
         }
     </style>
+    @if(env('TURNSTILE_SITE_KEY'))
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    @endif
 </head>
 <body>
     <div class="login-wrapper">
@@ -317,6 +320,11 @@
                     <label class="form-label">Password</label>
                     <input type="password" name="password" class="form-control" required placeholder="Masukkan password">
                 </div>
+                @if(env('TURNSTILE_SITE_KEY'))
+                    <div class="form-group mb-3" style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
+                        <div class="cf-turnstile" data-sitekey="{{ env('TURNSTILE_SITE_KEY') }}" data-theme="light"></div>
+                    </div>
+                @endif
 
                 <button type="submit" class="btn-primary">
                     Login
