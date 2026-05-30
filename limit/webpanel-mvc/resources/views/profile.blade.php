@@ -40,7 +40,7 @@
                                     </li>
                                     <li class="mb-2 d-flex justify-content-between">
                                         <span class="text-secondary">Limit IP VPN</span>
-                                        <span class="fw-bold text-dark">{{ $user->role === 'customer' ? '1 (Locked)' : 'Unlimited' }}</span>
+                                        <span class="fw-bold text-dark">{{ $user->role === 'customer' ? (\App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?: 1) . ' (Locked)' : 'Unlimited' }}</span>
                                     </li>
                                     <li class="mb-2 d-flex justify-content-between">
                                         <span class="text-secondary">Bergabung</span>
