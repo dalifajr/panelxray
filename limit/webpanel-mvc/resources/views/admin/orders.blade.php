@@ -107,7 +107,7 @@
                                     <span class="badge bg-info">Top Up</span>
                                 @elseif($order->type == 'vpn_purchase' || $order->type == 'vpn_purchase_qris')
                                     <span class="badge bg-primary">Beli VPN</span>
-                                @elseif($order->type == 'vpn_renew_qris')
+                                @elseif($order->type == 'vpn_renew_qris' || $order->type == 'vpn_renew')
                                     <span class="badge bg-primary">Perpanjang VPN</span>
                                 @else
                                     <span class="badge bg-secondary">{{ $order->type }}</span>

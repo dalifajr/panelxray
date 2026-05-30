@@ -21,6 +21,7 @@ class SettingController extends Controller
     {
         $data = $request->validate([
             'prices.*.price' => 'required|numeric|min:0',
+            'max_ip_limit' => 'nullable|integer|min:0',
         ]);
 
         foreach ($request->prices as $protocol => $values) {
@@ -34,6 +35,13 @@ class SettingController extends Controller
             Price::updateOrCreate(
                 ['protocol' => 'add_ip'],
                 ['price' => $request->extra_ip_price, 'days' => null]
+            );
+        }
+
+        if ($request->has('max_ip_limit')) {
+            Setting::updateOrCreate(
+                ['key' => 'max_ip_limit'],
+                ['value' => $request->max_ip_limit]
             );
         }
 

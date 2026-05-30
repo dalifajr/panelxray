@@ -39,6 +39,15 @@
                             </div>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Limit IP Maksimal (Customer)</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border">IP</span>
+                                <input type="number" class="form-control border" name="max_ip_limit" value="{{ $settings['max_ip_limit'] ?? 0 }}" min="0" required>
+                            </div>
+                            <small class="text-muted">Isi 0 untuk tanpa batas. Berlaku untuk user customer.</small>
+                        </div>
+
                         <button type="submit" class="btn btn-primary w-100">Simpan Harga</button>
                     </form>
                 </div>

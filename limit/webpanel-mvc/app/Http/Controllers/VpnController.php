@@ -53,6 +53,8 @@ class VpnController extends Controller
         }
         
         $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+        $ipPrice = \App\Models\Price::where('protocol', 'add_ip')->value('price') ?? 0;
+        $maxIpLimit = (int) (\App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?? 0);
         
         // Tambahkan akun yang berstatus pending pembayaran (QRIS)
         $pendingQuery = \App\Models\Transaction::whereIn('type', ['vpn_purchase_qris', 'vpn_renew_qris'])
@@ -91,7 +93,7 @@ class VpnController extends Controller
             }
         }
         
-        return view('vpn.list', compact('protocol', 'parsedUsers', 'basePrice'));
+        return view('vpn.list', compact('protocol', 'parsedUsers', 'basePrice', 'ipPrice', 'maxIpLimit'));
     }
 
     public function master()
@@ -116,8 +118,10 @@ class VpnController extends Controller
         }
 
         $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
-        
-        return view('vpn.create', compact('protocol', 'basePrice'));
+        $ipPrice = \App\Models\Price::where('protocol', 'add_ip')->value('price') ?? 0;
+        $maxIpLimit = (int) (\App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?? 0);
+
+        return view('vpn.create', compact('protocol', 'basePrice', 'ipPrice', 'maxIpLimit'));
     }
 
     /**
@@ -158,7 +162,7 @@ class VpnController extends Controller
         $userStr = $validated['username'];
         $exp = $validated['expired'];
         $pw = $validated['password'] ?? '1';
-        $ip = $validated['limit_ip'] ?? '1';
+        $ip = (int) ($validated['limit_ip'] ?? 1);
         $sni = $validated['sni_config'] ?? '3';
         $quota = $validated['quota'] ?? '0';
         $paymentMethod = $validated['payment_method'] ?? 'saldo';
@@ -169,6 +173,11 @@ class VpnController extends Controller
         }
 
         $authUser = auth()->user();
+
+        $maxIpLimit = (int) (\App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?? 0);
+        if ($authUser->role === 'customer' && $maxIpLimit > 0 && $ip > $maxIpLimit) {
+            return back()->with('sweet_error', "Limit IP maksimal untuk customer adalah {$maxIpLimit}. Silakan turunkan limit IP.")->withInput();
+        }
 
         // Harga dan Validasi Saldo (Khusus Customer)
         $totalPrice = 0;
@@ -341,18 +350,20 @@ class VpnController extends Controller
             if ($qBytes > 0) {
                 $quota = floor($qBytes / (1024 * 1024 * 1024)); // Convert back to GB
             }
+        }
 
-            // Fetch IP Limit
-            $resIp = $this->vpn->executeBash("cat /etc/kyt/limit/{$protocol}/ip/{$user} 2>/dev/null");
-            $lIp = intval(trim($resIp['output']));
-            if ($lIp > 0) {
-                $limit_ip = $lIp;
-            }
+        // Fetch IP Limit (SSH and Xray)
+        $resIp = $this->vpn->executeBash("cat /etc/kyt/limit/{$protocol}/ip/{$user} 2>/dev/null");
+        $lIp = intval(trim($resIp['output']));
+        if ($lIp > 0) {
+            $limit_ip = $lIp;
         }
 
         $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+        $ipPrice = \App\Models\Price::where('protocol', 'add_ip')->value('price') ?? 0;
+        $maxIpLimit = (int) (\App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?? 0);
 
-        return view('vpn.renew', compact('protocol', 'user', 'quota', 'limit_ip', 'basePrice'));
+        return view('vpn.renew', compact('protocol', 'user', 'quota', 'limit_ip', 'basePrice', 'ipPrice', 'maxIpLimit'));
     }
 
     public function renew(Request $request, $protocol, $user)
@@ -366,9 +377,9 @@ class VpnController extends Controller
             'payment_method' => 'nullable|string|in:saldo,qris'
         ]);
         
-        $days = $validated['days'];
-        $quota = $validated['quota'] ?? 0;
-        $limit_ip = $validated['limit_ip'] ?? 1;
+        $days = (int) $validated['days'];
+        $quota = (int) ($validated['quota'] ?? 0);
+        $limit_ip = (int) ($validated['limit_ip'] ?? 1);
         $paymentMethod = $validated['payment_method'] ?? 'saldo';
 
         $totalPrice = 0;
@@ -380,9 +391,16 @@ class VpnController extends Controller
                 ->exists();
             if (!$owns) abort(403, 'Unauthorized action.');
 
-            // Hitung harga perpanjangan (hanya durasi)
+            $maxIpLimit = (int) (\App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?? 0);
+            if ($maxIpLimit > 0 && $limit_ip > $maxIpLimit) {
+                return back()->with('sweet_error', "Limit IP maksimal untuk customer adalah {$maxIpLimit}. Silakan turunkan limit IP.")->withInput();
+            }
+
+            // Hitung harga perpanjangan (durasi + addon IP)
             $basePrice = \App\Models\Price::where('protocol', $protocol)->value('price') ?? 0;
+            $ipPrice = \App\Models\Price::where('protocol', 'add_ip')->value('price') ?? 0;
             $totalPrice = round(($basePrice / 30) * $days);
+            $totalPrice += $limit_ip > 1 ? ($ipPrice * ($limit_ip - 1)) : 0;
 
             if ($totalPrice <= 0) {
                 return back()->with('sweet_error', "Gagal perpanjang: Layanan ini belum memiliki harga. Silakan hubungi Admin.")->withInput();
@@ -419,83 +437,43 @@ class VpnController extends Controller
         }
 
         if ($protocol === 'ssh') {
-            $later = date('Y-m-d', strtotime("+$days days"));
-            $res = $this->vpn->executeBash("usermod -e $later $user && passwd -u $user");
-            $res['success'] = $res['rc'] == 0;
+            $res = $this->vpn->renewSshAccount($user, $days, $limit_ip);
         } else {
-            $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
-            $marker = $xrayMarkers[$protocol] ?? '###';
-            $later = date('Y-m-d', strtotime("+$days days"));
-            
-            $script = <<<PYTHON
-import os
-path = '/etc/xray/config.json'
-marker = '$marker'
-username = '$user'
-new_expiry = '$later'
-protocol = '$protocol'
-quota = '$quota'
-limit_ip = '$limit_ip'
-
-# If suspended, unsuspend first by calling the script
-if os.path.exists(f"/etc/kyt/suspended/{protocol}/{username}"):
-    script_map = {'vmess': 'unsuspws', 'vless': 'unsuspvless', 'trojan': 'unsusptr', 'shadowsocks': 'unsuspss'}
-    cmd = script_map.get(protocol, 'unsuspws')
-    os.system(f"{cmd} --user {username} >/dev/null 2>&1")
-
-try:
-    with open(path, 'r') as f:
-        lines = f.readlines()
-    changed = False
-    next_lines = []
-    for line in lines:
-        parts = line.strip().split()
-        if len(parts) >= 2 and parts[0] == marker and parts[1].lower() == username.lower():
-            next_lines.append(f"{marker} {username} {new_expiry}\\n")
-            changed = True
-        else:
-            next_lines.append(line)
-    
-    if not changed:
-        print("ERROR: User not found in config.json")
-    else:
-        with open(path, 'w') as f:
-            f.writelines(next_lines)
-            
-        # Update limits
-        os.system(f"mkdir -p /etc/kyt/limit/{protocol}/ip")
-        os.system(f"echo {limit_ip} > /etc/kyt/limit/{protocol}/ip/{username}")
-        
-        os.system(f"mkdir -p /etc/{protocol}")
-        if str(quota) != "0":
-            q_bytes = int(quota) * 1024 * 1024 * 1024
-            os.system(f"echo {q_bytes} > /etc/{protocol}/{username}")
-        else:
-            os.system(f"rm -f /etc/{protocol}/{username}")
-            
-        # Update .db file
-        os.system(f"awk -v user='{username}' -v exp='{new_expiry}' '{{ if ($1 == \\"{marker}\\" && $2 == user) {{ $3 = exp }} print }}' /etc/{protocol}/.{protocol}.db > /etc/{protocol}/.{protocol}.db.tmp && mv /etc/{protocol}/.{protocol}.db.tmp /etc/{protocol}/.{protocol}.db")
-        
-        # Restart
-        os.system('systemctl restart xray >/dev/null 2>&1')
-        print("SUCCESS")
-except Exception as e:
-    print(f"ERROR: {e}")
-PYTHON;
-            $res = $this->runPython($script);
-            $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
+            $res = $this->vpn->renewXrayAccount($protocol, $user, $days, $quota, $limit_ip);
         }
 
         if (!empty($res['success'])) {
-            // Update SQLite DB
-            $later = date('Y-m-d', strtotime("+$days days"));
-            $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET expires_at='{$later}' WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
-            $this->runPython($dbScript);
+            $newExpiry = $res['expires_at'] ?? null;
+            if ($newExpiry) {
+                $this->vpn->updateAccountExpiry($protocol, $user, $newExpiry);
+            }
+
+            if ($authUser->role === 'customer' && $paymentMethod === 'saldo' && $totalPrice > 0) {
+                $authUser->balance -= $totalPrice;
+                $authUser->save();
+
+                \App\Models\Transaction::create([
+                    'reference' => 'VPNR-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                    'user_id' => $authUser->id,
+                    'type' => 'vpn_renew',
+                    'amount' => $totalPrice,
+                    'total_amount' => $totalPrice,
+                    'status' => 'success',
+                    'description' => "Perpanjangan VPN $protocol ($user) $days Hari",
+                ]);
+
+                \App\Models\Notification::create([
+                    'user_id' => $authUser->id,
+                    'type' => 'order',
+                    'message' => "Perpanjangan VPN $protocol ($user) berhasil. Saldo terpotong Rp " . number_format($totalPrice, 0, ',', '.'),
+                ]);
+            }
 
             return redirect()->route('vpn.index', $protocol)->with('sweet_success', "Akun $user berhasil diperpanjang.");
         }
 
-        return back()->with('sweet_error', 'Gagal perpanjang: ' . $res['error'] . "\n" . $res['output']);
+        $errMsg = $res['error'] ?? 'Unknown error';
+        return back()->with('sweet_error', 'Gagal perpanjang: ' . $errMsg);
     }
 
     public function suspend($protocol, $user)

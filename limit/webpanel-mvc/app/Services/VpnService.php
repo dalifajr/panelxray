@@ -375,6 +375,192 @@ PYTHON;
         return $res;
     }
 
+    public function updateAccountExpiry($service, $username, $expiresAt)
+    {
+        $serviceJson = json_encode($service, JSON_UNESCAPED_SLASHES);
+        $userJson = json_encode($username, JSON_UNESCAPED_SLASHES);
+        $expJson = json_encode($expiresAt, JSON_UNESCAPED_SLASHES);
+
+        $script = <<<PYTHON
+import sqlite3, json
+service = json.loads('{$serviceJson}')
+username = json.loads('{$userJson}')
+expires_at = json.loads('{$expJson}')
+try:
+    c = sqlite3.connect('/usr/bin/kyt/database.db')
+    c.execute(
+        "UPDATE account_registry SET expires_at = ?, updated_at = datetime('now','localtime') WHERE service = ? AND username = ? AND active = 1",
+        (str(expires_at).strip(), str(service).strip(), str(username).strip())
+    )
+    c.commit()
+    print('OK')
+except Exception as e:
+    print(f'ERROR: {e}')
+PYTHON;
+        $res = $this->runPython($script);
+        if (strpos($res['output'], 'ERROR:') !== false) {
+            \Illuminate\Support\Facades\Log::error("Failed to update account expiry: " . $res['output']);
+        }
+        return $res;
+    }
+
+    public function renewSshAccount($username, $days, $limitIp)
+    {
+        $safeUser = escapeshellarg($username);
+        $days = (int) $days;
+        $limitIp = (int) $limitIp;
+
+        $script = <<<BASH
+exp_raw=\$(chage -l {$safeUser} | awk -F": " '/Account expires/ {print \$2}')
+if [ -z "\$exp_raw" ] || [ "\$exp_raw" = "never" ] || [ "\$exp_raw" = "Never" ]; then
+    base_ts=\$(date +%s)
+else
+    base_ts=\$(date -d "\$exp_raw" +%s 2>/dev/null || date +%s)
+fi
+now_ts=\$(date +%s)
+if [ "\$base_ts" -lt "\$now_ts" ]; then
+    base_ts=\$now_ts
+fi
+target_ts=\$((base_ts + {$days}*86400))
+new_exp=\$(date -u -d "@\${target_ts}" +%Y-%m-%d)
+passwd -u {$safeUser} >/dev/null 2>&1 || true
+usermod -e "\$new_exp" {$safeUser}
+if [ {$limitIp} -gt 0 ]; then
+  mkdir -p /etc/kyt/limit/ssh/ip
+  echo "{$limitIp}" > /etc/kyt/limit/ssh/ip/{$username}
+else
+  rm -f /etc/kyt/limit/ssh/ip/{$username}
+fi
+echo "\$new_exp"
+BASH;
+
+        $res = $this->executeBash($script);
+        $newExp = trim($res['output'] ?? '');
+        if (!$res['success'] || $newExp === '') {
+            return ['success' => false, 'error' => $res['error'] ?? 'Renew SSH failed'];
+        }
+
+        return ['success' => true, 'expires_at' => $newExp];
+    }
+
+    public function renewXrayAccount($service, $username, $days, $quota, $limitIp)
+    {
+        $markerMap = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
+        $marker = $markerMap[$service] ?? '###';
+
+        $serviceJson = json_encode($service, JSON_UNESCAPED_SLASHES);
+        $userJson = json_encode($username, JSON_UNESCAPED_SLASHES);
+        $markerJson = json_encode($marker, JSON_UNESCAPED_SLASHES);
+
+        $days = (int) $days;
+        $quota = (int) $quota;
+        $limitIp = (int) $limitIp;
+
+        $script = <<<PYTHON
+import datetime as DT
+import json
+import os
+
+service = json.loads('{$serviceJson}')
+username = json.loads('{$userJson}')
+marker = json.loads('{$markerJson}')
+add_days = int({$days})
+quota = int({$quota})
+limit_ip = int({$limitIp})
+path = '/etc/xray/config.json'
+
+def parse_date(text):
+    try:
+        return DT.date.fromisoformat(text.strip())
+    except Exception:
+        return None
+
+if os.path.exists(f"/etc/kyt/suspended/{service}/{username}"):
+    script_map = {'vmess': 'unsuspws', 'vless': 'unsuspvless', 'trojan': 'unsusptr', 'shadowsocks': 'unsuspss'}
+    cmd = script_map.get(service, 'unsuspws')
+    os.system(f"{cmd} --user {username} >/dev/null 2>&1")
+
+try:
+    with open(path, 'r') as f:
+        lines = f.readlines()
+except Exception:
+    print('ERROR: config not readable')
+    raise SystemExit(1)
+
+current_exp = None
+for i, line in enumerate(lines):
+    parts = line.strip().split()
+    if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
+        current_exp = parse_date(parts[2])
+        break
+
+if not current_exp:
+    print('ERROR: user not found')
+    raise SystemExit(1)
+
+today = DT.date.today()
+base_expiry = current_exp if current_exp >= today else today
+new_expiry = base_expiry + DT.timedelta(days=add_days)
+
+for i, line in enumerate(lines):
+    parts = line.strip().split()
+    if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
+        lines[i] = f"{marker} {username} {new_expiry.isoformat()}\n"
+
+try:
+    with open(path, 'w') as f:
+        f.writelines(lines)
+except Exception:
+    print('ERROR: config not writable')
+    raise SystemExit(1)
+
+if limit_ip > 0:
+    os.makedirs(f"/etc/kyt/limit/{service}/ip", exist_ok=True)
+    with open(f"/etc/kyt/limit/{service}/ip/{username}", "w") as fh:
+        fh.write(str(limit_ip))
+else:
+    try:
+        os.remove(f"/etc/kyt/limit/{service}/ip/{username}")
+    except Exception:
+        pass
+
+if service != "shadowsocks":
+    quota_path = f"/etc/{service}/{username}"
+    try:
+        os.remove(quota_path)
+    except Exception:
+        pass
+    if quota > 0:
+        with open(quota_path, "w") as fh:
+            fh.write(str(quota * 1024 * 1024 * 1024))
+
+db_path = f"/etc/{service}/.{service}.db"
+if os.path.exists(db_path):
+    try:
+        with open(db_path, 'r') as f:
+            db_lines = f.readlines()
+        for i, line in enumerate(db_lines):
+            parts = line.strip().split()
+            if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
+                db_lines[i] = f"{marker} {username} {new_expiry.isoformat()}\n"
+        with open(db_path, 'w') as f:
+            f.writelines(db_lines)
+    except Exception:
+        pass
+
+os.system("systemctl restart xray >/dev/null 2>&1")
+print(new_expiry.isoformat())
+PYTHON;
+
+        $res = $this->runPython($script);
+        $newExp = trim($res['output'] ?? '');
+        if (!$res['success'] || $newExp === '' || str_starts_with($newExp, 'ERROR:')) {
+            return ['success' => false, 'error' => $res['error'] ?? $res['output'] ?? 'Renew Xray failed'];
+        }
+
+        return ['success' => true, 'expires_at' => $newExp];
+    }
+
     /**
      * Helper to run awk or grep commands for counting
      */

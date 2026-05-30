@@ -130,7 +130,7 @@
                                 $status = 'expired';
                             }
                         @endphp
-                        <tr class="account-row border-bottom" data-username="{{ strtolower($user['username']) }}" data-status="{{ $status }}">
+                        <tr class="account-row border-bottom" data-username="{{ strtolower($user['username']) }}" data-status="{{ $status }}" data-limit-ip="{{ $user['ip_limit'] ?? 1 }}">
                             <td class="ps-3 text-muted py-2" data-label="No.">{{ $index + 1 }}</td>
                             <td class="fw-bold text-primary py-2" data-label="Username">{{ $user['username'] }}</td>
                             @if(auth()->user()->role === 'admin')
@@ -402,6 +402,17 @@
         const form = document.getElementById('renewForm');
         form.action = `/vpn/${protocol}/${username}/renew`;
         
+        const limitInput = document.getElementById('renewLimitIpInput');
+        if (limitInput) {
+            const row = document.querySelector(`.account-row[data-username="${username.toLowerCase()}"]`);
+            if (row && row.dataset.limitIp) {
+                limitInput.value = row.dataset.limitIp;
+            }
+            if (typeof calculateRenewPrice === 'function') {
+                calculateRenewPrice();
+            }
+        }
+
         const modal = new bootstrap.Modal(document.getElementById('renewModal'));
         modal.show();
     }
@@ -454,9 +465,12 @@
 
     // Modal Pricing Logic
     const basePrice = {{ $basePrice ?? 0 }};
-    const ipPrice = 5000;
+    const ipPrice = {{ $ipPrice ?? 0 }};
     
     function calculateCreatePrice() {
+        const display = document.getElementById('createPriceDisplay');
+        if (!display) return;
+
         let days = parseInt(document.getElementById('createExpiredInput').value) || 0;
         let ip = document.getElementById('createLimitIpInput') ? parseInt(document.getElementById('createLimitIpInput').value) || 1 : 1;
         
@@ -469,7 +483,19 @@
         let priceIp = ip > 1 ? (ipPrice * (ip - 1)) : 0;
         
         let total = isTrial ? 0 : (priceVpn + priceIp);
-        document.getElementById('createPriceDisplay').innerText = 'Rp ' + total.toLocaleString('id-ID');
+        display.innerText = 'Rp ' + total.toLocaleString('id-ID');
+    }
+
+    function calculateRenewPrice() {
+        const days = parseInt(document.getElementById('renewExpiredInput').value) || 0;
+        const ip = document.getElementById('renewLimitIpInput') ? parseInt(document.getElementById('renewLimitIpInput').value) || 1 : 1;
+        const priceVpn = Math.round((basePrice / 30) * days);
+        const priceIp = ip > 1 ? (ipPrice * (ip - 1)) : 0;
+        const total = priceVpn + priceIp;
+        const display = document.getElementById('renewPriceDisplay');
+        if (display) {
+            display.innerText = 'Rp ' + total.toLocaleString('id-ID');
+        }
     }
 
     function initPricing(btnClass, inputId, displayId) {
@@ -480,10 +506,14 @@
         if (!btns.length) return;
 
         function updatePrice(days) {
-            if(display) {
-                const total = Math.round((basePrice / 30) * days);
-                display.innerText = 'Rp ' + total.toLocaleString('id-ID');
+            if (!display) return;
+            if (displayId === 'renewPriceDisplay') {
+                calculateRenewPrice();
+                return;
             }
+
+            const total = Math.round((basePrice / 30) * days);
+            display.innerText = 'Rp ' + total.toLocaleString('id-ID');
         }
 
         btns.forEach(btn => {
@@ -549,6 +579,16 @@
         if (defaultCreateBtn) {
             defaultCreateBtn.click();
         }
+
+        const renewLimitIpInput = document.getElementById('renewLimitIpInput');
+        if (renewLimitIpInput) {
+            renewLimitIpInput.addEventListener('input', calculateRenewPrice);
+        }
+
+        const createLimitIpInput = document.getElementById('createLimitIpInput');
+        if (createLimitIpInput) {
+            createLimitIpInput.addEventListener('input', calculateCreatePrice);
+        }
     });
 </script>
 
@@ -600,7 +640,13 @@
                         @if(auth()->user()->role === 'admin')
                         <div class="col-6">
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
-                            <input type="number" name="limit_ip" class="form-control form-control-sm" value="1" min="1">
+                            <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm" value="1" min="1">
+                        </div>
+                        @else
+                        <div class="col-6">
+                            <label class="form-label fw-bold text-secondary">Limit IP</label>
+                            <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
+                            <small class="text-muted">@if($maxIpLimit > 0)Maks {{ $maxIpLimit }} IP@endif</small>
                         </div>
                         @endif
                     </div>
@@ -679,7 +725,13 @@
                         @if(auth()->user()->role === 'admin')
                         <div class="col-6">
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
-                            <input type="number" name="limit_ip" class="form-control form-control-sm" value="1" min="1">
+                            <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm" value="1" min="1">
+                        </div>
+                        @else
+                        <div class="col-6">
+                            <label class="form-label fw-bold text-secondary">Limit IP</label>
+                            <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
+                            <small class="text-muted">@if($maxIpLimit > 0)Maks {{ $maxIpLimit }} IP@endif</small>
                         </div>
                         @endif
                     </div>

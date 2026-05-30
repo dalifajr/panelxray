@@ -91,11 +91,21 @@
                         @if(Auth::user()->role === 'admin')
                         <div class="mb-4">
                             <label class="form-label fw-bold">Limit IP</label>
-                            <input type="number" name="limit_ip" class="form-control" value="{{ old('limit_ip', '1') }}" min="1">
+                            <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control" value="{{ old('limit_ip', '1') }}" min="1">
                             <div class="form-text">Jumlah maksimal IP yang dapat login bersamaan. Biarkan 1 untuk keamanan.</div>
                         </div>
                         @else
-                        <input type="hidden" name="limit_ip" value="1">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Limit IP</label>
+                            <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control" value="{{ old('limit_ip', '1') }}" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
+                            <div class="form-text">
+                                @if($maxIpLimit > 0)
+                                    Maksimal {{ $maxIpLimit }} IP sesuai pengaturan admin.
+                                @else
+                                    Tidak ada batas maksimal dari admin.
+                                @endif
+                            </div>
+                        </div>
                         @endif
 
                         <div class="d-grid gap-2">
@@ -119,9 +129,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Pricing Logic
     const basePrice = {{ isset($basePrice) ? $basePrice : 0 }};
     const isCustomer = {{ Auth::user()->role === 'customer' ? 'true' : 'false' }};
+    const ipPrice = {{ isset($ipPrice) ? $ipPrice : 0 }};
     const priceDisplay = document.getElementById('priceDisplay');
     const expiredInput = document.getElementById('expiredInput');
     const dayBtns = document.querySelectorAll('.day-btn');
+    const limitIpInput = document.getElementById('createLimitIpInput');
 
     function updatePrice(days) {
         expiredInput.value = days;
@@ -136,7 +148,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         if (isCustomer && priceDisplay) {
+            const ip = limitIpInput ? (parseInt(limitIpInput.value, 10) || 1) : 1;
             let total = Math.round((basePrice / 30) * days);
+            total += ip > 1 ? (ipPrice * (ip - 1)) : 0;
             priceDisplay.textContent = 'Rp ' + new Intl.NumberFormat('id-ID').format(total);
         }
     }
@@ -149,6 +163,12 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePrice(parseInt(this.dataset.days));
         });
     });
+
+    if (limitIpInput) {
+        limitIpInput.addEventListener('input', function() {
+            updatePrice(parseInt(expiredInput.value || '0', 10));
+        });
+    }
 
     usernameInput.addEventListener('input', function() {
         clearTimeout(timeoutId);

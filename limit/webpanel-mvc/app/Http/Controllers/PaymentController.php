@@ -191,72 +191,22 @@ class PaymentController extends Controller
             $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
             $protocol = $meta['protocol'] ?? 'vmess';
             $userStr = $meta['username'] ?? 'user';
-            $days = $meta['days'] ?? 30;
-            $quota = $meta['quota'] ?? 0;
-            $limit_ip = $meta['limit_ip'] ?? 1;
+            $days = (int) ($meta['days'] ?? 30);
+            $quota = (int) ($meta['quota'] ?? 0);
+            $limit_ip = (int) ($meta['limit_ip'] ?? 1);
 
             try {
                 if ($protocol === 'ssh') {
-                    $later = date('Y-m-d', strtotime("+$days days"));
-                    $res = $vpnService->executeBash("usermod -e $later $userStr && passwd -u $userStr");
-                    $res['success'] = $res['rc'] == 0;
+                    $res = $vpnService->renewSshAccount($userStr, $days, $limit_ip);
                 } else {
-                    $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
-                    $marker = $xrayMarkers[$protocol] ?? '###';
-                    $later = date('Y-m-d', strtotime("+$days days"));
-                    
-                    $script = <<<PYTHON
-import os
-path = '/etc/xray/config.json'
-marker = '$marker'
-username = '$userStr'
-new_expiry = '$later'
-protocol = '$protocol'
-quota = '$quota'
-limit_ip = '$limit_ip'
-
-if os.path.exists(f"/etc/kyt/suspended/{protocol}/{username}"):
-    script_map = {'vmess': 'unsuspws', 'vless': 'unsuspvless', 'trojan': 'unsusptr', 'shadowsocks': 'unsuspss'}
-    cmd = script_map.get(protocol, 'unsuspws')
-    os.system(f"{cmd} --user {username} >/dev/null 2>&1")
-
-try:
-    with open(path, 'r') as f:
-        lines = f.readlines()
-    changed = False
-    next_lines = []
-    for line in lines:
-        parts = line.strip().split()
-        if len(parts) >= 2 and parts[0] == marker and parts[1].lower() == username.lower():
-            next_lines.append(f"{marker} {username} {new_expiry}\\n")
-            changed = True
-        else:
-            next_lines.append(line)
-    
-    if not changed:
-        print("ERROR: User not found in config.json")
-    else:
-        with open(path, 'w') as f:
-            f.writelines(next_lines)
-            
-        if limit_ip != '1' or limit_ip != 1:
-            os.system(f"mkdir -p /etc/kyt/limit/{protocol}/ip && echo '{limit_ip}' > /etc/kyt/limit/{protocol}/ip/{username}")
-        if quota != '0' or quota != 0:
-            os.system(f"mkdir -p /etc/kyt/limit/{protocol}/quota && echo '{quota}' > /etc/kyt/limit/{protocol}/quota/{username}")
-            
-        print("SUCCESS")
-except Exception as e:
-    print(f"ERROR: {str(e)}")
-PYTHON;
-                    $res = $vpnService->executeBashWithStdin("python3 -", $script);
-                    $res['success'] = strpos($res['output'], 'SUCCESS') !== false;
+                    $res = $vpnService->renewXrayAccount($protocol, $userStr, $days, $quota, $limit_ip);
                 }
 
-                if ($res && $res['success']) {
-                    if ($protocol !== 'ssh') {
-                        $vpnService->executeBash("systemctl restart xray");
+                if ($res && !empty($res['success'])) {
+                    $newExpiry = $res['expires_at'] ?? null;
+                    if ($newExpiry) {
+                        $vpnService->updateAccountExpiry($protocol, $userStr, $newExpiry);
                     }
-                    $vpnService->registerAccountToDb('', $protocol, $userStr, $days, true);
                     
                     \App\Models\Notification::create([
                         'user_id' => $user->id,
