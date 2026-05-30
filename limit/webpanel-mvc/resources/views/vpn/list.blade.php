@@ -197,45 +197,91 @@
             @else
                 @if(session('show_vpn_setup_tip'))
                     @php session()->forget('show_vpn_setup_tip'); @endphp
-                    <div class="p-4 text-center mx-auto" style="max-width: 600px; background: linear-gradient(135deg, rgba(13, 71, 161, 0.05) 0%, rgba(25, 118, 210, 0.05) 100%); border: 1px solid rgba(13, 71, 161, 0.15); border-radius: var(--radius-lg); margin: 2rem auto;">
-                        <div style="background: rgba(13, 71, 161, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--primary-color); margin: 0 auto 1.5rem;">
-                            <i class="fas fa-magic fa-2x"></i>
-                        </div>
-                        <h4 class="fw-bold text-dark mb-3">Selamat Bergabung! 🎉</h4>
-                        <p class="text-secondary mb-4" style="font-size: 0.95rem; line-height: 1.6;">Anda belum memiliki akun VPN {{ strtoupper($protocol) }}. Mari buat akun pertama Anda dengan mengikuti langkah mudah berikut:</p>
-                        
-                        <div class="text-start mb-4" style="background: #white; background-color: #fff; padding: 1.5rem; border-radius: var(--radius-md); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                            <div class="d-flex align-items-start gap-3 mb-3">
-                                <span style="background: var(--primary-color); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">1</span>
-                                <div>
-                                    <strong class="text-dark">Klik Tombol "Buat Akun"</strong>
-                                    <p class="text-muted small mb-0">Klik tombol biru di pojok kanan atas halaman ini untuk membuka form pembuatan akun.</p>
-                                </div>
-                            </div>
-                            <div class="d-flex align-items-start gap-3 mb-3">
-                                <span style="background: var(--primary-color); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">2</span>
-                                <div>
-                                    <strong class="text-dark">Isi Detail Akun & Tentukan Limit</strong>
-                                    <p class="text-muted small mb-0">Masukkan username pilihan Anda, durasi aktif, serta limit IP (maksimal {{ \App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?: 1 }} IP untuk customer).</p>
-                                </div>
-                            </div>
-                            <div class="d-flex align-items-start gap-3">
-                                <span style="background: var(--primary-color); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">3</span>
-                                <div>
-                                    <strong class="text-dark">Pilih Metode Pembayaran & Aktifkan</strong>
-                                    <p class="text-muted small mb-0">Gunakan saldo akun Anda atau pilih metode QRIS untuk pembayaran otomatis instan. Akun Anda langsung aktif seketika!</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <button class="btn btn-primary px-4 py-2" data-bs-toggle="modal" data-bs-target="#createModal">
-                            <i class="fas fa-plus-circle me-1"></i> Mulai Buat Akun Sekarang
+                    <!-- Static Empty State Card -->
+                    <div class="p-5 text-center">
+                        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">Tidak ada akun yang ditemukan.</h5>
+                        <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#createModal">
+                            <i class="fas fa-plus me-1"></i> Buat Akun Pertama Anda
                         </button>
                     </div>
+
+                    <!-- Onboarding Onetime Guide Modal -->
+                    <div id="onboardingGuideModal" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); z-index: 9999; align-items: center; justify-content: center; padding: 1.5rem; transition: opacity 0.3s ease; opacity: 1;">
+                        <div style="background: #fff; width: 100%; max-width: 550px; border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); overflow: hidden; transform: scale(1); animation: modalBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; text-align: center;">
+                            <!-- Modal Header -->
+                            <div style="background: linear-gradient(135deg, var(--primary-color), var(--primary-light)); color: #fff; padding: 1.75rem; position: relative;">
+                                <div style="background: rgba(255, 255, 255, 0.2); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; margin: 0 auto 1rem;">
+                                    <i class="fas fa-magic fa-2x"></i>
+                                </div>
+                                <h3 style="margin: 0; font-size: 1.5rem; font-weight: 700;">Selamat Bergabung! 🎉</h3>
+                                <p style="margin: 0.5rem 0 0; font-size: 0.9rem; opacity: 0.85; font-weight: 300;">Akun VPN {{ strtoupper($protocol) }} Anda belum dibuat. Ikuti 3 langkah mudah berikut:</p>
+                                <button onclick="closeOnboardingModal()" style="position: absolute; top: 1.25rem; right: 1.25rem; background: rgba(255,255,255,0.2); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <!-- Modal Body -->
+                            <div style="padding: 2rem 1.75rem; text-align: left;">
+                                <div class="d-flex align-items-start gap-3 mb-4">
+                                    <span style="background: var(--primary-color); color: #fff; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">1</span>
+                                    <div>
+                                        <strong class="text-dark" style="font-size: 1rem;">Klik Tombol "Buat Akun"</strong>
+                                        <p class="text-muted small mb-0" style="line-height: 1.5;">Klik tombol biru di pojok kanan atas halaman daftar akun ini atau di akhir panduan untuk membuka form input.</p>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-start gap-3 mb-4">
+                                    <span style="background: var(--primary-color); color: #fff; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">2</span>
+                                    <div>
+                                        <strong class="text-dark" style="font-size: 1rem;">Isi Detail Akun & Tentukan Limit</strong>
+                                        <p class="text-muted small mb-0" style="line-height: 1.5;">Masukkan username akun, pilih masa aktif, dan tentukan batas limit IP (maksimal {{ \App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?: 1 }} IP untuk customer).</p>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-start gap-3 mb-2">
+                                    <span style="background: var(--primary-color); color: #fff; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">3</span>
+                                    <div>
+                                        <strong class="text-dark" style="font-size: 1rem;">Pilih Metode Pembayaran & Aktifkan</strong>
+                                        <p class="text-muted small mb-0" style="line-height: 1.5;">Gunakan saldo wallet Anda atau bayar instan via QRIS otomatis. Setelah pembayaran terverifikasi, VPN langsung aktif seketika!</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Modal Footer -->
+                            <div style="padding: 1.25rem 1.75rem; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;"><i class="fas fa-info-circle text-primary me-1"></i> Ditampilkan sekali</span>
+                                <div class="d-flex gap-2">
+                                    <button onclick="closeOnboardingModal()" style="padding: 0.6rem 1.25rem; background: #e2e8f0; color: var(--text-dark); border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s;">Tutup</button>
+                                    <button onclick="startOnboardingAction()" style="padding: 0.6rem 1.5rem; background: var(--primary-color); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s;">Mulai Buat Akun</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <script>
+                        function closeOnboardingModal() {
+                            const modal = document.getElementById('onboardingGuideModal');
+                            if (modal) {
+                                modal.style.opacity = '0';
+                                setTimeout(() => {
+                                    modal.style.display = 'none';
+                                }, 300);
+                            }
+                        }
+
+                        function startOnboardingAction() {
+                            closeOnboardingModal();
+                            setTimeout(() => {
+                                // Trigger create modal input
+                                const createBtn = document.querySelector('[data-bs-target="#createModal"]');
+                                if (createBtn) createBtn.click();
+                            }, 350);
+                        }
+                    </script>
                 @else
                     <div class="p-5 text-center">
                         <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
                         <h5 class="text-muted">Tidak ada akun yang ditemukan.</h5>
+                        <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#createModal">
+                            <i class="fas fa-plus me-1"></i> Buat Akun Pertama Anda
+                        </button>
                     </div>
                 @endif
             @endif

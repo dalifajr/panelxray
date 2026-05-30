@@ -241,6 +241,15 @@
                 padding: 1rem 0.75rem !important;
             }
         }
+
+        @keyframes sidebarPulse {
+            0% { box-shadow: 0 0 0 0 rgba(13, 71, 161, 0.4); border-right: 4px solid var(--primary-color); }
+            50% { box-shadow: 0 0 20px 10px rgba(13, 71, 161, 0.2); border-right: 4px solid var(--accent-color); }
+            100% { box-shadow: 0 0 0 0 rgba(13, 71, 161, 0); border-right: 4px solid transparent; }
+        }
+        .sidebar-highlight {
+            animation: sidebarPulse 1.5s ease-in-out 2;
+        }
     </style>
 </head>
 <body class="bg-body-tertiary">
