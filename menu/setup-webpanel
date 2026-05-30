@@ -24,15 +24,31 @@ fi
 # 2. Setup Laravel Project Directory
 WEB_DIR="/var/www/webpanel-mvc"
 mkdir -p /var/www
-if [ -d "/root/vpnxray-main/limit/webpanel-mvc" ]; then
+
+echo -e "[\e[32mINFO\e[0m] Mengunduh source code Web Panel terbaru..."
+TMP_REPO="/tmp/panelxray-webpanel-setup"
+rm -rf $TMP_REPO
+git clone https://github.com/dalifajr/panelxray.git $TMP_REPO
+
+if [ -d "$TMP_REPO/limit/webpanel-mvc" ]; then
     rm -rf /var/www/webpanel-mvc
-    cp -r /root/vpnxray-main/limit/webpanel-mvc /var/www/
+    cp -r $TMP_REPO/limit/webpanel-mvc /var/www/
+    rm -rf $TMP_REPO
+else
+    echo -e "[\e[31mERROR\e[0m] Gagal mengunduh source code Web Panel."
+    exit 1
 fi
 
 cd $WEB_DIR
 
 echo -e "[\e[32mINFO\e[0m] Menjalankan Composer Install..."
 composer install --no-dev --optimize-autoloader
+
+# Ensure storage directories exist and have proper ownership before running any php artisan commands
+mkdir -p storage/framework/views storage/framework/cache storage/framework/sessions logs
+chown -R www-data:www-data $WEB_DIR
+chmod -R 775 $WEB_DIR/storage
+chmod -R 775 $WEB_DIR/bootstrap/cache
 
 # Setup .env
 if [ ! -f .env ]; then
@@ -59,12 +75,24 @@ grep -q "^TELEGRAM_BOT_USERNAME=" .env && sed -i "s/^TELEGRAM_BOT_USERNAME=.*/TE
 
 # Setup Database SQLite
 touch database/database.sqlite
-php artisan migrate --force
 
-# Fix Permissions
+# Run migrations and optimize/view clear
+php artisan migrate --force
+php artisan optimize:clear
+php artisan view:clear
+
+# Fix Permissions again to ensure any files touched or created by root/artisan are owned by www-data
 chown -R www-data:www-data $WEB_DIR
 chmod -R 775 $WEB_DIR/storage
 chmod -R 775 $WEB_DIR/bootstrap/cache
+chmod 664 $WEB_DIR/database/database.sqlite
+
+# Install VPN Bridge Service
+echo -e "[\e[32mINFO\e[0m] Menginstal VPN Bridge Service..."
+if [ -f "$WEB_DIR/setup-vpn-bridge.sh" ]; then
+    cd $WEB_DIR
+    bash setup-vpn-bridge.sh
+fi
 
 # 3. Setup Nginx Configuration (Integrate with Xray)
 DOMAIN=$(cat /etc/xray/domain)
@@ -137,7 +165,21 @@ EOF
 systemctl daemon-reload
 
 systemctl restart nginx
-systemctl restart php8.4-fpm
+systemctl restart php8.4-fpm || true
+
+# Purge OPcache for any other active php-fpm
+local php_fpm_service
+php_fpm_service=$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1)
+if [ -n "$php_fpm_service" ]; then
+    systemctl restart "$php_fpm_service" >/dev/null 2>&1 || true
+fi
+
+# Setup Cron Job for Laravel Scheduler
+echo -e "[\e[32mINFO\e[0m] Mengkonfigurasi Cron Job untuk Web Panel..."
+CRON_FILE="/etc/cron.d/vpnxray-webpanel"
+echo "* * * * * root cd /var/www/webpanel-mvc && php artisan schedule:run >> /dev/null 2>&1" > "$CRON_FILE"
+chmod 644 "$CRON_FILE"
+systemctl restart cron || systemctl restart crond
 
 echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses langsung melalui https://$DOMAIN"
 echo -e "[\e[32mINFO\e[0m] Pastikan Bot Telegram Anda sedang berjalan untuk proses otentikasi."

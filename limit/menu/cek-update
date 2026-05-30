@@ -741,15 +741,41 @@ sync_laravel_webpanel() {
     if command -v composer >/dev/null 2>&1; then
       echo -e "${yellow}Menjalankan composer install untuk Laravel Web Panel...${NC}"
       (cd "$web_dir" && composer install --no-dev --optimize-autoloader >/dev/null 2>&1 || true)
-      (cd "$web_dir" && php artisan migrate --force >/dev/null 2>&1 || true)
-      (cd "$web_dir" && php artisan optimize:clear >/dev/null 2>&1 || true)
     fi
 
-    # Fix Permissions
-    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
+    # Ensure storage directories exist and have proper ownership before running php artisan commands
     mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
+    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
     chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
-    
+
+    if command -v php >/dev/null 2>&1; then
+      echo -e "${yellow}Menjalankan migrasi database dan pembersihan cache...${NC}"
+      (cd "$web_dir" && php artisan migrate --force >/dev/null 2>&1 || true)
+      (cd "$web_dir" && php artisan optimize:clear >/dev/null 2>&1 || true)
+      (cd "$web_dir" && php artisan view:clear >/dev/null 2>&1 || true)
+    fi
+
+    # Fix Permissions again to make sure any files touched by artisan are owned by www-data
+    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
+    chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
+    if [ -f "$web_dir/database/database.sqlite" ]; then
+      chmod 664 "$web_dir/database/database.sqlite" 2>/dev/null || true
+    fi
+
+    # Restart PHP-FPM dynamically to purge OPcache instantly
+    local php_fpm_service
+    php_fpm_service=$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1)
+    if [ -n "$php_fpm_service" ]; then
+        echo -e "${yellow}Me-restart layanan active PHP-FPM: $php_fpm_service...${NC}"
+        systemctl restart "$php_fpm_service" >/dev/null 2>&1 || true
+    else
+        # fallback, restart all installed php-fpm services
+        for fpm in $(systemctl list-unit-files 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service'); do
+            echo -e "${yellow}Me-restart layanan PHP-FPM: $fpm...${NC}"
+            systemctl restart "$fpm" >/dev/null 2>&1 || true
+        done
+    fi
+
     # Setup Cron Job for Laravel Scheduler
     echo -e "${yellow}Mengkonfigurasi Cron Job untuk Web Panel...${NC}"
     local cron_file="/etc/cron.d/vpnxray-webpanel"
