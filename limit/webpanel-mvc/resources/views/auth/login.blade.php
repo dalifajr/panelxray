@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 @php
-    $ip = request()->ip();
+    // Get actual client IP behind Cloudflare or reverse proxies
+    $ip = request()->header('CF-Connecting-IP') 
+          ?? request()->header('X-Forwarded-For') 
+          ?? request()->header('X-Real-IP') 
+          ?? request()->ip();
+          
+    if ($ip && strpos($ip, ',') !== false) {
+        $ip = trim(explode(',', $ip)[0]);
+    }
+    
     $todayDate = date('Y-m-d');
     
     // Fetch current stats
@@ -14,7 +23,10 @@
             'ips' => [$ip]
         ];
     } else {
-        if (!in_array($ip, $stats['ips'] ?? [])) {
+        if (!isset($stats['ips']) || !is_array($stats['ips'])) {
+            $stats['ips'] = [];
+        }
+        if (!in_array($ip, $stats['ips'])) {
             $stats['ips'][] = $ip;
             $stats['count'] = count($stats['ips']);
         }
