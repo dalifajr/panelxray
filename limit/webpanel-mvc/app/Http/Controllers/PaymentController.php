@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class PaymentController extends Controller
 {
@@ -287,6 +288,22 @@ PYTHON;
         $transaction = Transaction::where('id', $id)
             ->where('user_id', auth()->id())
             ->firstOrFail();
+
+        if ($transaction->status === 'pending') {
+            $isExpired = Carbon::now()->diffInSeconds($transaction->created_at) >= 300;
+            if ($isExpired && in_array($transaction->type, ['topup', 'vpn_purchase_qris', 'vpn_renew_qris'], true)) {
+                $meta = $transaction->metadata;
+                if (!is_array($meta)) {
+                    $meta = [];
+                }
+                if (in_array($transaction->type, ['vpn_purchase_qris', 'vpn_renew_qris'], true)) {
+                    $meta['cancel_reason'] = $meta['cancel_reason'] ?? 'Waktu pembayaran habis.';
+                }
+                $transaction->metadata = $meta;
+                $transaction->status = 'cancelled';
+                $transaction->save();
+            }
+        }
 
         return response()->json(['status' => $transaction->status]);
     }
