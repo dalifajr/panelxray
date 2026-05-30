@@ -752,7 +752,7 @@
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
                             <div class="input-group input-group-sm">
                                 <button class="btn btn-outline-secondary" type="button" onclick="decrementInput('createLimitIpInput')">-</button>
-                                <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1">
+                                <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
                                 <button class="btn btn-outline-secondary" type="button" onclick="incrementInput('createLimitIpInput')">+</button>
                             </div>
                         </div>
@@ -761,7 +761,7 @@
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
                             <div class="input-group input-group-sm">
                                 <button class="btn btn-outline-secondary" type="button" onclick="decrementInput('createLimitIpInput')">-</button>
-                                <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1" {{ $maxIpLimit > 0 ? 'max=' . $maxIpLimit : '' }}>
+                                <input type="number" name="limit_ip" id="createLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
                                 <button class="btn btn-outline-secondary" type="button" onclick="incrementInput('createLimitIpInput')">+</button>
                             </div>
                             <small class="text-muted d-block mt-1">{{ $maxIpLimit > 0 ? 'Maks ' . $maxIpLimit . ' IP' : '' }}</small>
@@ -845,7 +845,7 @@
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
                             <div class="input-group input-group-sm">
                                 <button class="btn btn-outline-secondary" type="button" onclick="decrementInput('renewLimitIpInput')">-</button>
-                                <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1">
+                                <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
                                 <button class="btn btn-outline-secondary" type="button" onclick="incrementInput('renewLimitIpInput')">+</button>
                             </div>
                         </div>
@@ -854,7 +854,7 @@
                             <label class="form-label fw-bold text-secondary">Limit IP</label>
                             <div class="input-group input-group-sm">
                                 <button class="btn btn-outline-secondary" type="button" onclick="decrementInput('renewLimitIpInput')">-</button>
-                                <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1" {{ $maxIpLimit > 0 ? 'max=' . $maxIpLimit : '' }}>
+                                <input type="number" name="limit_ip" id="renewLimitIpInput" class="form-control form-control-sm text-center" value="1" min="1" @if($maxIpLimit > 0) max="{{ $maxIpLimit }}" @endif>
                                 <button class="btn btn-outline-secondary" type="button" onclick="incrementInput('renewLimitIpInput')">+</button>
                             </div>
                             <small class="text-muted d-block mt-1">{{ $maxIpLimit > 0 ? 'Maks ' . $maxIpLimit . ' IP' : '' }}</small>
