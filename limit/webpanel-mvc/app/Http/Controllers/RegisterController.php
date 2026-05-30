@@ -45,6 +45,7 @@ class RegisterController extends Controller
         ]);
 
         Auth::login($user);
+        session(['show_vpn_setup_tip' => true]);
 
         if ($request->has('link_telegram')) {
             $token = Str::random(8);

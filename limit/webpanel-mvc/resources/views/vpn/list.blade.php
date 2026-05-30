@@ -195,10 +195,49 @@
                 </table>
             </div>
             @else
-            <div class="p-5 text-center">
-                <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
-                <h5 class="text-muted">Tidak ada akun yang ditemukan.</h5>
-            </div>
+                @if(session('show_vpn_setup_tip'))
+                    @php session()->forget('show_vpn_setup_tip'); @endphp
+                    <div class="p-4 text-center mx-auto" style="max-width: 600px; background: linear-gradient(135deg, rgba(13, 71, 161, 0.05) 0%, rgba(25, 118, 210, 0.05) 100%); border: 1px solid rgba(13, 71, 161, 0.15); border-radius: var(--radius-lg); margin: 2rem auto;">
+                        <div style="background: rgba(13, 71, 161, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--primary-color); margin: 0 auto 1.5rem;">
+                            <i class="fas fa-magic fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-3">Selamat Bergabung! 🎉</h4>
+                        <p class="text-secondary mb-4" style="font-size: 0.95rem; line-height: 1.6;">Anda belum memiliki akun VPN {{ strtoupper($protocol) }}. Mari buat akun pertama Anda dengan mengikuti langkah mudah berikut:</p>
+                        
+                        <div class="text-start mb-4" style="background: #white; background-color: #fff; padding: 1.5rem; border-radius: var(--radius-md); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                            <div class="d-flex align-items-start gap-3 mb-3">
+                                <span style="background: var(--primary-color); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">1</span>
+                                <div>
+                                    <strong class="text-dark">Klik Tombol "Buat Akun"</strong>
+                                    <p class="text-muted small mb-0">Klik tombol biru di pojok kanan atas halaman ini untuk membuka form pembuatan akun.</p>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-start gap-3 mb-3">
+                                <span style="background: var(--primary-color); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">2</span>
+                                <div>
+                                    <strong class="text-dark">Isi Detail Akun & Tentukan Limit</strong>
+                                    <p class="text-muted small mb-0">Masukkan username pilihan Anda, durasi aktif, serta limit IP (maksimal {{ \App\Models\Setting::where('key', 'max_ip_limit')->value('value') ?: 1 }} IP untuk customer).</p>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-start gap-3">
+                                <span style="background: var(--primary-color); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; flex-shrink: 0; margin-top: 0.1rem;">3</span>
+                                <div>
+                                    <strong class="text-dark">Pilih Metode Pembayaran & Aktifkan</strong>
+                                    <p class="text-muted small mb-0">Gunakan saldo akun Anda atau pilih metode QRIS untuk pembayaran otomatis instan. Akun Anda langsung aktif seketika!</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary px-4 py-2" data-bs-toggle="modal" data-bs-target="#createModal">
+                            <i class="fas fa-plus-circle me-1"></i> Mulai Buat Akun Sekarang
+                        </button>
+                    </div>
+                @else
+                    <div class="p-5 text-center">
+                        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">Tidak ada akun yang ditemukan.</h5>
+                    </div>
+                @endif
             @endif
         </div>
     </div>
