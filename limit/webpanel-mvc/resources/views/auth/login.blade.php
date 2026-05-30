@@ -1,4 +1,32 @@
 <!DOCTYPE html>
+@php
+    $ip = request()->ip();
+    $todayDate = date('Y-m-d');
+    
+    // Fetch current stats
+    $statsRecord = \App\Models\Setting::where('key', 'visitor_stats_today')->first();
+    $stats = $statsRecord ? json_decode($statsRecord->value, true) : null;
+    
+    if (!$stats || ($stats['date'] ?? '') !== $todayDate) {
+        $stats = [
+            'date' => $todayDate,
+            'count' => 1,
+            'ips' => [$ip]
+        ];
+    } else {
+        if (!in_array($ip, $stats['ips'] ?? [])) {
+            $stats['ips'][] = $ip;
+            $stats['count'] = count($stats['ips']);
+        }
+    }
+    
+    \App\Models\Setting::updateOrCreate(
+        ['key' => 'visitor_stats_today'],
+        ['value' => json_encode($stats)]
+    );
+    
+    $todayVisitorsCount = $stats['count'] ?? 1;
+@endphp
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -251,6 +279,11 @@
             .login-section { padding: 3rem 2rem; }
             body { padding: 1rem; }
         }
+
+        @keyframes modalBounce {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -321,11 +354,94 @@
             <p class="info-desc">
                 {!! nl2br(e($desc)) !!}
             </p>
-            <div class="info-alert">
+            <div class="info-alert" style="margin-bottom: 2rem;">
                 <i class="fas fa-info-circle"></i>
                 <p>Klik tombol login, lalu mulai (start) bot untuk mendapatkan link akses masuk langsung ke dashboard.</p>
             </div>
+
+            <!-- Visitor Stats -->
+            <div class="visitor-stats" style="background: rgba(255, 255, 255, 0.08); padding: 1.25rem 1.5rem; border-radius: var(--radius-md); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--accent-color);">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div style="background: rgba(255, 215, 0, 0.15); width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--accent-color);">
+                        <i class="fas fa-users" style="font-size: 1.25rem;"></i>
+                    </div>
+                    <div style="text-align: left;">
+                        <p style="margin: 0; font-size: 0.85rem; opacity: 0.8; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Pengunjung Hari Ini</p>
+                        <h4 style="margin: 0; font-size: 1.5rem; font-weight: 700; color: #fff;">{{ number_format($todayVisitorsCount) }} <span style="font-size: 0.9rem; font-weight: 400; opacity: 0.8;">Orang</span></h4>
+                    </div>
+                </div>
+                <span class="badge" style="background: rgba(255, 255, 255, 0.15); padding: 0.4rem 0.8rem; border-radius: 50px; font-size: 0.75rem; font-weight: 600;">LIVE</span>
+            </div>
         </div>
     </div>
+
+    <!-- Mobile Announcement Modal -->
+    <div id="mobileAnnouncementModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); z-index: 9999; align-items: center; justify-content: center; padding: 1.5rem; opacity: 0; transition: opacity 0.3s ease;">
+        <div style="background: var(--white); width: 100%; max-width: 500px; border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); overflow: hidden; transform: scale(0.9); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); animation: modalBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;">
+            <!-- Modal Header -->
+            <div style="background: linear-gradient(135deg, var(--primary-color), var(--primary-light)); color: var(--white); padding: 1.5rem; position: relative;">
+                <h3 style="margin: 0; font-size: 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.75rem;"><i class="fas fa-bullhorn text-warning"></i> Pengumuman</h3>
+                <button onclick="closeMobileModal()" style="position: absolute; top: 1.25rem; right: 1.25rem; background: rgba(255,255,255,0.2); border: none; color: #white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition); color: #fff;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <!-- Modal Body -->
+            <div style="padding: 2rem 1.5rem;">
+                <h4 style="color: var(--primary-color); font-size: 1.25rem; font-weight: 700; margin: 0 0 0.75rem 0;">{{ $title }}</h4>
+                <p style="color: var(--text-dark); font-size: 0.95rem; line-height: 1.6; opacity: 0.9; margin: 0 0 1.5rem 0;">
+                    {!! nl2br(e($desc)) !!}
+                </p>
+                <div style="background: rgba(13, 71, 161, 0.05); padding: 1rem 1.25rem; border-radius: var(--radius-md); display: flex; align-items: flex-start; gap: 0.75rem; border-left: 3px solid var(--primary-color); margin-bottom: 1.5rem;">
+                    <i class="fas fa-info-circle text-primary" style="font-size: 1.1rem; margin-top: 0.15rem;"></i>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-dark); opacity: 0.8; line-height: 1.5;">Klik tombol login, lalu mulai (start) bot untuk mendapatkan link akses masuk langsung ke dashboard.</p>
+                </div>
+                
+                <!-- Visitor Stats in Modal for Mobile -->
+                <div style="background: rgba(15, 23, 42, 0.05); padding: 1rem 1.25rem; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between; border-left: 3px solid var(--accent-color);">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <i class="fas fa-users text-primary" style="font-size: 1.1rem;"></i>
+                        <div style="text-align: left;">
+                            <p style="margin: 0; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Pengunjung Hari Ini</p>
+                            <h5 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-dark);">{{ number_format($todayVisitorsCount) }} <span style="font-size: 0.8rem; font-weight: 400; color: var(--text-muted);">Orang</span></h5>
+                        </div>
+                    </div>
+                    <span style="background: rgba(13, 71, 161, 0.1); color: var(--primary-color); padding: 0.25rem 0.6rem; border-radius: 50px; font-size: 0.75rem; font-weight: 700;">LIVE</span>
+                </div>
+            </div>
+            <!-- Modal Footer -->
+            <div style="padding: 1.25rem 1.5rem; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+                <button onclick="closeMobileModal()" style="padding: 0.75rem 1.5rem; background: var(--primary-color); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: var(--transition);">Mengerti</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showMobileModal() {
+            const modal = document.getElementById('mobileAnnouncementModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                setTimeout(() => {
+                    modal.style.opacity = '1';
+                }, 10);
+            }
+        }
+
+        function closeMobileModal() {
+            const modal = document.getElementById('mobileAnnouncementModal');
+            if (modal) {
+                modal.style.opacity = '0';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 300);
+            }
+        }
+
+        // Auto trigger on mobile load
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.innerWidth < 968) {
+                showMobileModal();
+            }
+        });
+    </script>
 </body>
 </html>
