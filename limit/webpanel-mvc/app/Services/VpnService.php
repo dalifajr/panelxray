@@ -554,7 +554,7 @@ PYTHON;
 
         $res = $this->runPython($script);
         $newExp = trim($res['output'] ?? '');
-        if (!$res['success'] || $newExp === '' || str_starts_with($newExp, 'ERROR:')) {
+        if (!$res['success'] || $newExp === '' || strpos($newExp, 'ERROR:') === 0) {
             return ['success' => false, 'error' => $res['error'] ?? $res['output'] ?? 'Renew Xray failed'];
         }
 
