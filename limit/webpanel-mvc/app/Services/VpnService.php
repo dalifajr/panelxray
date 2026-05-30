@@ -505,7 +505,7 @@ new_expiry = base_expiry + DT.timedelta(days=add_days)
 for i, line in enumerate(lines):
     parts = line.strip().split()
     if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
-        lines[i] = f"{marker} {username} {new_expiry.isoformat()}\n"
+        lines[i] = f"{marker} {username} {new_expiry.isoformat()}\\n"
 
 try:
     with open(path, 'w') as f:
@@ -542,7 +542,7 @@ if os.path.exists(db_path):
         for i, line in enumerate(db_lines):
             parts = line.strip().split()
             if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
-                db_lines[i] = f"{marker} {username} {new_expiry.isoformat()}\n"
+                db_lines[i] = f"{marker} {username} {new_expiry.isoformat()}\\n"
         with open(db_path, 'w') as f:
             f.writelines(db_lines)
     except Exception:
