@@ -632,223 +632,249 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
 
     user_id = sched["user_id"]
     option_code = sched["option_code"]
+    target_msisdn = sched.get("msisdn")
 
     admin_id = get_admin_id()
     is_admin = (admin_id is not None and user_id == admin_id)
     AuthInstance.set_runtime_owner(user_id, is_admin=is_admin)
-    api_key, tokens = _get_active_context()
-    if not api_key or tokens is None:
-        return False, "Akun aktif tidak ditemukan untuk user."
 
-    # Get active MSISDN for display in notifications
-    active_user = AuthInstance.get_active_user() or {}
-    msisdn = active_user.get("number", sched.get("msisdn", "N/A"))
+    # Save original active number to restore later
+    original_active_number = None
+    orig_user = AuthInstance.get_active_user()
+    if orig_user:
+        original_active_number = orig_user.get("number")
 
-    # Fetch quota details with polling to ensure we get a valid quota response if active
-    path = "api/v8/packages/quota-details"
-    payload = {"is_enterprise": False, "lang": "en", "family_member_id": ""}
-    
-    target_quota = None
-    api_success = False
-    all_quotas = []
-    
-    # We poll up to 5 times with 3 seconds interval if the quota is not found or API fails,
-    # to avoid premature autobuy triggers due to API latency/lag.
-    for attempt in range(5):
-        try:
-            res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
-            if isinstance(res, dict) and res.get("status") == "SUCCESS":
-                api_success = True
-                all_quotas = res.get("data", {}).get("quotas", [])
-                
-                # Match target quota using multiple strategies
-                target_code = str(option_code).strip().lower()
-                target_name = str(sched.get("item_name", "")).strip().lower()
-                
-                current_target = None
-                for quota in all_quotas:
-                    q_code = str(quota.get("quota_code", "")).strip().lower()
-                    q_name = str(quota.get("name", "")).strip().lower()
-                    
-                    # Strategy 1: Exact match by quota_code/option_code
-                    if q_code == target_code:
-                        current_target = quota
-                        break
-                    # Strategy 2: Exact match by name
-                    if target_name and q_name == target_name:
-                        current_target = quota
-                        break
-                    # Strategy 3: Partial/substring match by name
-                    if target_name and (target_name in q_name or q_name in target_name):
-                        current_target = quota
-                        break
-                
-                if current_target is not None:
-                    benefits = current_target.get("benefits", [])
-                    if benefits:
-                        target_quota = current_target
-                        logger.info("Found target quota with populated benefits on attempt %d", attempt + 1)
-                        break
-                    else:
-                        logger.info("Found target quota on attempt %d but benefits are empty, waiting...", attempt + 1)
-                else:
-                    logger.info("Target quota not found in active list on attempt %d (searched: code=%s, name=%s)", attempt + 1, target_code, target_name)
-            else:
-                logger.warning("API quota-details returned non-success status on attempt %d", attempt + 1)
-        except Exception as e:
-            logger.error("Error fetching quota-details on attempt %d: %s", attempt + 1, e)
-            
-        if attempt < 4:
-            time.sleep(3)
-
-    if not api_success:
-        return False, f"Gagal mengambil detail kuota untuk nomor {msisdn}."
-
-    # Threshold 800 MB (800 * 1024 * 1024 bytes)
-    threshold_bytes = 800 * 1024 * 1024
-
-    run_autobuy = False
-    reason = ""
-    total_remaining = 0
-    quota_name = sched.get("item_name", option_code)
-
-    if target_quota is None:
-        run_autobuy = True
-        reason = "Paket tidak aktif / habis total."
-    else:
-        quota_name = target_quota.get("name", quota_name)
-        benefits = target_quota.get("benefits", [])
-        has_data = False
-        remaining_parts = []
-        for benefit in benefits:
-            b_type = benefit.get("data_type", "")
-            b_remaining = int(benefit.get("remaining", 0))
-            b_total = int(benefit.get("total", 0))
-            b_name = benefit.get("name", "")
-            
-            if b_type == "DATA":
-                total_remaining += b_remaining
-                has_data = True
-                remaining_parts.append(f"  {b_name}: {format_quota_byte(b_remaining)} / {format_quota_byte(b_total)}")
-            elif b_type == "VOICE" and b_total > 0:
-                remaining_parts.append(f"  {b_name}: {b_remaining/60:.0f} / {b_total/60:.0f} menit")
-            elif b_type == "TEXT" and b_total > 0:
-                remaining_parts.append(f"  {b_name}: {b_remaining} / {b_total} SMS")
-
-        if not has_data or total_remaining < threshold_bytes:
-            run_autobuy = True
-            reason = f"Kuota data kritis: {format_quota_byte(total_remaining)} (di bawah 800 MB)."
-
-    if not run_autobuy:
-        # Build detailed remaining quota string
-        remaining_detail = "\n".join(remaining_parts) if remaining_parts else format_quota_byte(total_remaining)
-        safe_msg = (
-            f"**Kuota masih aman**\n"
-            f"Nomor: {msisdn}\n"
-            f"Nama Kuota: {quota_name}\n"
-            f"Sisa Kuota: {format_quota_byte(total_remaining)}\n"
-            f"{remaining_detail}"
-        )
-        return False, safe_msg
-
-    # Step 1: Unsubscribe target package
-    p_domain = None
-    p_sub_type = None
-
-    if target_quota:
-        p_domain = target_quota.get("product_domain")
-        p_sub_type = target_quota.get("product_subscription_type")
-
-    if not p_domain or not p_sub_type:
-        try:
-            pkg_detail = get_package(api_key, tokens, option_code)
-            if pkg_detail:
-                opt = pkg_detail.get("package_option", {})
-                fam = pkg_detail.get("package_family", {})
-                p_domain = opt.get("product_domain") or fam.get("product_domain") or pkg_detail.get("product_domain")
-                p_sub_type = opt.get("product_subscription_type") or fam.get("product_subscription_type") or pkg_detail.get("product_subscription_type")
-        except Exception as e:
-            logger.error("Failed to fetch package catalog detail for unsubscribe: %s", e)
-
-    if not p_domain:
-        p_domain = "DATA"
-    if not p_sub_type:
-        p_sub_type = "PREPAID"
-
-    logger.info("Auto Buy performing unsubscribe for user_id=%s, package=%s, domain=%s, type=%s", user_id, option_code, p_domain, p_sub_type)
-    unsub_ok = unsubscribe(
-        api_key=api_key,
-        tokens=tokens,
-        quota_code=option_code,
-        product_domain=p_domain,
-        product_subscription_type=p_sub_type
-    )
-    if not unsub_ok:
-        logger.warning("Auto Buy unsub failed or not active for user_id=%s, package=%s. Proceeding to buy.", user_id, option_code)
-
-    # Step 2: Build payment context and buy with Decoy V2
-    payment_ctx = _package_payment_context_sync(option_code)
-    if not payment_ctx:
-        return False, f"Gagal memuat detail paket {option_code} untuk pembelian."
-
-    result_str = _pay_decoy_balance_sync(payment_ctx, v2=True)
-    if "berhasil" in result_str.lower():
-        _cache_invalidate([f"packages:list:{msisdn}"])
-        
-        # Poll quota-details API until the new package is active and has data benefits (up to 10 retries, 3s interval)
-        new_remaining_str = "N/A"
-        new_remaining_parts = []
-        target_code = str(option_code).strip().lower()
-        target_name = str(sched.get("item_name", "")).strip().lower()
-        for attempt in range(10):
-            time.sleep(3)
+    try:
+        if target_msisdn:
             try:
-                res_new = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
-                if isinstance(res_new, dict) and res_new.get("status") == "SUCCESS":
-                    new_quotas = res_new.get("data", {}).get("quotas", [])
-                    found = False
-                    for nq in new_quotas:
-                        nq_code = str(nq.get("quota_code", "")).strip().lower()
-                        nq_name = str(nq.get("name", "")).strip().lower()
-                        if nq_code == target_code or (target_name and nq_name == target_name) or (target_name and (target_name in nq_name or nq_name in target_name)):
-                            total_rem = 0
-                            has_data = False
-                            new_remaining_parts = []
-                            for benefit in nq.get("benefits", []):
-                                b_type = benefit.get("data_type", "")
-                                b_remaining = int(benefit.get("remaining", 0))
-                                b_total = int(benefit.get("total", 0))
-                                b_name = benefit.get("name", "")
-                                if b_type == "DATA":
-                                    total_rem += b_remaining
-                                    has_data = True
-                                    new_remaining_parts.append(f"  {b_name}: {format_quota_byte(b_remaining)} / {format_quota_byte(b_total)}")
-                                elif b_type == "VOICE" and b_total > 0:
-                                    new_remaining_parts.append(f"  {b_name}: {b_remaining/60:.0f} / {b_total/60:.0f} menit")
-                                elif b_type == "TEXT" and b_total > 0:
-                                    new_remaining_parts.append(f"  {b_name}: {b_remaining} / {b_total} SMS")
-                            if has_data and total_rem > 0:
-                                new_remaining_str = format_quota_byte(total_rem)
-                                found = True
-                                break
-                    if found:
-                        logger.info("New quota detected after %s attempts", attempt + 1)
-                        break
+                target_num = int(target_msisdn)
+                # Check if this number exists in logged in accounts for the scope
+                if any(rt["number"] == target_num for rt in AuthInstance.refresh_tokens):
+                    AuthInstance.set_active_user(target_num)
             except Exception as e:
-                logger.error("Failed to fetch new quota details on attempt %s: %s", attempt + 1, e)
+                logger.error("Failed to temporarily switch active user to %s: %s", target_msisdn, e)
 
-        remaining_detail = "\n".join(new_remaining_parts) if new_remaining_parts else ""
-        success_msg = (
-            f"**Pembelian Berhasil**\n"
-            f"Nomor: {msisdn}\n"
-            f"Nama Kuota: {quota_name}\n"
-            f"Sisa Kuota Saat Ini: {new_remaining_str}"
+        api_key, tokens = _get_active_context()
+        if not api_key or tokens is None:
+            return False, "Akun aktif tidak ditemukan untuk user."
+
+        # Get active MSISDN for display in notifications
+        active_user = AuthInstance.get_active_user() or {}
+        msisdn = active_user.get("number", sched.get("msisdn", "N/A"))
+
+        # Fetch quota details with polling to ensure we get a valid quota response if active
+        path = "api/v8/packages/quota-details"
+        payload = {"is_enterprise": False, "lang": "en", "family_member_id": ""}
+        
+        target_quota = None
+        api_success = False
+        all_quotas = []
+        
+        # We poll up to 5 times with 3 seconds interval if the quota is not found or API fails,
+        # to avoid premature autobuy triggers due to API latency/lag.
+        for attempt in range(5):
+            try:
+                res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+                if isinstance(res, dict) and res.get("status") == "SUCCESS":
+                    api_success = True
+                    all_quotas = res.get("data", {}).get("quotas", [])
+                    
+                    # Match target quota using multiple strategies
+                    target_code = str(option_code).strip().lower()
+                    target_name = str(sched.get("item_name", "")).strip().lower()
+                    
+                    current_target = None
+                    for quota in all_quotas:
+                        q_code = str(quota.get("quota_code", "")).strip().lower()
+                        q_name = str(quota.get("name", "")).strip().lower()
+                        
+                        # Strategy 1: Exact match by quota_code/option_code
+                        if q_code == target_code:
+                            current_target = quota
+                            break
+                        # Strategy 2: Exact match by name
+                        if target_name and q_name == target_name:
+                            current_target = quota
+                            break
+                        # Strategy 3: Partial/substring match by name
+                        if target_name and (target_name in q_name or q_name in target_name):
+                            current_target = quota
+                            break
+                    
+                    if current_target is not None:
+                        benefits = current_target.get("benefits", [])
+                        if benefits:
+                            target_quota = current_target
+                            logger.info("Found target quota with populated benefits on attempt %d", attempt + 1)
+                            break
+                        else:
+                            logger.info("Found target quota on attempt %d but benefits are empty, waiting...", attempt + 1)
+                    else:
+                        logger.info("Target quota not found in active list on attempt %d (searched: code=%s, name=%s)", attempt + 1, target_code, target_name)
+                else:
+                    logger.warning("API quota-details returned non-success status on attempt %d", attempt + 1)
+            except Exception as e:
+                logger.error("Error fetching quota-details on attempt %d: %s", attempt + 1, e)
+                
+            if attempt < 4:
+                time.sleep(3)
+
+        if not api_success:
+            return False, f"Gagal mengambil detail kuota untuk nomor {msisdn}."
+
+        # Threshold 800 MB (800 * 1024 * 1024 bytes)
+        threshold_bytes = 800 * 1024 * 1024
+
+        run_autobuy = False
+        reason = ""
+        total_remaining = 0
+        quota_name = sched.get("item_name", option_code)
+
+        if target_quota is None:
+            run_autobuy = True
+            reason = "Paket tidak aktif / habis total."
+        else:
+            quota_name = target_quota.get("name", quota_name)
+            benefits = target_quota.get("benefits", [])
+            has_data = False
+            remaining_parts = []
+            for benefit in benefits:
+                b_type = benefit.get("data_type", "")
+                b_remaining = int(benefit.get("remaining", 0))
+                b_total = int(benefit.get("total", 0))
+                b_name = benefit.get("name", "")
+                
+                if b_type == "DATA":
+                    total_remaining += b_remaining
+                    has_data = True
+                    remaining_parts.append(f"  {b_name}: {format_quota_byte(b_remaining)} / {format_quota_byte(b_total)}")
+                elif b_type == "VOICE" and b_total > 0:
+                    remaining_parts.append(f"  {b_name}: {b_remaining/60:.0f} / {b_total/60:.0f} menit")
+                elif b_type == "TEXT" and b_total > 0:
+                    remaining_parts.append(f"  {b_name}: {b_remaining} / {b_total} SMS")
+
+            if not has_data or total_remaining < threshold_bytes:
+                run_autobuy = True
+                reason = f"Kuota data kritis: {format_quota_byte(total_remaining)} (di bawah 800 MB)."
+
+        if not run_autobuy:
+            # Build detailed remaining quota string
+            remaining_detail = "\n".join(remaining_parts) if remaining_parts else format_quota_byte(total_remaining)
+            safe_msg = (
+                f"**Kuota masih aman**\n"
+                f"Nomor: {msisdn}\n"
+                f"Nama Kuota: {quota_name}\n"
+                f"Sisa Kuota: {format_quota_byte(total_remaining)}\n"
+                f"{remaining_detail}"
+            )
+            return False, safe_msg
+
+        # Step 1: Unsubscribe target package
+        p_domain = None
+        p_sub_type = None
+
+        if target_quota:
+            p_domain = target_quota.get("product_domain")
+            p_sub_type = target_quota.get("product_subscription_type")
+
+        if not p_domain or not p_sub_type:
+            try:
+                pkg_detail = get_package(api_key, tokens, option_code)
+                if pkg_detail:
+                    opt = pkg_detail.get("package_option", {})
+                    fam = pkg_detail.get("package_family", {})
+                    p_domain = opt.get("product_domain") or fam.get("product_domain") or pkg_detail.get("product_domain")
+                    p_sub_type = opt.get("product_subscription_type") or fam.get("product_subscription_type") or pkg_detail.get("product_subscription_type")
+            except Exception as e:
+                logger.error("Failed to fetch package catalog detail for unsubscribe: %s", e)
+
+        if not p_domain:
+            p_domain = "DATA"
+        if not p_sub_type:
+            p_sub_type = "PREPAID"
+
+        logger.info("Auto Buy performing unsubscribe for user_id=%s, package=%s, domain=%s, type=%s", user_id, option_code, p_domain, p_sub_type)
+        unsub_ok = unsubscribe(
+            api_key=api_key,
+            tokens=tokens,
+            quota_code=option_code,
+            product_domain=p_domain,
+            product_subscription_type=p_sub_type
         )
-        if remaining_detail:
-            success_msg += f"\n{remaining_detail}"
-        return True, success_msg
-    else:
-        return False, f"❌ [Auto Buy Gagal]\nNomor: {msisdn}\nTarget: {quota_name}\nAlasan: {reason}\nDetail: {result_str}"
+        if not unsub_ok:
+            logger.warning("Auto Buy unsub failed or not active for user_id=%s, package=%s. Proceeding to buy.", user_id, option_code)
+
+        # Step 2: Build payment context and buy with Decoy V2
+        payment_ctx = _package_payment_context_sync(option_code)
+        if not payment_ctx:
+            return False, f"Gagal memuat detail paket {option_code} untuk pembelian."
+
+        result_str = _pay_decoy_balance_sync(payment_ctx, v2=True)
+        if "berhasil" in result_str.lower():
+            _cache_invalidate([f"packages:list:{msisdn}"])
+            
+            # Poll quota-details API until the new package is active and has data benefits (up to 10 retries, 3s interval)
+            new_remaining_str = "N/A"
+            new_remaining_parts = []
+            target_code = str(option_code).strip().lower()
+            target_name = str(sched.get("item_name", "")).strip().lower()
+            for attempt in range(10):
+                time.sleep(3)
+                try:
+                    res_new = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+                    if isinstance(res_new, dict) and res_new.get("status") == "SUCCESS":
+                        new_quotas = res_new.get("data", {}).get("quotas", [])
+                        found = False
+                        for nq in new_quotas:
+                            nq_code = str(nq.get("quota_code", "")).strip().lower()
+                            nq_name = str(nq.get("name", "")).strip().lower()
+                            if nq_code == target_code or (target_name and nq_name == target_name) or (target_name and (target_name in nq_name or nq_name in target_name)):
+                                total_rem = 0
+                                has_data = False
+                                new_remaining_parts = []
+                                for benefit in nq.get("benefits", []):
+                                    b_type = benefit.get("data_type", "")
+                                    b_remaining = int(benefit.get("remaining", 0))
+                                    b_total = int(benefit.get("total", 0))
+                                    b_name = benefit.get("name", "")
+                                    if b_type == "DATA":
+                                        total_rem += b_remaining
+                                        has_data = True
+                                        new_remaining_parts.append(f"  {b_name}: {format_quota_byte(b_remaining)} / {format_quota_byte(b_total)}")
+                                    elif b_type == "VOICE" and b_total > 0:
+                                        new_remaining_parts.append(f"  {b_name}: {b_remaining/60:.0f} / {b_total/60:.0f} menit")
+                                    elif b_type == "TEXT" and b_total > 0:
+                                        new_remaining_parts.append(f"  {b_name}: {b_remaining} / {b_total} SMS")
+                                if has_data and total_rem > 0:
+                                    new_remaining_str = format_quota_byte(total_rem)
+                                    found = True
+                                    break
+                        if found:
+                            logger.info("New quota detected after %s attempts", attempt + 1)
+                            break
+                except Exception as e:
+                    logger.error("Failed to fetch new quota details on attempt %s: %s", attempt + 1, e)
+
+            remaining_detail = "\n".join(new_remaining_parts) if new_remaining_parts else ""
+            success_msg = (
+                f"**Pembelian Berhasil**\n"
+                f"Nomor: {msisdn}\n"
+                f"Nama Kuota: {quota_name}\n"
+                f"Sisa Kuota Saat Ini: {new_remaining_str}"
+            )
+            if remaining_detail:
+                success_msg += f"\n{remaining_detail}"
+            return True, success_msg
+        else:
+            return False, f"❌ [Auto Buy Gagal]\nNomor: {msisdn}\nTarget: {quota_name}\nAlasan: {reason}\nDetail: {result_str}"
+
+    finally:
+        # Restore the original active user's number so the user's interactive session is unaffected
+        if original_active_number:
+            try:
+                AuthInstance.set_active_user(original_active_number)
+            except Exception as e:
+                logger.error("Failed to restore original active user %s: %s", original_active_number, e)
 
 
 async def schedule_checker_loop(application: Application):
