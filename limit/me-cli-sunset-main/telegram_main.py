@@ -641,27 +641,54 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
         return False, "Akun aktif tidak ditemukan untuk user."
 
 
-    # Fetch quota details
+    # Fetch quota details with polling to ensure we get a valid quota response if active
     path = "api/v8/packages/quota-details"
     payload = {"is_enterprise": False, "lang": "en", "family_member_id": ""}
-    res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
-    if not isinstance(res, dict) or res.get("status") != "SUCCESS":
-        return False, f"Gagal mengambil detail kuota untuk nomor {sched.get('msisdn', '')}."
-
-    quotas = res.get("data", {}).get("quotas", [])
-
-    # Check if target option code is in active quotas
+    
     target_quota = None
-    for quota in quotas:
-        q_code = str(quota.get("quota_code", "")).strip().lower()
-        target_code = str(option_code).strip().lower()
-        q_name = str(quota.get("name", "")).strip().lower()
-        target_name = str(sched.get("item_name", "")).strip().lower()
-        
-        # Match by quota_code or name
-        if q_code == target_code or (target_name and q_name == target_name):
-            target_quota = quota
-            break
+    api_success = False
+    
+    # We poll up to 5 times with 3 seconds interval if the quota is not found or API fails,
+    # to avoid premature autobuy triggers due to API latency/lag.
+    for attempt in range(5):
+        try:
+            res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+            if isinstance(res, dict) and res.get("status") == "SUCCESS":
+                api_success = True
+                quotas = res.get("data", {}).get("quotas", [])
+                
+                # Check if target option code is in active quotas
+                current_target = None
+                for quota in quotas:
+                    q_code = str(quota.get("quota_code", "")).strip().lower()
+                    target_code = str(option_code).strip().lower()
+                    q_name = str(quota.get("name", "")).strip().lower()
+                    target_name = str(sched.get("item_name", "")).strip().lower()
+                    
+                    if q_code == target_code or (target_name and q_name == target_name):
+                        current_target = quota
+                        break
+                
+                if current_target is not None:
+                    benefits = current_target.get("benefits", [])
+                    if benefits:
+                        target_quota = current_target
+                        logger.info("Found target quota with populated benefits on attempt %d", attempt + 1)
+                        break
+                    else:
+                        logger.info("Found target quota on attempt %d but benefits are empty, waiting...", attempt + 1)
+                else:
+                    logger.info("Target quota not found in active list on attempt %d", attempt + 1)
+            else:
+                logger.warning("API quota-details returned non-success status on attempt %d", attempt + 1)
+        except Exception as e:
+            logger.error("Error fetching quota-details on attempt %d: %s", attempt + 1, e)
+            
+        if attempt < 4:
+            time.sleep(3)
+
+    if not api_success:
+        return False, f"Gagal mengambil detail kuota untuk nomor {sched.get('msisdn', '')}."
 
     # Threshold 800 MB (800 * 1024 * 1024 bytes)
     threshold_bytes = 800 * 1024 * 1024
@@ -741,27 +768,36 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
         active_user = AuthInstance.get_active_user() or {}
         _cache_invalidate([f"packages:list:{active_user.get('number', 'na')}"])
         
-        # Wait 3 seconds for backend synchronization and fetch new remaining quota
-        time.sleep(3)
+        # Poll quota-details API until the new package is active and has data benefits (up to 10 retries, 3s interval)
         new_remaining_str = "N/A"
-        try:
-            res_new = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
-            if isinstance(res_new, dict) and res_new.get("status") == "SUCCESS":
-                new_quotas = res_new.get("data", {}).get("quotas", [])
-                for nq in new_quotas:
-                    nq_code = str(nq.get("quota_code", "")).strip().lower()
-                    target_code = str(option_code).strip().lower()
-                    nq_name = str(nq.get("name", "")).strip().lower()
-                    target_name = str(sched.get("item_name", "")).strip().lower()
-                    if nq_code == target_code or (target_name and nq_name == target_name):
-                        total_rem = 0
-                        for benefit in nq.get("benefits", []):
-                            if benefit.get("data_type") == "DATA":
-                                total_rem += int(benefit.get("remaining", 0))
-                        new_remaining_str = format_quota_byte(total_rem)
+        for attempt in range(10):
+            time.sleep(3)
+            try:
+                res_new = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+                if isinstance(res_new, dict) and res_new.get("status") == "SUCCESS":
+                    new_quotas = res_new.get("data", {}).get("quotas", [])
+                    found = False
+                    for nq in new_quotas:
+                        nq_code = str(nq.get("quota_code", "")).strip().lower()
+                        target_code = str(option_code).strip().lower()
+                        nq_name = str(nq.get("name", "")).strip().lower()
+                        target_name = str(sched.get("item_name", "")).strip().lower()
+                        if nq_code == target_code or (target_name and nq_name == target_name):
+                            total_rem = 0
+                            has_data = False
+                            for benefit in nq.get("benefits", []):
+                                if benefit.get("data_type") == "DATA":
+                                    total_rem += int(benefit.get("remaining", 0))
+                                    has_data = True
+                            if has_data and total_rem > 0:
+                                new_remaining_str = format_quota_byte(total_rem)
+                                found = True
+                                break
+                    if found:
+                        logger.info("New quota detected after %s attempts", attempt + 1)
                         break
-        except Exception as e:
-            logger.error("Failed to fetch new quota details after auto buy: %s", e)
+            except Exception as e:
+                logger.error("Failed to fetch new quota details on attempt %s: %s", attempt + 1, e)
 
         success_msg = (
             f"**Pembelian Berhasil**\n"
@@ -803,7 +839,7 @@ async def schedule_checker_loop(application: Application):
 
                 if msg:
                     try:
-                        await application.bot.send_message(chat_id=user_id, text=msg)
+                        await application.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
                     except Exception as e:
                         logger.error("Failed to send message to user %s: %s", user_id, e)
 
