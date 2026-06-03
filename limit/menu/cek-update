@@ -643,6 +643,7 @@ restart_me_cli_runtime_if_running() {
 
   mkdir -p "${app_dir}/run" "${app_dir}/logs"
 
+  # Bot Daemon
   if [[ -f "$bot_pid_file" ]]; then
     pid="$(cat "$bot_pid_file" 2>/dev/null || true)"
     if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
@@ -651,11 +652,12 @@ restart_me_cli_runtime_if_running() {
       if kill -0 "$pid" >/dev/null 2>&1; then
         kill -9 "$pid" >/dev/null 2>&1 || true
       fi
-      (cd "$app_dir" && nohup "$venv_py" telegram_main.py >> "${app_dir}/logs/telegram_bot.log" 2>&1 & echo $! > "$bot_pid_file")
-      MECLI_BOT_RESTARTED=1
     fi
   fi
+  (cd "$app_dir" && nohup "$venv_py" telegram_main.py >> "${app_dir}/logs/telegram_bot.log" 2>&1 & echo $! > "$bot_pid_file")
+  MECLI_BOT_RESTARTED=1
 
+  # CLI Daemon
   if [[ -f "$cli_pid_file" ]]; then
     pid="$(cat "$cli_pid_file" 2>/dev/null || true)"
     if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
@@ -664,10 +666,10 @@ restart_me_cli_runtime_if_running() {
       if kill -0 "$pid" >/dev/null 2>&1; then
         kill -9 "$pid" >/dev/null 2>&1 || true
       fi
-      (cd "$app_dir" && nohup "$venv_py" main.py >> "${app_dir}/logs/cli.log" 2>&1 & echo $! > "$cli_pid_file")
-      MECLI_CLI_RESTARTED=1
     fi
   fi
+  (cd "$app_dir" && nohup "$venv_py" main.py >> "${app_dir}/logs/cli.log" 2>&1 & echo $! > "$cli_pid_file")
+  MECLI_CLI_RESTARTED=1
 }
 
 detect_bot_asset_changes() {

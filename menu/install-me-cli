@@ -170,6 +170,7 @@ sync_assets() {
     "refresh-tokens.json"
     "ax.fp"
     "user_data"
+    "schedules.json"
   )
 
   is_valid_source_dir "${source_dir}" || die "Source me-cli tidak valid atau tidak lengkap di ${source_dir}"

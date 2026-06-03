@@ -643,12 +643,10 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
     threshold_bytes = 800 * 1024 * 1024
 
     run_autobuy = False
-    unreg_needed = False
     reason = ""
 
     if target_quota is None:
         run_autobuy = True
-        unreg_needed = False
         reason = "Paket tidak aktif / habis total."
     else:
         total_remaining = 0
@@ -661,23 +659,45 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
 
         if not has_data or total_remaining < threshold_bytes:
             run_autobuy = True
-            unreg_needed = True
             reason = f"Kuota data kritis: {format_quota_byte(total_remaining)} (di bawah 800 MB)."
 
     if not run_autobuy:
         return False, ""
 
-    # Step 1: Unsubscribe if active
-    if unreg_needed and target_quota:
-        unsub_ok = unsubscribe(
-            api_key,
-            tokens,
-            target_quota.get("quota_code", ""),
-            target_quota.get("product_subscription_type", ""),
-            target_quota.get("product_domain", ""),
-        )
-        if not unsub_ok:
-            logger.warning("Auto Buy unsub failed for user_id=%s, package=%s", user_id, option_code)
+    # Step 1: Unsubscribe target package
+    p_domain = None
+    p_sub_type = None
+
+    if target_quota:
+        p_domain = target_quota.get("product_domain")
+        p_sub_type = target_quota.get("product_subscription_type")
+
+    if not p_domain or not p_sub_type:
+        try:
+            pkg_detail = get_package(api_key, tokens, option_code)
+            if pkg_detail:
+                opt = pkg_detail.get("package_option", {})
+                fam = pkg_detail.get("package_family", {})
+                p_domain = opt.get("product_domain") or fam.get("product_domain") or pkg_detail.get("product_domain")
+                p_sub_type = opt.get("product_subscription_type") or fam.get("product_subscription_type") or pkg_detail.get("product_subscription_type")
+        except Exception as e:
+            logger.error("Failed to fetch package catalog detail for unsubscribe: %s", e)
+
+    if not p_domain:
+        p_domain = "DATA"
+    if not p_sub_type:
+        p_sub_type = "PREPAID"
+
+    logger.info("Auto Buy performing unsubscribe for user_id=%s, package=%s, domain=%s, type=%s", user_id, option_code, p_domain, p_sub_type)
+    unsub_ok = unsubscribe(
+        api_key=api_key,
+        tokens=tokens,
+        quota_code=option_code,
+        product_domain=p_domain,
+        product_subscription_type=p_sub_type
+    )
+    if not unsub_ok:
+        logger.warning("Auto Buy unsub failed or not active for user_id=%s, package=%s. Proceeding to buy.", user_id, option_code)
 
     # Step 2: Build payment context and buy with Decoy V2
     payment_ctx = _package_payment_context_sync(option_code)
@@ -1759,11 +1779,11 @@ def _unsubscribe_package_sync(pkg: dict) -> str:
         return "Belum ada akun aktif."
 
     ok = unsubscribe(
-        api_key,
-        tokens,
-        pkg.get("quota_code", ""),
-        pkg.get("product_subscription_type", ""),
-        pkg.get("product_domain", ""),
+        api_key=api_key,
+        tokens=tokens,
+        quota_code=pkg.get("quota_code", ""),
+        product_domain=pkg.get("product_domain", ""),
+        product_subscription_type=pkg.get("product_subscription_type", ""),
     )
     if ok:
         _cache_invalidate(["packages:list:", "profile:balance:"])

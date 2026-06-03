@@ -729,11 +729,11 @@ def fetch_my_packages():
             if confirm.lower() == 'y':
                 print(f"Unsubscribing from package number {del_pkg['name']}...")
                 success = unsubscribe(
-                    api_key,
-                    tokens,
-                    del_pkg["quota_code"],
-                    del_pkg["product_subscription_type"],
-                    del_pkg["product_domain"]
+                    api_key=api_key,
+                    tokens=tokens,
+                    quota_code=del_pkg["quota_code"],
+                    product_domain=del_pkg["product_domain"],
+                    product_subscription_type=del_pkg["product_subscription_type"]
                 )
                 if success:
                     print("Successfully unsubscribed from the package.")
