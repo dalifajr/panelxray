@@ -156,7 +156,16 @@ def _row_home_cancel() -> list[tuple[str, str]]:
 def _row_back_home(back_data: str) -> list[tuple[str, str]]:
     return [("⬅️ Kembali", back_data), ("🏠 Home", "home")]
 
-def keyboard_main() -> InlineKeyboardMarkup:
+def keyboard_main(user_id: int | None = None) -> InlineKeyboardMarkup:
+    allowed_ids = load_allowed_id_list()
+    admin_id = allowed_ids[0] if allowed_ids else None
+    if user_id is not None and admin_id is not None and user_id != admin_id:
+        return _mk_inline(
+            [
+                [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("⏰ Auto Buy", "sched_menu")],
+                [("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")],
+            ]
+        )
     return _mk_inline(
         [
             [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("3 🔥 HOT", "3"), ("4 🔥 HOT2", "4")],
@@ -316,7 +325,16 @@ def keyboard_yes_no(yes_data: str, no_data: str) -> InlineKeyboardMarkup:
     )
 
 
-def keyboard_package_detail_menu() -> InlineKeyboardMarkup:
+def keyboard_package_detail_menu(user_id: int | None = None) -> InlineKeyboardMarkup:
+    allowed_ids = load_allowed_id_list()
+    admin_id = allowed_ids[0] if allowed_ids else None
+    if user_id is not None and admin_id is not None and user_id != admin_id:
+        return _mk_inline(
+            [
+                [("⏰ Auto Buy", "sched_add_init")],
+                _row_back_home("pkg_back_list"),
+            ]
+        )
     return _mk_inline(
         [
             [("⚡ Bayar Pulsa", "pay_balance"), ("💳 Bayar E-Wallet", "pay_ewallet")],
@@ -375,7 +393,7 @@ def set_flow(context: ContextTypes.DEFAULT_TYPE, state: str, data: dict | None =
     context.user_data[FLOW_KEY] = {"state": state, "data": data or {}}
 
 
-def current_keyboard(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup:
+def current_keyboard(context: ContextTypes.DEFAULT_TYPE, user_id: int | None = None) -> InlineKeyboardMarkup:
     flow = get_flow(context)
     state = flow.get("state", "home")
     data = flow.get("data", {})
@@ -397,7 +415,7 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup
     if state == "await_balance_n_decoy":
         return keyboard_yes_no("bal_n_decoy_yes", "bal_n_decoy_no")
     if state == "package_detail_menu":
-        return keyboard_package_detail_menu()
+        return keyboard_package_detail_menu(user_id=user_id)
     if state == "await_ewallet_method":
         return keyboard_ewallet_methods()
     if state == "await_balance_n_running":
@@ -719,7 +737,7 @@ async def schedule_checker_loop(application: Application):
         try:
             schedules = _load_schedules()
             if not schedules:
-                await asyncio.sleep(120)
+                await asyncio.sleep(60)
                 continue
 
             updated = False
@@ -757,7 +775,7 @@ async def schedule_checker_loop(application: Application):
         except Exception as e:
             logger.error("Error in schedule checker loop: %s", e)
 
-        await asyncio.sleep(120)
+        await asyncio.sleep(60)
 
 
 def _save_access_state(state: dict):
@@ -1316,11 +1334,12 @@ async def render_panel(
 ):
     if update.effective_chat is None:
         return
+    user_id = update.effective_user.id if update.effective_user else None
     await render_panel_for_chat(
         context,
         update.effective_chat.id,
         text,
-        keyboard or current_keyboard(context),
+        keyboard or current_keyboard(context, user_id=user_id),
     )
 
 
@@ -2822,6 +2841,47 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
     flow = get_flow(context)
     state = flow.get("state", "home")
     data = flow.get("data", {})
+
+    # Access control for standard approved users (non-admin)
+    actor_id = update.effective_user.id if update.effective_user else None
+    allowed_ids = load_allowed_id_list()
+    admin_id = allowed_ids[0] if allowed_ids else None
+
+    if actor_id is not None and admin_id is not None and actor_id != admin_id:
+        allowed_states = {
+            "home",
+            "account_menu",
+            "await_login_phone",
+            "await_login_otp",
+            "await_switch_idx",
+            "await_delete_idx",
+            "packages_menu",
+            "package_detail_menu",
+            "await_package_detail_pick",
+            "await_package_unsub_pick",
+            "await_package_unsub_confirm",
+            "schedules_menu",
+            "await_schedule_confirm",
+            "await_schedule_delete",
+            "await_option_code_autobuy",
+        }
+        if state not in allowed_states:
+            set_flow(context, "home", {})
+            state = "home"
+            data = {}
+
+        if state == "home":
+            normalized = _normalize_choice(text)
+            if normalized in {
+                "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "00", "a", "r", "n", "v"
+            }:
+                await render_panel(update, context, "Aksi ini khusus admin.")
+                return
+            if text not in {"sched_menu", "1", "2", "home", "cancel", "help", "/start", "/help"}:
+                if text.startswith("/"):
+                    if text not in {"/start", "/help"}:
+                        await render_panel(update, context, "Aksi ini khusus admin.")
+                        return
 
     if (
         text.startswith("allow_approve:")
