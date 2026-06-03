@@ -305,7 +305,7 @@ class PaymentController extends Controller
             ->firstOrFail();
 
         if ($transaction->status === 'pending') {
-            $isExpired = Carbon::now()->diffInSeconds($transaction->created_at) >= 300;
+            $isExpired = $transaction->created_at->addMinutes(5)->isPast();
             if ($isExpired && in_array($transaction->type, ['topup', 'vpn_purchase_qris', 'vpn_renew_qris'], true)) {
                 $meta = $transaction->metadata;
                 if (!is_array($meta)) {

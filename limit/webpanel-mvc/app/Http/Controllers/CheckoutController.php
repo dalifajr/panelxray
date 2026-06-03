@@ -28,8 +28,9 @@ class CheckoutController extends Controller
         }
 
         // Check if 5 minutes expired for pending transactions
-        if (Carbon::now()->diffInSeconds($transaction->created_at) >= 300) {
-            $transaction->update(['status' => 'cancelled']);
+        if ($transaction->created_at->addMinutes(5)->isPast()) {
+            $transaction->status = 'cancelled';
+            $transaction->save();
             return redirect()->route('checkout.cancelled', $id);
         }
 
