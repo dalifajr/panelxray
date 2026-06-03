@@ -640,6 +640,9 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
     if not api_key or tokens is None:
         return False, "Akun aktif tidak ditemukan untuk user."
 
+    # Get active MSISDN for display in notifications
+    active_user = AuthInstance.get_active_user() or {}
+    msisdn = active_user.get("number", sched.get("msisdn", "N/A"))
 
     # Fetch quota details with polling to ensure we get a valid quota response if active
     path = "api/v8/packages/quota-details"
@@ -647,6 +650,7 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
     
     target_quota = None
     api_success = False
+    all_quotas = []
     
     # We poll up to 5 times with 3 seconds interval if the quota is not found or API fails,
     # to avoid premature autobuy triggers due to API latency/lag.
@@ -655,17 +659,27 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
             res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
             if isinstance(res, dict) and res.get("status") == "SUCCESS":
                 api_success = True
-                quotas = res.get("data", {}).get("quotas", [])
+                all_quotas = res.get("data", {}).get("quotas", [])
                 
-                # Check if target option code is in active quotas
+                # Match target quota using multiple strategies
+                target_code = str(option_code).strip().lower()
+                target_name = str(sched.get("item_name", "")).strip().lower()
+                
                 current_target = None
-                for quota in quotas:
+                for quota in all_quotas:
                     q_code = str(quota.get("quota_code", "")).strip().lower()
-                    target_code = str(option_code).strip().lower()
                     q_name = str(quota.get("name", "")).strip().lower()
-                    target_name = str(sched.get("item_name", "")).strip().lower()
                     
-                    if q_code == target_code or (target_name and q_name == target_name):
+                    # Strategy 1: Exact match by quota_code/option_code
+                    if q_code == target_code:
+                        current_target = quota
+                        break
+                    # Strategy 2: Exact match by name
+                    if target_name and q_name == target_name:
+                        current_target = quota
+                        break
+                    # Strategy 3: Partial/substring match by name
+                    if target_name and (target_name in q_name or q_name in target_name):
                         current_target = quota
                         break
                 
@@ -678,7 +692,7 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
                     else:
                         logger.info("Found target quota on attempt %d but benefits are empty, waiting...", attempt + 1)
                 else:
-                    logger.info("Target quota not found in active list on attempt %d", attempt + 1)
+                    logger.info("Target quota not found in active list on attempt %d (searched: code=%s, name=%s)", attempt + 1, target_code, target_name)
             else:
                 logger.warning("API quota-details returned non-success status on attempt %d", attempt + 1)
         except Exception as e:
@@ -688,7 +702,7 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
             time.sleep(3)
 
     if not api_success:
-        return False, f"Gagal mengambil detail kuota untuk nomor {sched.get('msisdn', '')}."
+        return False, f"Gagal mengambil detail kuota untuk nomor {msisdn}."
 
     # Threshold 800 MB (800 * 1024 * 1024 bytes)
     threshold_bytes = 800 * 1024 * 1024
@@ -705,21 +719,35 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
         quota_name = target_quota.get("name", quota_name)
         benefits = target_quota.get("benefits", [])
         has_data = False
+        remaining_parts = []
         for benefit in benefits:
-            if benefit.get("data_type") == "DATA":
-                total_remaining += int(benefit.get("remaining", 0))
+            b_type = benefit.get("data_type", "")
+            b_remaining = int(benefit.get("remaining", 0))
+            b_total = int(benefit.get("total", 0))
+            b_name = benefit.get("name", "")
+            
+            if b_type == "DATA":
+                total_remaining += b_remaining
                 has_data = True
+                remaining_parts.append(f"  {b_name}: {format_quota_byte(b_remaining)} / {format_quota_byte(b_total)}")
+            elif b_type == "VOICE" and b_total > 0:
+                remaining_parts.append(f"  {b_name}: {b_remaining/60:.0f} / {b_total/60:.0f} menit")
+            elif b_type == "TEXT" and b_total > 0:
+                remaining_parts.append(f"  {b_name}: {b_remaining} / {b_total} SMS")
 
         if not has_data or total_remaining < threshold_bytes:
             run_autobuy = True
             reason = f"Kuota data kritis: {format_quota_byte(total_remaining)} (di bawah 800 MB)."
 
     if not run_autobuy:
-        # Return monitoring message
+        # Build detailed remaining quota string
+        remaining_detail = "\n".join(remaining_parts) if remaining_parts else format_quota_byte(total_remaining)
         safe_msg = (
             f"**Kuota masih aman**\n"
+            f"Nomor: {msisdn}\n"
             f"Nama Kuota: {quota_name}\n"
-            f"Sisa Kuota: {format_quota_byte(total_remaining)}"
+            f"Sisa Kuota: {format_quota_byte(total_remaining)}\n"
+            f"{remaining_detail}"
         )
         return False, safe_msg
 
@@ -765,11 +793,13 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
 
     result_str = _pay_decoy_balance_sync(payment_ctx, v2=True)
     if "berhasil" in result_str.lower():
-        active_user = AuthInstance.get_active_user() or {}
-        _cache_invalidate([f"packages:list:{active_user.get('number', 'na')}"])
+        _cache_invalidate([f"packages:list:{msisdn}"])
         
         # Poll quota-details API until the new package is active and has data benefits (up to 10 retries, 3s interval)
         new_remaining_str = "N/A"
+        new_remaining_parts = []
+        target_code = str(option_code).strip().lower()
+        target_name = str(sched.get("item_name", "")).strip().lower()
         for attempt in range(10):
             time.sleep(3)
             try:
@@ -779,16 +809,24 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
                     found = False
                     for nq in new_quotas:
                         nq_code = str(nq.get("quota_code", "")).strip().lower()
-                        target_code = str(option_code).strip().lower()
                         nq_name = str(nq.get("name", "")).strip().lower()
-                        target_name = str(sched.get("item_name", "")).strip().lower()
-                        if nq_code == target_code or (target_name and nq_name == target_name):
+                        if nq_code == target_code or (target_name and nq_name == target_name) or (target_name and (target_name in nq_name or nq_name in target_name)):
                             total_rem = 0
                             has_data = False
+                            new_remaining_parts = []
                             for benefit in nq.get("benefits", []):
-                                if benefit.get("data_type") == "DATA":
-                                    total_rem += int(benefit.get("remaining", 0))
+                                b_type = benefit.get("data_type", "")
+                                b_remaining = int(benefit.get("remaining", 0))
+                                b_total = int(benefit.get("total", 0))
+                                b_name = benefit.get("name", "")
+                                if b_type == "DATA":
+                                    total_rem += b_remaining
                                     has_data = True
+                                    new_remaining_parts.append(f"  {b_name}: {format_quota_byte(b_remaining)} / {format_quota_byte(b_total)}")
+                                elif b_type == "VOICE" and b_total > 0:
+                                    new_remaining_parts.append(f"  {b_name}: {b_remaining/60:.0f} / {b_total/60:.0f} menit")
+                                elif b_type == "TEXT" and b_total > 0:
+                                    new_remaining_parts.append(f"  {b_name}: {b_remaining} / {b_total} SMS")
                             if has_data and total_rem > 0:
                                 new_remaining_str = format_quota_byte(total_rem)
                                 found = True
@@ -799,14 +837,18 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
             except Exception as e:
                 logger.error("Failed to fetch new quota details on attempt %s: %s", attempt + 1, e)
 
+        remaining_detail = "\n".join(new_remaining_parts) if new_remaining_parts else ""
         success_msg = (
             f"**Pembelian Berhasil**\n"
+            f"Nomor: {msisdn}\n"
             f"Nama Kuota: {quota_name}\n"
             f"Sisa Kuota Saat Ini: {new_remaining_str}"
         )
+        if remaining_detail:
+            success_msg += f"\n{remaining_detail}"
         return True, success_msg
     else:
-        return False, f"❌ [Auto Buy Gagal]\nTarget: {quota_name}\nAlasan: {reason}\nDetail: {result_str}"
+        return False, f"❌ [Auto Buy Gagal]\nNomor: {msisdn}\nTarget: {quota_name}\nAlasan: {reason}\nDetail: {result_str}"
 
 
 async def schedule_checker_loop(application: Application):
