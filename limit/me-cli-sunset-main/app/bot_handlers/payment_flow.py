@@ -154,6 +154,34 @@ async def handle_payment_flow(
             await render_panel(update, context, "Kirim jumlah N untuk Pulsa N Kali (contoh: 3).")
             return True
 
+        if text == "sched_add_init":
+            option_code = payment_ctx.get("option_code")
+            item_name = payment_ctx.get("title", "Package")
+            price = payment_ctx.get("price", 0)
+
+            set_flow(
+                context,
+                "await_schedule_confirm",
+                {
+                    "option_code": option_code,
+                    "item_name": item_name,
+                    "price": price,
+                    "back_state": back_state,
+                    "back_data": back_data,
+                },
+            )
+            await render_panel(
+                update,
+                context,
+                f"Apakah Anda yakin ingin mengaktifkan Auto Buy untuk paket:\n"
+                f"📦 {item_name} ({option_code})\n"
+                f"💰 Harga: Rp {price}\n\n"
+                f"Auto Buy akan memantau sisa kuota paket ini secara otomatis. "
+                f"Ketika kuota di bawah 800 MB, bot akan meng-unreg paket lama dan "
+                f"membeli paket baru menggunakan saldo Pulsa dengan metode Decoy V2."
+            )
+            return True
+
     if state == "await_ewallet_method":
         payment_ctx = data.get("payment_ctx", {})
         back_state = data.get("back_state", "home")

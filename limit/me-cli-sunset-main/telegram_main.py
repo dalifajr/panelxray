@@ -163,7 +163,7 @@ def keyboard_main() -> InlineKeyboardMarkup:
             [("5 🧩 Option", "5"), ("6 👪 Family", "6"), ("7 🔁 Loop", "7"), ("8 🧾 Riwayat", "8")],
             [("9 👨‍👩‍👧 FamPlan", "9"), ("10 ⭕ Circle", "10"), ("11 🏪 Segments", "11"), ("12 🧬 Families", "12")],
             [("13 🛒 Store", "13"), ("14 🎟 Redeem", "14"), ("00 ⭐ Bookmark", "00")],
-            [("A 🛡 Akses User", "a")],
+            [("A 🛡 Akses User", "a"), ("⏰ Auto Buy", "sched_menu")],
             [("R 📝 Register", "r"), ("N 🔔 Notif", "n"), ("V ✅ Validate", "v")],
             [("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")],
         ]
@@ -324,7 +324,17 @@ def keyboard_package_detail_menu() -> InlineKeyboardMarkup:
             [("🕶 Pulsa+Decoy", "pay_decoy_balance"), ("🕶 Pulsa+Decoy V2", "pay_decoy_balance_v2")],
             [("🧾 QRIS+Decoy", "pay_decoy_qris"), ("🧾 QRIS+Decoy V2", "pay_decoy_qris0")],
             [("🛠 QRIS+Decoy Manual", "pay_decoy_qris_manual"), ("🛠 QRIS+Decoy V2 Manual", "pay_decoy_qris0_manual")],
+            [("⏰ Auto Buy", "sched_add_init")],
             _row_back_home("pkg_back_list"),
+        ]
+    )
+
+
+def keyboard_schedules_menu() -> InlineKeyboardMarkup:
+    return _mk_inline(
+        [
+            [("🔄 Refresh", "sched_refresh"), ("🗑 Hapus Target", "sched_delete")],
+            _row_home_cancel(),
         ]
     )
 
@@ -410,10 +420,18 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup
         return keyboard_number_picker(len(data.get("members", [])), int(data.get("page", 0)))
     if state in {"await_circle_remove", "await_circle_accept"}:
         return keyboard_number_picker(len(data.get("members", [])), int(data.get("page", 0)))
+    if state == "schedules_menu":
+        return keyboard_schedules_menu()
+    if state == "await_schedule_confirm":
+        return keyboard_yes_no("sched_confirm_yes", "sched_confirm_no")
+    if state == "await_schedule_delete":
+        return keyboard_number_picker(int(data.get("count", 0)), int(data.get("page", 0)))
+
     if state in {
         "await_login_phone",
         "await_login_otp",
         "await_option_code",
+        "await_option_code_autobuy",
         "await_family_code",
         "await_validate_msisdn",
         "await_register",
@@ -550,6 +568,173 @@ def _load_access_state() -> dict:
         "users": users,
         "requests": requests,
     }
+
+
+SCHEDULES_FILE = ROOT_DIR / "schedules.json"
+
+
+def _load_schedules() -> list[dict]:
+    if not SCHEDULES_FILE.exists():
+        return []
+    try:
+        data = json.loads(SCHEDULES_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_schedules(schedules: list[dict]):
+    try:
+        SCHEDULES_FILE.write_text(json.dumps(schedules, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception as e:
+        logger.error("Failed to save schedules: %s", e)
+
+
+def _get_schedules_panel_text(user_id: int) -> str:
+    schedules = _load_schedules()
+    user_schedules = [s for s in schedules if s["user_id"] == user_id]
+    if not user_schedules:
+        return "Belum ada target Auto Buy aktif."
+
+    lines = ["Target Auto Buy Anda:"]
+    for idx, s in enumerate(user_schedules, start=1):
+        status = "Aktif" if s.get("is_active", True) else "Nonaktif"
+        last_run = s.get("last_run", "Belum pernah")
+        lines.append(
+            f"{idx}. {s.get('item_name')} ({s.get('option_code')})\n"
+            f"   Status: {status} | Harga: Rp {s.get('price')}\n"
+            f"   Eksekusi Terakhir: {last_run}"
+        )
+    return "\n\n".join(lines)
+
+
+def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
+
+    user_id = sched["user_id"]
+    option_code = sched["option_code"]
+
+    AuthInstance.set_runtime_owner(user_id)
+    api_key, tokens = _get_active_context()
+    if not api_key or tokens is None:
+        return False, "Akun aktif tidak ditemukan untuk user."
+
+    # Fetch quota details
+    path = "api/v8/packages/quota-details"
+    payload = {"is_enterprise": False, "lang": "en", "family_member_id": ""}
+    res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+    if not isinstance(res, dict) or res.get("status") != "SUCCESS":
+        return False, f"Gagal mengambil detail kuota untuk nomor {sched.get('msisdn', '')}."
+
+    quotas = res.get("data", {}).get("quotas", [])
+
+    # Check if target option code is in active quotas
+    target_quota = None
+    for quota in quotas:
+        if quota.get("quota_code") == option_code:
+            target_quota = quota
+            break
+
+    # Threshold 800 MB (800 * 1024 * 1024 bytes)
+    threshold_bytes = 800 * 1024 * 1024
+
+    run_autobuy = False
+    unreg_needed = False
+    reason = ""
+
+    if target_quota is None:
+        run_autobuy = True
+        unreg_needed = False
+        reason = "Paket tidak aktif / habis total."
+    else:
+        total_remaining = 0
+        benefits = target_quota.get("benefits", [])
+        has_data = False
+        for benefit in benefits:
+            if benefit.get("data_type") == "DATA":
+                total_remaining += int(benefit.get("remaining", 0))
+                has_data = True
+
+        if not has_data or total_remaining < threshold_bytes:
+            run_autobuy = True
+            unreg_needed = True
+            reason = f"Kuota data kritis: {format_quota_byte(total_remaining)} (di bawah 800 MB)."
+
+    if not run_autobuy:
+        return False, ""
+
+    # Step 1: Unsubscribe if active
+    if unreg_needed and target_quota:
+        unsub_ok = unsubscribe(
+            api_key,
+            tokens,
+            target_quota.get("quota_code", ""),
+            target_quota.get("product_subscription_type", ""),
+            target_quota.get("product_domain", ""),
+        )
+        if not unsub_ok:
+            logger.warning("Auto Buy unsub failed for user_id=%s, package=%s", user_id, option_code)
+
+    # Step 2: Build payment context and buy with Decoy V2
+    payment_ctx = _package_payment_context_sync(option_code)
+    if not payment_ctx:
+        return False, f"Gagal memuat detail paket {option_code} untuk pembelian."
+
+    result_str = _pay_decoy_balance_sync(payment_ctx, v2=True)
+    if "berhasil" in result_str.lower():
+        active_user = AuthInstance.get_active_user() or {}
+        _cache_invalidate([f"packages:list:{active_user.get('number', 'na')}"])
+        return True, f"🤖 [Auto Buy Berhasil]\nTarget: {sched.get('item_name', option_code)}\nAlasan: {reason}\nDetail: {result_str}"
+    else:
+        return False, f"❌ [Auto Buy Gagal]\nTarget: {sched.get('item_name', option_code)}\nAlasan: {reason}\nDetail: {result_str}"
+
+
+async def schedule_checker_loop(application: Application):
+    logger.info("Auto Buy checker loop started.")
+    while True:
+        try:
+            schedules = _load_schedules()
+            if not schedules:
+                await asyncio.sleep(60)
+                continue
+
+            updated = False
+            for sched in schedules:
+                if not sched.get("is_active", False):
+                    continue
+
+                user_id = sched["user_id"]
+
+                # Check cooldown (10 minutes)
+                last_run_str = sched.get("last_run", "")
+                if last_run_str:
+                    try:
+                        last_run_dt = datetime.strptime(last_run_str, "%Y-%m-%d %H:%M:%S")
+                        if (datetime.now() - last_run_dt).total_seconds() < 600:
+                            continue
+                    except Exception:
+                        pass
+
+                success, msg = await asyncio.to_thread(_check_and_run_autobuy_sync, sched)
+
+                if msg:
+                    try:
+                        await application.bot.send_message(chat_id=user_id, text=msg)
+                    except Exception as e:
+                        logger.error("Failed to send message to user %s: %s", user_id, e)
+
+                if success or (msg and ("berhasil" in msg.lower() or "gagal" in msg.lower())):
+                    sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    updated = True
+
+            if updated:
+                _save_schedules(schedules)
+
+        except Exception as e:
+            logger.error("Error in schedule checker loop: %s", e)
+
+        await asyncio.sleep(60)
 
 
 def _save_access_state(state: dict):
@@ -2753,7 +2938,126 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         await render_panel(update, context, help_panel)
         return
 
+    if state == "schedules_menu":
+        if text in {"sched_refresh", "🔄 Refresh", "Refresh"}:
+            await render_panel(update, context, _get_schedules_panel_text(update.effective_user.id))
+            return
+        if text in {"sched_delete", "🗑 Hapus Target", "Hapus Target"}:
+            schedules = _load_schedules()
+            user_schedules = [s for s in schedules if s["user_id"] == update.effective_user.id]
+            if not user_schedules:
+                await render_panel(update, context, "Belum ada target Auto Buy.")
+                return
+            set_flow(context, "await_schedule_delete", {"count": len(user_schedules), "page": 0})
+            await render_panel(update, context, "Pilih nomor target Auto Buy yang ingin dihapus.")
+            return
+        if text in {"sched_add_init", "➕ Tambah Target", "Tambah Target"}:
+            set_flow(context, "await_option_code_autobuy", {})
+            await render_panel(update, context, "Kirimkan target Option Code paket untuk Auto Buy.")
+            return
+
+    if state == "await_option_code_autobuy":
+        option_code = text.strip()
+        api_key, tokens = _get_active_context()
+        if not api_key or tokens is None:
+            await render_panel(update, context, "Belum ada akun aktif. Login terlebih dahulu.")
+            return
+        package = await asyncio.to_thread(get_package, api_key, tokens, option_code)
+        if not package:
+            await render_panel(update, context, "Option Code tidak valid atau gagal diambil. Kirim Option Code lain.")
+            return
+
+        option = package.get("package_option", {})
+        item_name = option.get("name", "Package")
+        price = option.get("price", 0)
+
+        set_flow(context, "await_schedule_confirm", {
+            "option_code": option_code,
+            "item_name": item_name,
+            "price": price
+        })
+        await render_panel(
+            update,
+            context,
+            f"Apakah Anda yakin ingin mengaktifkan Auto Buy untuk paket:\n"
+            f"📦 {item_name} ({option_code})\n"
+            f"💰 Harga: Rp {price}\n\n"
+            f"Auto Buy akan memantau sisa kuota paket ini secara otomatis. "
+            f"Ketika kuota di bawah 800 MB, bot akan meng-unreg paket lama dan "
+            f"membeli paket baru menggunakan saldo Pulsa dengan metode Decoy V2."
+        )
+        return
+
+    if state == "await_schedule_confirm":
+        if text in {"sched_confirm_yes", "y", "yes", "Ya"}:
+            user_id = update.effective_user.id
+            option_code = data["option_code"]
+            item_name = data["item_name"]
+            price = data["price"]
+
+            schedules = _load_schedules()
+            schedules = [s for s in schedules if not (s["user_id"] == user_id and s["option_code"] == option_code)]
+
+            active_user = AuthInstance.get_active_user() or {}
+            msisdn = active_user.get("number", "")
+
+            schedules.append({
+                "id": f"autobuy_{int(time.time())}",
+                "user_id": user_id,
+                "msisdn": str(msisdn),
+                "option_code": option_code,
+                "item_name": item_name,
+                "price": price,
+                "is_active": True,
+                "last_run": "",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            _save_schedules(schedules)
+
+            set_flow(context, "schedules_menu", {})
+            await render_panel(
+                update,
+                context,
+                f"Target Auto Buy berhasil ditambahkan!\n\n" + _get_schedules_panel_text(user_id)
+            )
+            return
+        elif text in {"sched_confirm_no", "n", "no", "Tidak"}:
+            set_flow(context, "schedules_menu", {})
+            await render_panel(
+                update,
+                context,
+                "Pendaftaran Auto Buy dibatalkan.\n\n" + _get_schedules_panel_text(update.effective_user.id)
+            )
+            return
+
+    if state == "await_schedule_delete":
+        if not text.isdigit():
+            await render_panel(update, context, "Kirim nomor urut target yang ingin dihapus.")
+            return
+
+        idx = int(text) - 1
+        user_id = update.effective_user.id
+        schedules = _load_schedules()
+        user_schedules = [s for s in schedules if s["user_id"] == user_id]
+
+        if idx < 0 or idx >= len(user_schedules):
+            await render_panel(update, context, "Nomor urut tidak valid.")
+            return
+
+        target_to_remove = user_schedules[idx]
+        schedules = [s for s in schedules if s["id"] != target_to_remove["id"]]
+        _save_schedules(schedules)
+
+        set_flow(context, "schedules_menu", {})
+        await render_panel(
+            update,
+            context,
+            f"Target Auto Buy untuk {target_to_remove.get('item_name')} berhasil dihapus.\n\n" + _get_schedules_panel_text(user_id)
+        )
+        return
+
     if state == "await_login_phone":
+
         phone = text
         if not phone.isdigit() or not phone.startswith("628"):
             await render_panel(update, context, "Nomor tidak valid. Format: 628xxxx")
@@ -3371,7 +3675,51 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         await render_panel(update, context, await asyncio.to_thread(_bookmark_text_sync))
         return
 
+    if choice == "sched_menu" or choice == "sched_refresh":
+        set_flow(context, "schedules_menu", {})
+        await render_panel(update, context, _get_schedules_panel_text(update.effective_user.id))
+        return
+
+    if choice == "sched_delete":
+        schedules = _load_schedules()
+        user_schedules = [s for s in schedules if s["user_id"] == update.effective_user.id]
+        if not user_schedules:
+            await render_panel(update, context, "Belum ada target Auto Buy.")
+            return
+        set_flow(context, "await_schedule_delete", {"count": len(user_schedules), "page": 0})
+        await render_panel(update, context, "Pilih nomor target Auto Buy yang ingin dihapus.")
+        return
+
+    if choice == "sched_add_init":
+        payment_ctx = data.get("payment_ctx", {})
+        if payment_ctx and payment_ctx.get("option_code"):
+            option_code = payment_ctx["option_code"]
+            item_name = payment_ctx.get("title", "Package")
+            price = payment_ctx.get("price", 0)
+
+            set_flow(context, "await_schedule_confirm", {
+                "option_code": option_code,
+                "item_name": item_name,
+                "price": price
+            })
+            await render_panel(
+                update,
+                context,
+                f"Apakah Anda yakin ingin mengaktifkan Auto Buy untuk paket:\n"
+                f"📦 {item_name} ({option_code})\n"
+                f"💰 Harga: Rp {price}\n\n"
+                f"Auto Buy akan memantau sisa kuota paket ini secara otomatis. "
+                f"Ketika kuota di bawah 800 MB, bot akan meng-unreg paket lama dan "
+                f"membeli paket baru menggunakan saldo Pulsa dengan metode Decoy V2."
+            )
+            return
+        else:
+            set_flow(context, "await_option_code_autobuy", {})
+            await render_panel(update, context, "Kirimkan target Option Code paket untuk Auto Buy.")
+            return
+
     if choice == "a":
+
         actor_id = update.effective_user.id if update.effective_user else None
         if not is_admin_user(actor_id):
             await render_panel(update, context, "Menu Akses User hanya untuk admin.")
@@ -3442,12 +3790,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _handle_input(update, context, text)
 
 
+async def post_init(application: Application):
+    asyncio.create_task(schedule_checker_loop(application))
+
+
 def build_application() -> Application:
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN belum di-set di .env")
 
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("stop", stop_cmd))
     app.add_handler(CommandHandler("request_access", request_access_cmd))
