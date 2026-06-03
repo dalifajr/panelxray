@@ -64,7 +64,7 @@ from app.bot_handlers.ui_primitives import (
 )
 from app.menus import purchase as purchase_menu
 from app.menus.util import format_quota_byte
-from app.service.auth import AuthInstance
+from app.service.auth import AuthInstance, USER_SCOPE_PREFIX
 from app.service.bookmark import BookmarkInstance
 from app.service.decoy import DecoyInstance
 from app.type_dict import PaymentItem
