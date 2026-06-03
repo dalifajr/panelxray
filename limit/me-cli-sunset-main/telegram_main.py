@@ -481,7 +481,7 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE, user_id: int | None = N
         return keyboard_famplan()
     if state == "circle_menu":
         return keyboard_circle()
-    return keyboard_main()
+    return keyboard_main(user_id=user_id)
 
 
 def _single_panel_text(text: str, max_len: int = 3900) -> str:
@@ -1319,7 +1319,7 @@ async def ensure_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not allowed_ids:
         await msg.reply_text(
             "Akses bot belum dikonfigurasi. Isi user_allow.txt dengan Telegram user id yang diizinkan (baris pertama = admin).",
-            reply_markup=keyboard_main(),
+            reply_markup=keyboard_main(user_id=user_id),
         )
         return False
 
