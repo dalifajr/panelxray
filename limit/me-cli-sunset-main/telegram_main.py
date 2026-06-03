@@ -3027,13 +3027,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     set_flow(context, "home", {})
     home_panel = await asyncio.to_thread(_home_panel_text_sync)
-    is_first_use = bool(context.user_data is not None and not context.user_data.get("onboarding_done", False))
-    if context.user_data is not None:
-        context.user_data["onboarding_done"] = True
-    if is_first_use:
-        onboarding = build_first_use_onboarding_panel()
-        await render_panel(update, context, onboarding + "\n\n" + home_panel)
-        return
     await render_panel(update, context, home_panel)
 
 
