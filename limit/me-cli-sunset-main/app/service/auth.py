@@ -138,13 +138,15 @@ class Auth:
                 else:
                     print(f"Invalid token entry: {rt}")
 
-    def add_refresh_token(self, number: int, refresh_token: str):
+    def add_refresh_token(self, number: int, refresh_token: str, label: str = ""):
         with self._lock:
             self._switch_scope_if_needed()
             # Check if number already exist, if yes, replace it, if not append
             existing = next((rt for rt in self.refresh_tokens if rt["number"] == number), None)
             if existing:
                 existing["refresh_token"] = refresh_token
+                if label:
+                    existing["label"] = label
             else:
                 tokens = get_new_token(self.api_key, refresh_token, "")
                 profile_data = get_profile(self.api_key, tokens["access_token"], tokens["id_token"])
@@ -155,7 +157,8 @@ class Auth:
                     "number": int(number),
                     "subscriber_id": sub_id,
                     "subscription_type": sub_type,
-                    "refresh_token": refresh_token
+                    "refresh_token": refresh_token,
+                    "label": label
                 })
 
             # Save to file

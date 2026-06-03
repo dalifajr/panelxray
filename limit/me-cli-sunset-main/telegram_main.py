@@ -157,23 +157,9 @@ def _row_back_home(back_data: str) -> list[tuple[str, str]]:
     return [("⬅️ Kembali", back_data), ("🏠 Home", "home")]
 
 def keyboard_main(user_id: int | None = None) -> InlineKeyboardMarkup:
-    allowed_ids = load_allowed_id_list()
-    admin_id = allowed_ids[0] if allowed_ids else None
-    if user_id is not None and admin_id is not None and user_id != admin_id:
-        return _mk_inline(
-            [
-                [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("⏰ Auto Buy", "sched_menu")],
-                [("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")],
-            ]
-        )
     return _mk_inline(
         [
-            [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("3 🔥 HOT", "3"), ("4 🔥 HOT2", "4")],
-            [("5 🧩 Option", "5"), ("6 👪 Family", "6"), ("7 🔁 Loop", "7"), ("8 🧾 Riwayat", "8")],
-            [("9 👨‍👩‍👧 FamPlan", "9"), ("10 ⭕ Circle", "10"), ("11 🏪 Segments", "11"), ("12 🧬 Families", "12")],
-            [("13 🛒 Store", "13"), ("14 🎟 Redeem", "14"), ("00 ⭐ Bookmark", "00")],
-            [("A 🛡 Akses User", "a"), ("⏰ Auto Buy", "sched_menu")],
-            [("R 📝 Register", "r"), ("N 🔔 Notif", "n"), ("V ✅ Validate", "v")],
+            [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("⏰ Auto Buy", "sched_menu")],
             [("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")],
         ]
     )
@@ -348,13 +334,38 @@ def keyboard_package_detail_menu(user_id: int | None = None) -> InlineKeyboardMa
     )
 
 
-def keyboard_schedules_menu() -> InlineKeyboardMarkup:
-    return _mk_inline(
-        [
-            [("🔄 Refresh", "sched_refresh"), ("🗑 Hapus Target", "sched_delete")],
-            _row_home_cancel(),
-        ]
-    )
+def keyboard_schedules_menu(user_id: int | None = None) -> InlineKeyboardMarkup:
+    if user_id is None:
+        scope = AuthInstance.get_runtime_scope()
+        if scope.startswith(USER_SCOPE_PREFIX):
+            user_id = int(scope[len(USER_SCOPE_PREFIX):])
+        else:
+            allowed_ids = load_allowed_id_list()
+            user_id = allowed_ids[0] if allowed_ids else 0
+
+    schedules = _load_schedules()
+    rows = []
+
+    for rt in AuthInstance.refresh_tokens:
+        number = rt["number"]
+        num_str = str(number)
+        display_num = "0" + num_str[2:] if num_str.startswith("62") else num_str
+        label = rt.get("label", "")
+
+        has_sched = any(
+            s.get("msisdn") == str(number) and
+            s.get("option_code") == FIXED_OPTION_CODE and
+            s.get("is_active", False) and
+            s.get("user_id") == user_id
+            for s in schedules
+        )
+
+        status_text = "✅" if has_sched else ""
+        label_text = f"{display_num} | {label} | {status_text}".strip(" | ")
+        rows.append([(label_text, f"toggle_ab_{number}")])
+
+    rows.append([("🏠 Home", "home"), ("↩️ Batal", "cancel")])
+    return _mk_inline(rows)
 
 
 def keyboard_ewallet_methods() -> InlineKeyboardMarkup:
@@ -439,7 +450,7 @@ def current_keyboard(context: ContextTypes.DEFAULT_TYPE, user_id: int | None = N
     if state in {"await_circle_remove", "await_circle_accept"}:
         return keyboard_number_picker(len(data.get("members", [])), int(data.get("page", 0)))
     if state == "schedules_menu":
-        return keyboard_schedules_menu()
+        return keyboard_schedules_menu(user_id=user_id)
     if state == "await_schedule_confirm":
         return keyboard_yes_no("sched_confirm_yes", "sched_confirm_no")
     if state == "await_schedule_delete":
@@ -611,21 +622,13 @@ def _save_schedules(schedules: list[dict]):
 
 
 def _get_schedules_panel_text(user_id: int) -> str:
-    schedules = _load_schedules()
-    user_schedules = [s for s in schedules if s["user_id"] == user_id]
-    if not user_schedules:
-        return "Belum ada target Auto Buy aktif."
-
-    lines = ["Target Auto Buy Anda:"]
-    for idx, s in enumerate(user_schedules, start=1):
-        status = "Aktif" if s.get("is_active", True) else "Nonaktif"
-        last_run = s.get("last_run", "Belum pernah")
-        lines.append(
-            f"{idx}. {s.get('item_name')} ({s.get('option_code')})\n"
-            f"   Status: {status} | Harga: Rp {s.get('price')}\n"
-            f"   Eksekusi Terakhir: {last_run}"
-        )
-    return "\n\n".join(lines)
+    name, size = _get_fixed_package_info_sync()
+    return (
+        "**Auto Buy**\n"
+        f"Nama paket : {name}\n"
+        f"Kuota : {size}\n\n"
+        "pilih nomor untuk diaktifkan:"
+    )
 
 
 def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
@@ -886,12 +889,11 @@ async def schedule_checker_loop(application: Application):
                 await asyncio.sleep(60)
                 continue
 
-            updated = False
+            # Group active schedules by user_id
+            user_schedules = {}
             for sched in schedules:
                 if not sched.get("is_active", False):
                     continue
-
-                user_id = sched["user_id"]
 
                 # Check cooldown (120 seconds)
                 last_run_str = sched.get("last_run", "")
@@ -903,17 +905,29 @@ async def schedule_checker_loop(application: Application):
                     except Exception:
                         pass
 
-                success, msg = await asyncio.to_thread(_check_and_run_autobuy_sync, sched)
+                uid = sched["user_id"]
+                user_schedules.setdefault(uid, []).append(sched)
 
-                if msg:
+            updated = False
+            for user_id, scheds in user_schedules.items():
+                messages_to_send = []
+
+                for sched in scheds:
+                    success, msg = await asyncio.to_thread(_check_and_run_autobuy_sync, sched)
+
+                    if msg:
+                        messages_to_send.append(msg)
+
+                    if success or (msg and ("berhasil" in msg.lower() or "gagal" in msg.lower() or "aman" in msg.lower())):
+                        sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        updated = True
+
+                if messages_to_send:
+                    combined_msg = "\n\n---\n\n".join(messages_to_send)
                     try:
-                        await application.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+                        await application.bot.send_message(chat_id=user_id, text=combined_msg, parse_mode="Markdown")
                     except Exception as e:
-                        logger.error("Failed to send message to user %s: %s", user_id, e)
-
-                if success or (msg and ("berhasil" in msg.lower() or "gagal" in msg.lower() or "aman" in msg.lower())):
-                    sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    updated = True
+                        logger.error("Failed to send grouped message to user %s: %s", user_id, e)
 
             if updated:
                 _save_schedules(schedules)
@@ -1459,6 +1473,7 @@ async def render_panel_for_chat(
                 message_id=panel_id,
                 text=panel_text,
                 reply_markup=keyboard,
+                parse_mode="Markdown",
             )
             return
         except Exception:
@@ -1468,7 +1483,7 @@ async def render_panel_for_chat(
             except Exception:
                 pass
 
-    sent = await context.bot.send_message(chat_id=chat_id, text=panel_text, reply_markup=keyboard)
+    sent = await context.bot.send_message(chat_id=chat_id, text=panel_text, reply_markup=keyboard, parse_mode="Markdown")
     PANEL_MESSAGE_IDS[chat_id] = sent.message_id
 
 
@@ -1781,47 +1796,110 @@ def _profile_summary_sync() -> str:
     )
 
 
-def _home_panel_text_sync() -> str:
+FIXED_OPTION_CODE = "U0NfX1iJS2n5oMu0scSCE8gWqtxeZ_9k3Qyk6SQVNPmcnL4yX27IO1EROsgslFcQaNQA9-bzMkSLEDDmW5gsJco"
+
+
+def _get_quota_for_msisdn(number: int) -> str:
+    cache_key = f"quota:display:{number}"
+    cached = _cache_get(cache_key, 60)
+    if cached is not None:
+        return str(cached)
+
+    rt_entry = next((rt for rt in AuthInstance.refresh_tokens if rt["number"] == number), None)
+    if not rt_entry:
+        return "N/A"
+
+    try:
+        from app.client.ciam import get_new_token
+        tokens = get_new_token(AuthInstance.api_key, rt_entry["refresh_token"], rt_entry.get("subscriber_id", ""))
+        if not tokens:
+            return "N/A"
+
+        path = "api/v8/packages/quota-details"
+        payload = {"is_enterprise": False, "lang": "en", "family_member_id": ""}
+        res = send_api_request(AuthInstance.api_key, path, payload, tokens["id_token"], "POST")
+        if isinstance(res, dict) and res.get("status") == "SUCCESS":
+            quotas = res.get("data", {}).get("quotas", [])
+            total_data = 0
+            found_any = False
+            for q in quotas:
+                q_code = str(q.get("quota_code", "")).strip().lower()
+                if q_code == FIXED_OPTION_CODE.lower():
+                    for b in q.get("benefits", []):
+                        if b.get("data_type") == "DATA":
+                            total_data += int(b.get("remaining", 0))
+                            found_any = True
+                    if found_any:
+                        break
+
+            if not found_any:
+                for q in quotas:
+                    for b in q.get("benefits", []):
+                        if b.get("data_type") == "DATA":
+                            total_data += int(b.get("remaining", 0))
+                            found_any = True
+
+            quota_str = format_quota_byte(total_data) if found_any else "0.00 GB"
+            _cache_set(cache_key, quota_str)
+            return quota_str
+        return "N/A"
+    except Exception as e:
+        logger.error("Failed to fetch quota for number %s: %s", number, e)
+        return "N/A"
+
+
+def _get_fixed_package_info_sync() -> tuple[str, str]:
     api_key, tokens = _get_active_context()
-    if not api_key or tokens is None:
-        return build_home_guest_panel()
+    if api_key and tokens:
+        try:
+            package = get_package(api_key, tokens, FIXED_OPTION_CODE)
+            if package:
+                option = package.get("package_option", {})
+                name = option.get("name", "Bonus Ultra 5G+")
+                return name, "5.00 GB"
+        except Exception:
+            pass
+    return "Bonus Ultra 5G+", "5.00 GB"
 
-    active_user = AuthInstance.get_active_user() or {}
-    cache_key_balance = f"profile:balance:{active_user.get('number', 'na')}"
-    balance = _cache_get(cache_key_balance, 30)
-    if balance is None:
-        balance = get_balance(api_key, tokens["id_token"]) or {}
-        _cache_set(cache_key_balance, balance)
-    balance = cast(dict, balance)
 
-    points = "N/A"
-    tier = "N/A"
-    if active_user.get("subscription_type") == "PREPAID":
-        tier_cache_key = f"profile:tiering:{active_user.get('number', 'na')}"
-        tiering = _cache_get(tier_cache_key, 60)
-        if tiering is None:
-            tiering = get_tiering_info(api_key, tokens) or {}
-            _cache_set(tier_cache_key, tiering)
-        tiering = cast(dict, tiering)
-        points = str(tiering.get("current_point", "N/A"))
-        tier = str(tiering.get("tier", "N/A"))
+def _home_panel_text_sync() -> str:
+    schedules = _load_schedules()
+    lines = ["**Bersiaplah!**", "Daftar MSISDN:"]
 
-    expired_at = balance.get("expired_at")
-    if expired_at:
-        expired_text = datetime.fromtimestamp(expired_at).strftime("%Y-%m-%d")
+    if not AuthInstance.refresh_tokens:
+        lines.append("(Belum ada nomor terdaftar. Silakan tambah akun.)")
     else:
-        expired_text = "N/A"
+        scope = AuthInstance.get_runtime_scope()
+        current_telegram_id = None
+        if scope.startswith(USER_SCOPE_PREFIX):
+            current_telegram_id = int(scope[len(USER_SCOPE_PREFIX):])
+        else:
+            allowed_ids = load_allowed_id_list()
+            if allowed_ids:
+                current_telegram_id = allowed_ids[0]
 
-    number = str(active_user.get("number", "N/A"))
-    subs_type = str(active_user.get("subscription_type", "N/A"))
-    balance_value = balance.get("remaining", "N/A")
+        for rt in AuthInstance.refresh_tokens:
+            number = rt["number"]
+            num_str = str(number)
+            display_num = "0" + num_str[2:] if num_str.startswith("62") else num_str
 
-    # Fancy theme for PRIO variants, compact for others.
-    is_fancy = subs_type.upper().startswith("PRIO")
-    if is_fancy:
-        return build_home_fancy_panel(number, subs_type, str(balance_value), expired_text, points, tier)
+            has_sched = any(
+                s.get("msisdn") == str(number) and
+                s.get("option_code") == FIXED_OPTION_CODE and
+                s.get("is_active", False) and
+                (current_telegram_id is None or s.get("user_id") == current_telegram_id)
+                for s in schedules
+            )
+            status_str = "on" if has_sched else "off"
 
-    return build_home_compact_panel(number, subs_type, str(balance_value), expired_text, points, tier)
+            sisa_kuota = _get_quota_for_msisdn(number)
+            label = rt.get("label", "")
+            label_str = f" ({label})" if label else ""
+
+            lines.append(f"{display_num}{label_str} : {status_str} {sisa_kuota}")
+
+    lines.append("\naksi:")
+    return "\n".join(lines)
 
 
 def _my_packages_sync(limit: int = 15) -> str:
@@ -2993,12 +3071,45 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
     allowed_ids = load_allowed_id_list()
     admin_id = allowed_ids[0] if allowed_ids else None
 
+    # Handle toggle_ab_{number} callback
+    if text.startswith("toggle_ab_"):
+        msisdn_to_toggle = text.replace("toggle_ab_", "").strip()
+        user_id = update.effective_user.id if update.effective_user else 0
+
+        schedules = _load_schedules()
+        existing_sched = next((s for s in schedules if s.get("user_id") == user_id and s.get("msisdn") == msisdn_to_toggle and s.get("option_code") == FIXED_OPTION_CODE), None)
+
+        if existing_sched:
+            existing_sched["is_active"] = not existing_sched.get("is_active", False)
+            existing_sched["last_run"] = "" # Reset cooldown on toggle
+        else:
+            name, size = _get_fixed_package_info_sync()
+            schedules.append({
+                "id": f"autobuy_{int(time.time())}_{msisdn_to_toggle}",
+                "user_id": user_id,
+                "msisdn": msisdn_to_toggle,
+                "option_code": FIXED_OPTION_CODE,
+                "item_name": name,
+                "price": 0,
+                "is_active": True,
+                "last_run": "",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+        _save_schedules(schedules)
+        _cache_invalidate([f"quota:display:{msisdn_to_toggle}"])
+
+        set_flow(context, "schedules_menu", {})
+        await render_panel(update, context, _get_schedules_panel_text(user_id))
+        return
+
     if actor_id is not None and admin_id is not None and actor_id != admin_id:
         allowed_states = {
             "home",
             "account_menu",
             "await_login_phone",
             "await_login_otp",
+            "await_login_label",
             "await_switch_idx",
             "await_delete_idx",
             "packages_menu",
@@ -3308,7 +3419,24 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         if not tokens or not tokens.get("refresh_token"):
             await render_panel(update, context, "OTP salah atau gagal submit. Coba lagi.")
             return
-        await asyncio.to_thread(AuthInstance.add_refresh_token, int(phone), tokens["refresh_token"])
+        set_flow(context, "await_login_label", {
+            "phone": phone,
+            "refresh_token": tokens["refresh_token"]
+        })
+        await render_panel(
+            update,
+            context,
+            "OTP berhasil diverifikasi!\n\nSilakan masukkan label/nama untuk nomor ini (contoh: Utama, Cadangan, atau ketik 'skip' jika tidak ingin memberi label):"
+        )
+        return
+
+    if state == "await_login_label":
+        phone = data.get("phone", "")
+        refresh_token = data.get("refresh_token", "")
+        label = text.strip()
+        if label.lower() == "skip":
+            label = ""
+        await asyncio.to_thread(AuthInstance.add_refresh_token, int(phone), refresh_token, label)
         set_flow(context, "account_menu", {})
         await render_panel(update, context, await asyncio.to_thread(_account_summary_sync))
         return
