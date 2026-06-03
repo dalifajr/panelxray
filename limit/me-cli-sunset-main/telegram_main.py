@@ -653,7 +653,13 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
     # Check if target option code is in active quotas
     target_quota = None
     for quota in quotas:
-        if quota.get("quota_code") == option_code:
+        q_code = str(quota.get("quota_code", "")).strip().lower()
+        target_code = str(option_code).strip().lower()
+        q_name = str(quota.get("name", "")).strip().lower()
+        target_name = str(sched.get("item_name", "")).strip().lower()
+        
+        # Match by quota_code or name
+        if q_code == target_code or (target_name and q_name == target_name):
             target_quota = quota
             break
 
@@ -662,12 +668,14 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
 
     run_autobuy = False
     reason = ""
+    total_remaining = 0
+    quota_name = sched.get("item_name", option_code)
 
     if target_quota is None:
         run_autobuy = True
         reason = "Paket tidak aktif / habis total."
     else:
-        total_remaining = 0
+        quota_name = target_quota.get("name", quota_name)
         benefits = target_quota.get("benefits", [])
         has_data = False
         for benefit in benefits:
@@ -680,7 +688,13 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
             reason = f"Kuota data kritis: {format_quota_byte(total_remaining)} (di bawah 800 MB)."
 
     if not run_autobuy:
-        return False, ""
+        # Return monitoring message
+        safe_msg = (
+            f"**Kuota masih aman**\n"
+            f"Nama Kuota: {quota_name}\n"
+            f"Sisa Kuota: {format_quota_byte(total_remaining)}"
+        )
+        return False, safe_msg
 
     # Step 1: Unsubscribe target package
     p_domain = None
@@ -726,9 +740,37 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
     if "berhasil" in result_str.lower():
         active_user = AuthInstance.get_active_user() or {}
         _cache_invalidate([f"packages:list:{active_user.get('number', 'na')}"])
-        return True, f"🤖 [Auto Buy Berhasil]\nTarget: {sched.get('item_name', option_code)}\nAlasan: {reason}\nDetail: {result_str}"
+        
+        # Wait 3 seconds for backend synchronization and fetch new remaining quota
+        time.sleep(3)
+        new_remaining_str = "N/A"
+        try:
+            res_new = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+            if isinstance(res_new, dict) and res_new.get("status") == "SUCCESS":
+                new_quotas = res_new.get("data", {}).get("quotas", [])
+                for nq in new_quotas:
+                    nq_code = str(nq.get("quota_code", "")).strip().lower()
+                    target_code = str(option_code).strip().lower()
+                    nq_name = str(nq.get("name", "")).strip().lower()
+                    target_name = str(sched.get("item_name", "")).strip().lower()
+                    if nq_code == target_code or (target_name and nq_name == target_name):
+                        total_rem = 0
+                        for benefit in nq.get("benefits", []):
+                            if benefit.get("data_type") == "DATA":
+                                total_rem += int(benefit.get("remaining", 0))
+                        new_remaining_str = format_quota_byte(total_rem)
+                        break
+        except Exception as e:
+            logger.error("Failed to fetch new quota details after auto buy: %s", e)
+
+        success_msg = (
+            f"**Pembelian Berhasil**\n"
+            f"Nama Kuota: {quota_name}\n"
+            f"Sisa Kuota Saat Ini: {new_remaining_str}"
+        )
+        return True, success_msg
     else:
-        return False, f"❌ [Auto Buy Gagal]\nTarget: {sched.get('item_name', option_code)}\nAlasan: {reason}\nDetail: {result_str}"
+        return False, f"❌ [Auto Buy Gagal]\nTarget: {quota_name}\nAlasan: {reason}\nDetail: {result_str}"
 
 
 async def schedule_checker_loop(application: Application):
@@ -747,12 +789,12 @@ async def schedule_checker_loop(application: Application):
 
                 user_id = sched["user_id"]
 
-                # Check cooldown (10 minutes)
+                # Check cooldown (120 seconds)
                 last_run_str = sched.get("last_run", "")
                 if last_run_str:
                     try:
                         last_run_dt = datetime.strptime(last_run_str, "%Y-%m-%d %H:%M:%S")
-                        if (datetime.now() - last_run_dt).total_seconds() < 600:
+                        if (datetime.now() - last_run_dt).total_seconds() < 120:
                             continue
                     except Exception:
                         pass
@@ -765,7 +807,7 @@ async def schedule_checker_loop(application: Application):
                     except Exception as e:
                         logger.error("Failed to send message to user %s: %s", user_id, e)
 
-                if success or (msg and ("berhasil" in msg.lower() or "gagal" in msg.lower())):
+                if success or (msg and ("berhasil" in msg.lower() or "gagal" in msg.lower() or "aman" in msg.lower())):
                     sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     updated = True
 
