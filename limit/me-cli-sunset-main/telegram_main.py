@@ -615,10 +615,13 @@ def _check_and_run_autobuy_sync(sched: dict) -> tuple[bool, str]:
     user_id = sched["user_id"]
     option_code = sched["option_code"]
 
-    AuthInstance.set_runtime_owner(user_id)
+    admin_id = get_admin_id()
+    is_admin = (admin_id is not None and user_id == admin_id)
+    AuthInstance.set_runtime_owner(user_id, is_admin=is_admin)
     api_key, tokens = _get_active_context()
     if not api_key or tokens is None:
         return False, "Akun aktif tidak ditemukan untuk user."
+
 
     # Fetch quota details
     path = "api/v8/packages/quota-details"
@@ -696,7 +699,7 @@ async def schedule_checker_loop(application: Application):
         try:
             schedules = _load_schedules()
             if not schedules:
-                await asyncio.sleep(60)
+                await asyncio.sleep(120)
                 continue
 
             updated = False
@@ -734,7 +737,7 @@ async def schedule_checker_loop(application: Application):
         except Exception as e:
             logger.error("Error in schedule checker loop: %s", e)
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(120)
 
 
 def _save_access_state(state: dict):
