@@ -7,37 +7,59 @@
 
 
 red() { echo -e "\\033[32;1m${*}\\033[0m"; }
-IP=$(curl -s ipv4.icanhazip.com)
-HOST="$(cat /etc/xray/domain)"
+IP=$(curl -s ipv4.icanhazip.com 2>/dev/null || wget -qO- ipinfo.io/ip 2>/dev/null || echo "unknown-ip")
+HOST=$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo "unknown-domain")
 DATEVPS=$(date +"%d-%B-%Y")
-ISPVPS=$(cat /etc/xray/isp)
-CITY=$(cat /etc/xray/city)
+ISPVPS=$(cat /etc/xray/isp 2>/dev/null || echo "unknown-isp")
+CITY=$(cat /etc/xray/city 2>/dev/null || echo "unknown-city")
 GREEN="\e[92;1m"
 BLUE="\033[36m"
 RED='\033[0;31m'
 NC='\033[0m'
-read -p "Plase Input Link : " DATAVPS
+
+if [[ -t 0 ]]; then
+    read -rp "Please Input Link : " DATAVPS
+else
+    read -r DATAVPS
+fi
+
 function RESTOREVPS() {
-    wget -O backup.zip "$DATAVPS" >/dev/null 2>&1
-    unzip *.zip >/dev/null 2>&1
-    #    rm -f *.zip >/dev/null 2>&1
+    cd /root
+    rm -rf backup.zip backup
+    if ! wget -O backup.zip "$DATAVPS" >/dev/null 2>&1; then
+        echo "Gagal mendownload file backup dari link: $DATAVPS"
+        exit 1
+    fi
+    if ! unzip -o backup.zip >/dev/null 2>&1; then
+        echo "Gagal mengekstrak file backup"
+        rm -rf backup.zip
+        exit 1
+    fi
+    if [[ ! -d /root/backup ]]; then
+        echo "Folder /root/backup tidak ditemukan di dalam arsip"
+        rm -rf backup.zip
+        exit 1
+    fi
+    
     cp /root/backup/passwd /etc/
     cp /root/backup/group /etc/
     cp /root/backup/shadow /etc/
     cp /root/backup/gshadow /etc/
-    cp -r /root/backup/html /var/www/
-    cp -r /root/backup/kyt /var/lib/
-    cp -r /root/backup/ssh.db /etc/ssh/.ssh.db
-    cp -r /root/backup/vmess.db /etc/vmess/.vmess.db
-    cp -r /root/backup/vless.db /etc/vless/.vless.db
-    cp -r /root/backup/trojan.db /etc/trojan/.trojan.db
-    cp -r /root/backup/shadowsocks.db /etc/shadowsocks/.shadowsocks.db
-    cp -r /root/backup/*.json /etc/xray >/dev/null 2>&1
-    cp -r /root/backup/*.log /etc/xray >/dev/null 2>&1
-    cp /etc/openvpn/*.ovpn /var/www/html/
+    cp -r /root/backup/html /var/www/ 2>/dev/null || true
+    cp -r /root/backup/kyt /var/lib/ 2>/dev/null || true
+    cp -r /root/backup/ssh.db /etc/ssh/.ssh.db 2>/dev/null || true
+    cp -r /root/backup/vmess.db /etc/vmess/.vmess.db 2>/dev/null || true
+    cp -r /root/backup/vless.db /etc/vless/.vless.db 2>/dev/null || true
+    cp -r /root/backup/trojan.db /etc/trojan/.trojan.db 2>/dev/null || true
+    cp -r /root/backup/shadowsocks.db /etc/shadowsocks/.shadowsocks.db 2>/dev/null || true
+    cp -r /root/backup/*.json /etc/xray >/dev/null 2>&1 || true
+    cp -r /root/backup/*.log /etc/xray >/dev/null 2>&1 || true
+    cp /etc/openvpn/*.ovpn /var/www/html/ 2>/dev/null || true
+    
     cd
-    systemctl restart xray >/dev/null 2>&1
-    rm -rf backup.zip
+    systemctl restart xray >/dev/null 2>&1 || true
+    rm -rf /root/backup.zip /root/backup
+    
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "SUCCESSFULL RESTORE YOUR VPS"
     echo -e "Please Save The Following Data"

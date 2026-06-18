@@ -7,40 +7,67 @@
 
 
 red() { echo -e "\\033[32;1m${*}\\033[0m"; }
-IP=$(curl -s ipv4.icanhazip.com)
-HOST="$(cat /etc/xray/domain)"
+IP=$(curl -s ipv4.icanhazip.com 2>/dev/null || wget -qO- ipinfo.io/ip 2>/dev/null || echo "unknown-ip")
+HOST=$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo "unknown-domain")
 DATEVPS=$(date +"%d-%B-%Y")
-ISPVPS=$(cat /etc/xray/isp)
-CITY=$(cat /etc/xray/city)
+ISPVPS=$(cat /etc/xray/isp 2>/dev/null || echo "unknown-isp")
+CITY=$(cat /etc/xray/city 2>/dev/null || echo "unknown-city")
 GREEN="\e[92;1m"
 BLUE="\033[36m"
 RED='\033[0;31m'
 NC='\033[0m'
+
+if [[ -t 0 ]]; then
+    EMAIL=$(cat /root/email 2>/dev/null)
+    if [[ -z "$EMAIL" ]]; then
+        read -rp "Masukkan Email Untuk Menerima Backup: " -e EMAIL
+        echo "$EMAIL" > /root/email
+    fi
+else
+    read -r EMAIL
+    if [[ -z "$EMAIL" ]]; then
+        EMAIL=$(cat /root/email 2>/dev/null)
+    fi
+fi
+
 function BACKUPVPS() {
     rm -rf /root/backup
-    mkdir /root/backup
-    cp /etc/passwd backup/
-    cp /etc/group backup/
-    cp /etc/shadow backup/
-    cp /etc/gshadow backup/
-    cp /etc/crontab backup/
-    cp -r /var/lib/kyt/ backup/kyt 
-    cp -r /etc/xray backup/xray
-    cp -r /var/www/html/ backup/html
-    cp -r /etc/ssh/.ssh.db backup/ssh.db
-    cp -r /etc/vmess/.vmess.db backup/vmess.db
-    cp -r /etc/vless/.vless.db backup/vless.db
-    cp -r /etc/trojan/.trojan.db backup/trojan.db
-    cp -r /etc/shadowsocks/.shadowsocks.db backup/shadowsocks.db
+    mkdir -p /root/backup
+    cp /etc/passwd /root/backup/
+    cp /etc/group /root/backup/
+    cp /etc/shadow /root/backup/
+    cp /etc/gshadow /root/backup/
+    cp /etc/crontab /root/backup/
+    cp -r /var/lib/kyt/ /root/backup/kyt 2>/dev/null || true
+    cp -r /etc/xray /root/backup/xray 2>/dev/null || true
+    cp -r /var/www/html/ /root/backup/html 2>/dev/null || true
+    cp -r /etc/ssh/.ssh.db /root/backup/ssh.db 2>/dev/null || true
+    cp -r /etc/vmess/.vmess.db /root/backup/vmess.db 2>/dev/null || true
+    cp -r /etc/vless/.vless.db /root/backup/vless.db 2>/dev/null || true
+    cp -r /etc/trojan/.trojan.db /root/backup/trojan.db 2>/dev/null || true
+    cp -r /etc/shadowsocks/.shadowsocks.db /root/backup/shadowsocks.db 2>/dev/null || true
+    
     cd /root
-    zip -r $IP-$DATEVPS.zip backup > /dev/null 2>&1
-    rclone copy /root/$IP-$DATEVPS.zip dr:backup/
-    url=$(rclone link dr:backup/$IP-$DATEVPS.zip)
-    id=(`echo $url | grep '^https' | cut -d'=' -f2`)
-    link="https://drive.google.com/u/4/uc?id=${id}&export=download"
+    zip -r "$IP-$DATEVPS.zip" backup > /dev/null 2>&1
+    rclone copy "/root/$IP-$DATEVPS.zip" dr:backup/ >/dev/null 2>&1
+    url=$(rclone link "dr:backup/$IP-$DATEVPS.zip" 2>/dev/null || true)
+    
+    id=""
+    if [[ "$url" == *"id="* ]]; then
+        id="${url##*id=}"
+        id="${id%%&*}"
+    fi
+    if [[ -n "$id" ]]; then
+        link="https://drive.google.com/u/4/uc?id=${id}&export=download"
+    else
+        link="$url"
+    fi
+    
     rm -rf backup
-    rm -rf $IP-$DATEVPSVPS.zip
-    echo "
+    rm -f "$IP-$DATEVPS.zip"
+    
+    if [[ -n "$EMAIL" ]]; then
+        echo "
 _______________________________________
 SUCCESSFULL BACKUP YOUR VPS
 Please Save The Following Data
@@ -57,7 +84,9 @@ _______________________________________
 Busines email : dzulfikrialifajri@gmail.co.id
 Report bugs   : wa.me/6282269245660
 Kentot Project
-    " | mail -s "Kentot Backup" $EMAIL
+        " | mail -s "Kentot Backup" "$EMAIL" 2>/dev/null || true
+    fi
+    
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "SUCCESSFULL BACKUP YOUR VPS"
     echo -e "Please Save The Following Data"
@@ -70,6 +99,5 @@ Kentot Project
     echo -e "LINK BACKUP : $link"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "Please Check your Email backup file"
-
 }
 BACKUPVPS

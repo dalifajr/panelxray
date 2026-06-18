@@ -157,12 +157,13 @@ def _row_back_home(back_data: str) -> list[tuple[str, str]]:
     return [("⬅️ Kembali", back_data), ("🏠 Home", "home")]
 
 def keyboard_main(user_id: int | None = None) -> InlineKeyboardMarkup:
-    return _mk_inline(
-        [
-            [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("⏰ Auto Buy", "sched_menu")],
-            [("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")],
-        ]
-    )
+    rows = [
+        [("1 👤 Akun", "1"), ("2 📦 Paket", "2"), ("⏰ Auto Buy", "sched_menu")],
+    ]
+    if is_admin_user(user_id):
+        rows.append([("Akses User", "a")])
+    rows.append([("🏠 Home", "home"), ("↩️ Batal", "cancel"), ("❓ Bantuan", "help")])
+    return _mk_inline(rows)
 
 
 def keyboard_account() -> InlineKeyboardMarkup:
@@ -1862,44 +1863,87 @@ def _get_fixed_package_info_sync() -> tuple[str, str]:
     return "Bonus Ultra 5G+", "5.00 GB"
 
 
+def _home_menu_lines(is_admin: bool) -> list[str]:
+    lines = [
+        "Menu:",
+        "1. Login/Ganti akun",
+        "2. Lihat Paket Saya",
+        "3. Beli Paket HOT",
+        "4. Beli Paket HOT-2",
+        "5. Beli Paket Berdasarkan Option Code",
+        "6. Beli Paket Berdasarkan Family Code",
+        "7. Beli Semua Paket di Family Code (loop)",
+        "8. Riwayat Transaksi",
+        "9. Family Plan/Akrab Organizer",
+        "10. Circle",
+        "11. Store Segments",
+        "12. Store Family List",
+        "13. Store Packages",
+        "14. Redemables",
+        "00. Bookmark Paket",
+        "R. Register",
+        "N. Notifikasi",
+        "V. Validate msisdn",
+        "Auto Buy: gunakan tombol ⏰ Auto Buy",
+    ]
+    if is_admin:
+        lines.append("A. Akses User (admin)")
+    return lines
+
+
+def _resolve_actor_id_for_menu() -> int | None:
+    scope = AuthInstance.get_runtime_scope()
+    if scope.startswith(USER_SCOPE_PREFIX):
+        raw = scope[len(USER_SCOPE_PREFIX):]
+        return int(raw) if raw.isdigit() else None
+
+    allowed_ids = load_allowed_id_list()
+    return allowed_ids[0] if allowed_ids else None
+
+
 def _home_panel_text_sync() -> str:
-    schedules = _load_schedules()
-    lines = ["**Bersiaplah!**", "Daftar MSISDN:"]
+    actor_id = _resolve_actor_id_for_menu()
+    is_admin = is_admin_user(actor_id)
 
-    if not AuthInstance.refresh_tokens:
-        lines.append("(Belum ada nomor terdaftar. Silakan tambah akun.)")
+    active_user = AuthInstance.get_active_user()
+    if not active_user:
+        header = build_home_guest_panel()
+        return header + "\n\n" + "\n".join(_home_menu_lines(is_admin))
+
+    cache_key_balance = f"profile:balance:{active_user.get('number', 'na')}"
+    balance = _cache_get(cache_key_balance, 30)
+    if balance is None:
+        balance = get_balance(AuthInstance.api_key, active_user["tokens"]["id_token"]) or {}
+        _cache_set(cache_key_balance, balance)
+    balance = cast(dict, balance)
+
+    points = "N/A"
+    tier = "N/A"
+    if active_user.get("subscription_type") == "PREPAID":
+        tier_cache_key = f"profile:tiering:{active_user.get('number', 'na')}"
+        tiering = _cache_get(tier_cache_key, 60)
+        if tiering is None:
+            tiering = get_tiering_info(AuthInstance.api_key, active_user["tokens"]) or {}
+            _cache_set(tier_cache_key, tiering)
+        tiering = cast(dict, tiering)
+        points = str(tiering.get("current_point", 0))
+        tier = str(tiering.get("tier", 0))
+
+    expired_at = balance.get("expired_at")
+    if expired_at:
+        expired_text = datetime.fromtimestamp(expired_at).strftime("%Y-%m-%d")
     else:
-        scope = AuthInstance.get_runtime_scope()
-        current_telegram_id = None
-        if scope.startswith(USER_SCOPE_PREFIX):
-            current_telegram_id = int(scope[len(USER_SCOPE_PREFIX):])
-        else:
-            allowed_ids = load_allowed_id_list()
-            if allowed_ids:
-                current_telegram_id = allowed_ids[0]
+        expired_text = "N/A"
 
-        for rt in AuthInstance.refresh_tokens:
-            number = rt["number"]
-            num_str = str(number)
-            display_num = "0" + num_str[2:] if num_str.startswith("62") else num_str
-
-            has_sched = any(
-                s.get("msisdn") == str(number) and
-                s.get("option_code") == FIXED_OPTION_CODE and
-                s.get("is_active", False) and
-                (current_telegram_id is None or s.get("user_id") == current_telegram_id)
-                for s in schedules
-            )
-            status_str = "on" if has_sched else "off"
-
-            sisa_kuota = _get_quota_for_msisdn(number)
-            label = rt.get("label", "")
-            label_str = f" ({label})" if label else ""
-
-            lines.append(f"{display_num}{label_str} : {status_str} {sisa_kuota}")
-
-    lines.append("\naksi:")
-    return "\n".join(lines)
+    header = build_home_fancy_panel(
+        str(active_user.get("number", "N/A")),
+        str(active_user.get("subscription_type", "N/A")),
+        str(balance.get("remaining", "N/A")),
+        expired_text,
+        points,
+        tier,
+    )
+    return header + "\n\n" + "\n".join(_home_menu_lines(is_admin))
 
 
 def _my_packages_sync(limit: int = 15) -> str:
@@ -3097,41 +3141,21 @@ async def _handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         return
 
     if actor_id is not None and admin_id is not None and actor_id != admin_id:
-        allowed_states = {
-            "home",
-            "account_menu",
-            "await_login_phone",
-            "await_login_otp",
-            "await_login_label",
-            "await_switch_idx",
-            "await_delete_idx",
-            "packages_menu",
-            "package_detail_menu",
-            "await_package_detail_pick",
-            "await_package_unsub_pick",
-            "await_package_unsub_confirm",
-            "schedules_menu",
-            "await_schedule_confirm",
-            "await_schedule_delete",
-            "await_option_code_autobuy",
+        admin_only_states = {
+            "admin_access_menu",
+            "await_admin_allow_add_id",
+            "await_admin_action_reason",
         }
-        if state not in allowed_states:
+        if state in admin_only_states:
             set_flow(context, "home", {})
             state = "home"
             data = {}
 
         if state == "home":
             normalized = _normalize_choice(text)
-            if normalized in {
-                "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "00", "a", "r", "n", "v"
-            }:
+            if normalized == "a":
                 await render_panel(update, context, "Aksi ini khusus admin.")
                 return
-            if text not in {"sched_menu", "1", "2", "home", "cancel", "help", "/start", "/help"}:
-                if text.startswith("/"):
-                    if text not in {"/start", "/help"}:
-                        await render_panel(update, context, "Aksi ini khusus admin.")
-                        return
 
     if (
         text.startswith("allow_approve:")
