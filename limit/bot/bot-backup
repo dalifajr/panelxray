@@ -48,9 +48,24 @@ function BACKUPVPS() {
     cp -r /etc/shadowsocks/.shadowsocks.db /root/backup/shadowsocks.db 2>/dev/null || true
     
     cd /root
-    zip -r "$IP-$DATEVPS.zip" backup > /dev/null 2>&1
-    rclone copy "/root/$IP-$DATEVPS.zip" dr:backup/ >/dev/null 2>&1
+    if ! zip -r "$IP-$DATEVPS.zip" backup >/dev/null 2>&1; then
+        echo "Gagal membuat file zip backup"
+        rm -rf backup
+        exit 1
+    fi
+    if ! rclone copy "/root/$IP-$DATEVPS.zip" dr:backup/ >/dev/null 2>&1; then
+        echo "Gagal upload backup ke rclone remote dr:backup/"
+        rm -rf backup
+        rm -f "/root/$IP-$DATEVPS.zip"
+        exit 1
+    fi
     url=$(rclone link "dr:backup/$IP-$DATEVPS.zip" 2>/dev/null || true)
+    if [[ -z "$url" ]]; then
+        echo "Gagal mendapatkan link backup dari rclone"
+        rm -rf backup
+        rm -f "/root/$IP-$DATEVPS.zip"
+        exit 1
+    fi
     
     id=""
     if [[ "$url" == *"id="* ]]; then

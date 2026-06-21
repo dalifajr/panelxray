@@ -24,6 +24,11 @@ else
 fi
 
 function RESTOREVPS() {
+    CURRENT_DOMAIN=""
+    if [[ -f /etc/xray/domain ]]; then
+        CURRENT_DOMAIN=$(cat /etc/xray/domain)
+    fi
+
     cd /root
     rm -rf backup.zip backup
     if ! wget -O backup.zip "$DATAVPS" >/dev/null 2>&1; then
@@ -57,6 +62,45 @@ function RESTOREVPS() {
     cp /etc/openvpn/*.ovpn /var/www/html/ 2>/dev/null || true
     
     cd
+    
+    # Preserve new domain if it was set
+    if [[ -n "$CURRENT_DOMAIN" ]]; then
+        echo "$CURRENT_DOMAIN" > /etc/xray/domain
+    fi
+
+    # Check if domain changed and renew SSL
+    BACKUP_DOMAIN=""
+    if [[ -f /root/backup/xray/domain ]]; then
+        BACKUP_DOMAIN=$(cat /root/backup/xray/domain)
+    fi
+
+    if [[ -n "$CURRENT_DOMAIN" && -n "$BACKUP_DOMAIN" && "$CURRENT_DOMAIN" != "$BACKUP_DOMAIN" ]]; then
+        echo "Domain baru terdeteksi: $CURRENT_DOMAIN (sebelumnya $BACKUP_DOMAIN)"
+        echo "Memperbarui sertifikat SSL Let's Encrypt secara otomatis..."
+        systemctl stop nginx 2>/dev/null || true
+        systemctl stop haproxy 2>/dev/null || true
+        if [[ ! -f /root/.acme.sh/acme.sh ]]; then
+            mkdir -p /root/.acme.sh
+            curl -sS https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh >/dev/null 2>&1 || true
+            chmod +x /root/.acme.sh/acme.sh
+            /root/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1 || true
+            /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+        fi
+        if [[ -f /root/.acme.sh/acme.sh ]]; then
+            /root/.acme.sh/acme.sh --issue -d "$CURRENT_DOMAIN" --standalone -k ec-256 --force >/dev/null 2>&1 || true
+            /root/.acme.sh/acme.sh --installcert -d "$CURRENT_DOMAIN" --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc >/dev/null 2>&1 || true
+            chmod 777 /etc/xray/xray.key >/dev/null 2>&1 || true
+            
+            # Compile hap.pem for HAProxy
+            if [[ -f /etc/xray/xray.crt && -f /etc/xray/xray.key ]]; then
+                mkdir -p /etc/haproxy/certs >/dev/null 2>&1 || true
+                cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/haproxy/hap.pem 2>/dev/null || true
+                chmod 600 /etc/haproxy/hap.pem >/dev/null 2>&1 || true
+                cp -f /etc/haproxy/hap.pem /etc/haproxy/certs/default.pem >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+
     systemctl restart xray >/dev/null 2>&1 || true
     rm -rf /root/backup.zip /root/backup
     
