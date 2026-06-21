@@ -96,5 +96,190 @@
             </div>
         </div>
     </div>
+
+    <!-- Backup & Restore Server -->
+    <div class="row mt-4">
+        <div class="col-12 mb-4">
+            <div class="card border-0 shadow-sm lift-hover">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-database me-2 text-primary"></i>Backup & Restore VPS</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row">
+                        <!-- Backup Section -->
+                        <div class="col-md-6 border-end">
+                            <h6 class="fw-bold mb-3 text-secondary"><i class="fas fa-download me-2 text-success"></i>Backup Data Server</h6>
+                            <p class="text-muted">Unduh arsip cadangan data VPS lengkap (termasuk sertifikat SSL, database akun VPN, quota, limit, database web panel, dan konfigurasi bot).</p>
+                            <form action="{{ route('admin.settings.backup') }}" method="POST">
+                                @csrf
+                                <button type="submit" class="btn btn-success w-100 py-2 fw-bold"><i class="fas fa-file-archive me-2"></i>Buat & Unduh Backup (.zip)</button>
+                            </form>
+                            
+                            @if(file_exists('/etc/kyt/restore_conflicts.json'))
+                            <div class="mt-4 p-3 bg-light rounded border border-warning">
+                                <h6 class="fw-bold text-warning mb-2"><i class="fas fa-exclamation-circle me-2"></i>Resolusi Konflik Tertunda</h6>
+                                <p class="small text-muted mb-3">Terdapat sisa konflik user duplikat dari proses restore gabungan sebelumnya yang belum diselesaikan.</p>
+                                <a href="{{ route('admin.settings.restore.conflicts') }}" class="btn btn-warning w-100 fw-bold btn-sm"><i class="fas fa-users-cog me-2"></i>Buka Resolusi Konflik</a>
+                            </div>
+                            @endif
+                        </div>
+                        
+                        <!-- Restore Section -->
+                        <div class="col-md-6 ps-md-4">
+                            <h6 class="fw-bold mb-3 text-secondary"><i class="fas fa-upload me-2 text-primary"></i>Restore Data Server</h6>
+                            <form id="restore-form" enctype="multipart/form-data">
+                                @csrf
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Unggah File Backup (.zip)</label>
+                                    <input type="file" class="form-control border" name="backup_file" id="backup_file" accept=".zip">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Atau Masukkan Link Backup</label>
+                                    <input type="url" class="form-control border" name="backup_url" id="backup_url" placeholder="https://drive.google.com/...">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Opsi Penggabungan Data</label>
+                                    <select class="form-select border" name="restore_mode" id="restore-mode-select">
+                                        <option value="merge">Gabungkan Data (Merge & Skip Duplikat)</option>
+                                        <option value="clean">Hapus Data Lama (Clean Overwrite)</option>
+                                    </select>
+                                    <small class="text-muted d-block mt-1">Mode gabung akan mengimpor pengguna baru secara aman tanpa menghapus akun aktif Anda saat ini.</small>
+                                </div>
+                                <button type="button" onclick="performRestoreAnalysis()" class="btn btn-primary w-100 py-2 fw-bold"><i class="fas fa-upload me-2"></i>Mulai Proses Restore</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<script>
+function performRestoreAnalysis() {
+    const form = document.getElementById('restore-form');
+    const formData = new FormData(form);
+    
+    const backupFile = document.getElementById('backup_file').files[0];
+    const backupUrl = document.getElementById('backup_url').value;
+    
+    if (!backupFile && !backupUrl) {
+        Swal.fire('Error', 'Silakan pilih file backup atau masukkan link backup.', 'error');
+        return;
+    }
+    
+    Swal.fire({
+        title: 'Menganalisis Backup...',
+        text: 'Mengunduh dan memeriksa file cadangan Anda...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    fetch("{{ route('admin.settings.restore.analyze') }}", {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            Swal.fire('Gagal', data.error || 'Terjadi kesalahan saat menganalisis backup.', 'error');
+            return;
+        }
+        
+        let warningHtml = "";
+        let showWarning = false;
+        
+        if (data.domain_mismatch) {
+            showWarning = true;
+            warningHtml += `<div class="alert alert-warning text-start mb-3" style="font-size: 0.9rem;">
+                <i class="fas fa-exclamation-triangle me-2"></i><strong>Peringatan Domain Berbeda:</strong><br>
+                Domain backup: <code>${data.backup_domain}</code><br>
+                Domain saat ini: <code>${data.current_domain}</code><br><br>
+                Jika dilanjutkan, domain server akan diperbarui secara otomatis dan sertifikat SSL Let's Encrypt serta HAProxy akan diregenerasi.
+            </div>`;
+        }
+        
+        const mode = document.getElementById('restore-mode-select').value;
+        if (mode === 'merge' && data.duplicate_users.length > 0) {
+            showWarning = true;
+            warningHtml += `<div class="alert alert-info text-start mb-0" style="font-size: 0.9rem;">
+                <i class="fas fa-users-cog me-2"></i><strong>User Duplikat Terdeteksi (${data.duplicate_users.length} user):</strong><br>
+                User tersebut akan dilewati (skip) agar tidak menimpa data aktif saat ini. Anda dapat menyelesaikannya secara manual di menu Resolusi Konflik setelah restore.
+            </div>`;
+        } else if (mode === 'clean') {
+            showWarning = true;
+            warningHtml += `<div class="alert alert-danger text-start mb-0" style="font-size: 0.9rem;">
+                <i class="fas fa-trash-alt me-2"></i><strong>Perhatian (Clean Overwrite):</strong><br>
+                Seluruh data pengguna, akun VPN, transaksi, dan voucher saat ini akan <strong>DIPOS / DIHAPUS</strong> dan digantikan sepenuhnya oleh data backup.
+            </div>`;
+        }
+        
+        if (showWarning) {
+            Swal.fire({
+                title: 'Konfirmasi Restorasi',
+                html: warningHtml,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Ya, Lanjutkan Restore',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    executeRestore(formData);
+                }
+            });
+        } else {
+            executeRestore(formData);
+        }
+    })
+    .catch(error => {
+        Swal.fire('Error', 'Gagal menghubungi server untuk menganalisis backup.', 'error');
+        console.error(error);
+    });
+}
+
+function executeRestore(formData) {
+    Swal.fire({
+        title: 'Memproses Restore...',
+        text: 'Mengimpor data ke server baru. Jangan tutup halaman ini...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    fetch("{{ route('admin.settings.restore') }}", {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: formData
+    })
+    .then(response => {
+        if (response.redirected) {
+            window.location.href = response.url;
+        } else {
+            return response.json().then(data => {
+                if (data.success) {
+                    Swal.fire('Berhasil', 'Server berhasil direstore!', 'success').then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire('Gagal', data.error || 'Terjadi kesalahan saat restore.', 'error');
+                }
+            });
+        }
+    })
+    .catch(error => {
+        Swal.fire('Error', 'Gagal memproses restorasi.', 'error');
+        console.error(error);
+    });
+}
+</script>
 @endsection

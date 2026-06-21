@@ -19,9 +19,13 @@ NC='\033[0m'
 
 if [[ -t 0 ]]; then
     read -rp "Please Input Link : " DATAVPS
+    read -rp "Please Input Mode (clean/merge) [merge]: " RESTORE_MODE
 else
     read -r DATAVPS
+    read -r RESTORE_MODE
 fi
+[[ -n "$RESTORE_MODE" ]] || RESTORE_MODE="merge"
+export RESTORE_MODE
 
 function RESTOREVPS() {
     CURRENT_DOMAIN=""
@@ -40,25 +44,242 @@ function RESTOREVPS() {
         rm -rf backup.zip
         exit 1
     fi
-    if [[ ! -d /root/backup ]]; then
-        echo "Folder /root/backup tidak ditemukan di dalam arsip"
+    
+    # Find Backup directory inside extracted files
+    backupTempDir="/root/backup/backup_temp"
+    if [[ ! -d "$backupTempDir" ]]; then
+        backupTempDir="/root/backup/backup"
+    fi
+    if [[ ! -d "$backupTempDir" ]]; then
+        backupTempDir="/root/backup"
+    fi
+
+    if [[ ! -d "$backupTempDir" ]]; then
+        echo "Folder backup tidak ditemukan di dalam arsip"
         rm -rf backup.zip
         exit 1
     fi
     
-    cp /root/backup/passwd /etc/
-    cp /root/backup/group /etc/
-    cp /root/backup/shadow /etc/
-    cp /root/backup/gshadow /etc/
-    cp -r /root/backup/html /var/www/ 2>/dev/null || true
-    cp -r /root/backup/kyt /var/lib/ 2>/dev/null || true
-    cp -r /root/backup/ssh.db /etc/ssh/.ssh.db 2>/dev/null || true
-    cp -r /root/backup/vmess.db /etc/vmess/.vmess.db 2>/dev/null || true
-    cp -r /root/backup/vless.db /etc/vless/.vless.db 2>/dev/null || true
-    cp -r /root/backup/trojan.db /etc/trojan/.trojan.db 2>/dev/null || true
-    cp -r /root/backup/shadowsocks.db /etc/shadowsocks/.shadowsocks.db 2>/dev/null || true
-    cp -r /root/backup/*.json /etc/xray >/dev/null 2>&1 || true
-    cp -r /root/backup/*.log /etc/xray >/dev/null 2>&1 || true
+    if [[ "$RESTORE_MODE" == "clean" ]]; then
+        # Overwrite core files
+        cp "$backupTempDir/passwd" /etc/ 2>/dev/null || true
+        cp "$backupTempDir/group" /etc/ 2>/dev/null || true
+        cp "$backupTempDir/shadow" /etc/ 2>/dev/null || true
+        cp "$backupTempDir/gshadow" /etc/ 2>/dev/null || true
+        cp -r "$backupTempDir/kyt" /var/lib/ 2>/dev/null || true
+        cp -r "$backupTempDir/ssh.db" /etc/ssh/.ssh.db 2>/dev/null || true
+        cp -r "$backupTempDir/vmess.db" /etc/vmess/.vmess.db 2>/dev/null || true
+        cp -r "$backupTempDir/vless.db" /etc/vless/.vless.db 2>/dev/null || true
+        cp -r "$backupTempDir/trojan.db" /etc/trojan/.trojan.db 2>/dev/null || true
+        cp -r "$backupTempDir/shadowsocks.db" /etc/shadowsocks/.shadowsocks.db 2>/dev/null || true
+        cp -r "$backupTempDir/xray/"* /etc/xray/ 2>/dev/null || true
+        cp -r "$backupTempDir/kyt-bin" /usr/bin/kyt 2>/dev/null || true
+        
+        # Overwrite webpanel database if exists in backup
+        if [[ -f "$backupTempDir/database.sqlite" ]]; then
+            cp -f "$backupTempDir/database.sqlite" /opt/vpnxray-webpanel/database/database.sqlite 2>/dev/null || true
+        fi
+    else
+        # Merge mode: compile and execute python merging helper
+        cat << 'EOF' > /tmp/merge_restore.py
+import os, json, sqlite3, glob
+
+mode = os.environ.get('RESTORE_MODE', 'merge')
+backup_dir = '/root/backup/backup_temp'
+if not os.path.exists(backup_dir):
+    backup_dir = '/root/backup/backup'
+if not os.path.exists(backup_dir):
+    backup_dir = '/root/backup'
+
+print("Menjalankan merge restore (skipping duplicates)...")
+
+# 1. Identify duplicates
+current_users = set()
+if os.path.exists('/etc/passwd'):
+    with open('/etc/passwd', 'r') as f:
+        for line in f:
+            parts = line.strip().split(':')
+            if len(parts) >= 3 and int(parts[2]) >= 1000 and parts[0] != 'nobody':
+                current_users.add(parts[0].lower())
+
+current_xray_users = set()
+xray_config_path = '/etc/xray/config.json'
+if os.path.exists(xray_config_path):
+    try:
+        with open(xray_config_path, 'r') as f:
+            cfg = json.load(f)
+        for inbound in cfg.get('inbounds', []):
+            for client in inbound.get('settings', {}).get('clients', []):
+                email = client.get('email', '')
+                username = email.split('@')[0] if '@' in email else email
+                if username:
+                    current_xray_users.add(username.lower())
+    except Exception as e:
+        pass
+
+duplicates = current_users.union(current_xray_users)
+print(f"User duplikat yang terdeteksi dan dilewati: {list(duplicates)}")
+
+# 2. Merge passwd, shadow, group, gshadow
+new_passwd = []
+new_shadow = []
+new_group = []
+new_gshadow = []
+
+if os.path.exists(f"{backup_dir}/passwd"):
+    with open(f"{backup_dir}/passwd", 'r') as f:
+        bak_passwd = f.readlines()
+    with open(f"{backup_dir}/shadow", 'r') as f:
+        bak_shadow = f.readlines()
+    with open(f"{backup_dir}/group", 'r') as f:
+        bak_group = f.readlines()
+    with open(f"{backup_dir}/gshadow", 'r') as f:
+        bak_gshadow = f.readlines()
+
+    for line in bak_passwd:
+        parts = line.strip().split(':')
+        if len(parts) >= 3:
+            username = parts[0]
+            uid = int(parts[2])
+            if uid >= 1000 and username != 'nobody':
+                if username.lower() in duplicates:
+                    print(f"Skipping duplicate system user: {username}")
+                else:
+                    new_passwd.append(line)
+                    for s in bak_shadow:
+                        if s.startswith(username + ':'):
+                            new_shadow.append(s)
+                            break
+                    for g in bak_group:
+                        if g.startswith(username + ':'):
+                            new_group.append(g)
+                            break
+                    for gs in bak_gshadow:
+                        if gs.startswith(username + ':'):
+                            new_gshadow.append(gs)
+                            break
+
+    if new_passwd:
+        with open('/etc/passwd', 'a') as f:
+            f.writelines(new_passwd)
+        with open('/etc/shadow', 'a') as f:
+            f.writelines(new_shadow)
+        with open('/etc/group', 'a') as f:
+            f.writelines(new_group)
+        with open('/etc/gshadow', 'a') as f:
+            f.writelines(new_gshadow)
+
+# 3. Merge Xray configs
+backup_xray_config = f"{backup_dir}/xray/config.json"
+if os.path.exists(xray_config_path) and os.path.exists(backup_xray_config):
+    try:
+        with open(xray_config_path, 'r') as f:
+            curr_cfg = json.load(f)
+        with open(backup_xray_config, 'r') as f:
+            bak_cfg = json.load(f)
+            
+        curr_clients_by_id = {}
+        for inbound in curr_cfg.get('inbounds', []):
+            for client in inbound.get('settings', {}).get('clients', []):
+                c_id = client.get('id', client.get('password'))
+                if c_id:
+                    curr_clients_by_id[c_id] = client
+
+        merged_count = 0
+        for inbound in bak_cfg.get('inbounds', []):
+            protocol = inbound.get('protocol')
+            curr_inbound = None
+            for ci in curr_cfg.get('inbounds', []):
+                if ci.get('protocol') == protocol:
+                    curr_inbound = ci
+                    break
+            if curr_inbound:
+                curr_clients = curr_inbound.setdefault('settings', {}).setdefault('clients', [])
+                for client in inbound.get('settings', {}).get('clients', []):
+                    c_id = client.get('id', client.get('password'))
+                    email = client.get('email', '')
+                    username = email.split('@')[0] if '@' in email else email
+                    if username.lower() not in duplicates and c_id not in curr_clients_by_id:
+                        curr_clients.append(client)
+                        merged_count += 1
+                        
+        if merged_count > 0:
+            with open(xray_config_path, 'w') as f:
+                json.dump(curr_cfg, f, indent=4)
+    except Exception as e:
+        pass
+
+# 4. Merge bot SQLite database
+backup_db = f"{backup_dir}/kyt-bin/database.db"
+current_db = "/usr/bin/kyt/database.db"
+if os.path.exists(backup_db) and os.path.exists(current_db):
+    try:
+        c_new = sqlite3.connect(current_db)
+        c_old = sqlite3.connect(backup_db)
+        c_old.row_factory = sqlite3.Row
+        rows = c_old.execute("SELECT * FROM account_registry").fetchall()
+        for r in rows:
+            username = r['username']
+            if username.lower() not in duplicates:
+                c_new.execute(
+                    "INSERT OR REPLACE INTO account_registry (tg_id, service, category, username, is_trial, created_at, expires_at, active) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (r['tg_id'], r['service'], r['category'], r['username'], r['is_trial'], r['created_at'], r['expires_at'], r['active'])
+                )
+        c_new.commit()
+        c_new.close()
+        c_old.close()
+    except Exception as e:
+        pass
+
+# 5. Merge protocol database files (.ssh.db, etc.)
+for db_file in glob.glob(f"{backup_dir}/*.db"):
+    fname = os.path.basename(db_file)
+    target_db = f"/etc/ssh/.{fname}" if fname == 'ssh.db' else f"/etc/{fname.replace('.db','')}/.{fname}"
+    if os.path.exists(db_file) and os.path.exists(target_db):
+        try:
+            with open(target_db, 'r') as f:
+                curr_lines = f.readlines()
+            with open(db_file, 'r') as f:
+                bak_lines = f.readlines()
+            existing = {l.split()[1].lower() for l in curr_lines if len(l.split()) >= 2}
+            
+            append_lines = []
+            for line in bak_lines:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    username = parts[1]
+                    if username.lower() not in duplicates:
+                        append_lines.append(line)
+            if append_lines:
+                with open(target_db, 'a') as f:
+                    f.writelines(append_lines)
+        except Exception as e:
+            pass
+
+# 6. Copy limits and quotas for non-duplicate users
+for svc in ['ssh', 'vmess', 'vless', 'trojan', 'shadowsocks']:
+    limit_files = glob.glob(f"{backup_dir}/kyt/limit/{svc}/ip/*")
+    for f in limit_files:
+        user = os.path.basename(f)
+        if user.lower() not in duplicates:
+            os.makedirs(f"/etc/kyt/limit/{svc}/ip", exist_ok=True)
+            os.system(f"cp -f {f} /etc/kyt/limit/{svc}/ip/{user}")
+    quota_files = glob.glob(f"{backup_dir}/{svc}quota/*")
+    for f in quota_files:
+        user = os.path.basename(f)
+        if user.lower() not in duplicates:
+            os.makedirs(f"/etc/{svc}", exist_ok=True)
+            os.system(f"cp -f {f} /etc/{svc}/{user}")
+
+print("Merge completed successfully.")
+EOF
+        python3 /tmp/merge_restore.py
+        rm -f /tmp/merge_restore.py
+    fi
+    
+    # Copy html and openvpn profiles as they have no username conflicts
+    cp -r "$backupTempDir/html" /var/www/ 2>/dev/null || true
     cp /etc/openvpn/*.ovpn /var/www/html/ 2>/dev/null || true
     
     cd
@@ -70,8 +291,8 @@ function RESTOREVPS() {
 
     # Check if domain changed and renew SSL
     BACKUP_DOMAIN=""
-    if [[ -f /root/backup/xray/domain ]]; then
-        BACKUP_DOMAIN=$(cat /root/backup/xray/domain)
+    if [[ -f "$backupTempDir/xray/domain" ]]; then
+        BACKUP_DOMAIN=$(cat "$backupTempDir/xray/domain")
     fi
 
     if [[ -n "$CURRENT_DOMAIN" && -n "$BACKUP_DOMAIN" && "$CURRENT_DOMAIN" != "$BACKUP_DOMAIN" ]]; then

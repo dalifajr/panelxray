@@ -46,6 +46,8 @@ function BACKUPVPS() {
     cp -r /etc/vless/.vless.db /root/backup/vless.db 2>/dev/null || true
     cp -r /etc/trojan/.trojan.db /root/backup/trojan.db 2>/dev/null || true
     cp -r /etc/shadowsocks/.shadowsocks.db /root/backup/shadowsocks.db 2>/dev/null || true
+    cp -r /usr/bin/kyt /root/backup/kyt-bin 2>/dev/null || true
+    cp /opt/vpnxray-webpanel/database/database.sqlite /root/backup/database.sqlite 2>/dev/null || true
     
     cd /root
     if ! zip -r "$IP-$DATEVPS.zip" backup >/dev/null 2>&1; then

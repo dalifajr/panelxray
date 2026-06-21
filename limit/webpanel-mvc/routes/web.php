@@ -47,6 +47,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/admin/settings/prices', [\App\Http\Controllers\SettingController::class, 'updatePrices'])->name('admin.settings.prices');
         Route::post('/admin/settings/payment', [\App\Http\Controllers\SettingController::class, 'updatePayment'])->name('admin.settings.payment');
         Route::post('/admin/settings/announcement', [\App\Http\Controllers\SettingController::class, 'updateAnnouncement'])->name('admin.settings.announcement');
+        Route::post('/admin/settings/backup', [\App\Http\Controllers\BackupRestoreController::class, 'backup'])->name('admin.settings.backup');
+        Route::post('/admin/settings/restore/analyze', [\App\Http\Controllers\BackupRestoreController::class, 'analyzeRestore'])->name('admin.settings.restore.analyze');
+        Route::post('/admin/settings/restore', [\App\Http\Controllers\BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
+        Route::get('/admin/settings/restore/conflicts', [\App\Http\Controllers\BackupRestoreController::class, 'showConflicts'])->name('admin.settings.restore.conflicts');
+        Route::post('/admin/settings/restore/conflicts/resolve', [\App\Http\Controllers\BackupRestoreController::class, 'resolveConflict'])->name('admin.settings.restore.conflicts.resolve');
         Route::post('/admin/notifications/broadcast', [\App\Http\Controllers\NotificationController::class, 'broadcast'])->name('admin.notifications.broadcast');
 
         Route::get('/admin/finance', [\App\Http\Controllers\WalletController::class, 'adminFinance'])->name('admin.finance');
