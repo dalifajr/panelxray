@@ -1156,27 +1156,21 @@ HostKey /etc/ssh/ssh_host_ecdsa_key
 HostKey /etc/ssh/ssh_host_ed25519_key
 EOF
 
-# when socket activation is enabled, expose only port 22 for sshd
+# Disable socket activation on modern systems (Ubuntu 24.04+) to avoid conflicts and force classic SSH service
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-    mkdir -p /etc/systemd/system/ssh.socket.d
-    cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
-[Socket]
-ListenStream=
-ListenStream=0.0.0.0:22
-ListenStream=[::]:22
-EOF
-    systemctl daemon-reload >/dev/null 2>&1 || true
-    systemctl restart ssh.socket >/dev/null 2>&1 || true
+    systemctl stop ssh.socket >/dev/null 2>&1 || true
+    systemctl disable ssh.socket >/dev/null 2>&1 || true
 fi
+mkdir -p /run/sshd
+chmod 755 /run/sshd
 
 if sshd -t >/dev/null 2>&1; then
     if [[ -x /etc/init.d/ssh ]]; then
         /etc/init.d/ssh restart >/dev/null 2>&1 || true
     fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable ssh >/dev/null 2>&1 || systemctl enable sshd >/dev/null 2>&1 || true
     systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
-fi
-if [[ -x /etc/init.d/ssh ]]; then
-    /etc/init.d/ssh status >/dev/null 2>&1 || true
 fi
 print_success "SSHD"
 }

@@ -19,7 +19,7 @@ fi
 chmod +x /root/udp/udp-custom
 
 echo downloading default config
-wget -q --show-progress --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1klXTiKGUd2Cs5cBnH3eK2Q1w50Yx3jbf' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1klXTiKGUd2Cs5cBnH3eK2Q1w50Yx3jbf" -O /root/udp/config.json && rm -rf /tmp/cookies.txt
+wget -q --show-progress -O /root/udp/config.json "https://raw.githubusercontent.com/powermx/httpcustomudp/main/config.json"
 chmod 644 /root/udp/config.json
 
 if [ -z "$1" ]; then
