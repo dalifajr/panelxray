@@ -402,7 +402,12 @@ download_config() {
     curl https://raw.githubusercontent.com/xxxserxxx/gotop/master/scripts/download.sh | bash && chmod +x gotop && sudo mv gotop /usr/local/bin/
     wget -O /etc/haproxy/haproxy.cfg "${PANEL_REPO}limit/haproxy.cfg" >/dev/null 2>&1
     wget -O /etc/nginx/conf.d/xray.conf "${PANEL_REPO}limit/xray.conf" >/dev/null 2>&1
-    wget -O /usr/bin/udp "https://github.com/FighterTunnel/tunnel/raw/main/fodder/bhoikfostyahya/udp-custom-linux-amd64" >/dev/null 2>&1
+    SYS_ARCH=$(uname -m)
+    if [[ "$SYS_ARCH" == "aarch64" ]]; then
+        wget -O /usr/bin/udp "https://github.com/powermx/udp-custom-arm64/raw/main/udp-custom-linux-arm64" >/dev/null 2>&1
+    else
+        wget -O /usr/bin/udp "https://github.com/FighterTunnel/tunnel/raw/main/fodder/bhoikfostyahya/udp-custom-linux-amd64" >/dev/null 2>&1
+    fi
     wget -O /etc/nginx/nginx.conf "https://github.com/FighterTunnel/tunnel/raw/main/fodder/nginx/nginx.conf" >/dev/null 2>&1
     local script_dir repo_root menu_src
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
