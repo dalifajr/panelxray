@@ -51,11 +51,11 @@ detect_local_edge_ip() {
 }
 
 probe_tls_public() {
-  echo | openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
+  echo | timeout 5 openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
 }
 
 probe_tls_local() {
-  echo | openssl s_client -connect "${TLS_LOCAL_TARGET}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
+  echo | timeout 5 openssl s_client -connect "${TLS_LOCAL_TARGET}:443" -servername "${DOMAIN}" -alpn h2,http/1.1 -brief >/dev/null 2>&1
 }
 
 http_code_from_curl() {

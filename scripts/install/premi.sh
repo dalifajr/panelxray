@@ -1216,7 +1216,7 @@ if [[ "$SYS_ARCH" == "aarch64" ]]; then
     echo -e "${OK} Compiling badvpn-udpgw for ARM..."
     apt-get install -y cmake build-essential >/dev/null 2>&1 || true
     BADVPN_TMP=$(mktemp -d)
-    git clone --depth 1 https://github.com/nicehash/badvpn.git "$BADVPN_TMP" >/dev/null 2>&1
+    git clone --depth 1 https://github.com/ambrop72/badvpn.git "$BADVPN_TMP" >/dev/null 2>&1
     cd "$BADVPN_TMP"
     mkdir build && cd build
     cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 >/dev/null 2>&1
