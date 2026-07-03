@@ -17,7 +17,22 @@ function ovpn_install() {
 function config_easy() {
     cd
     mkdir -p /usr/lib/openvpn/
-    cp /usr/lib/x86_64-linux-gnu/openvpn/plugins/openvpn-plugin-auth-pam.so /usr/lib/openvpn/openvpn-plugin-auth-pam.so
+    # Detect multiarch lib path dynamically
+    MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "")
+    if [[ -z "$MULTIARCH" ]]; then
+        SYS_ARCH=$(uname -m)
+        if [[ "$SYS_ARCH" == "aarch64" ]]; then
+            MULTIARCH="aarch64-linux-gnu"
+        else
+            MULTIARCH="x86_64-linux-gnu"
+        fi
+    fi
+    PAM_SO="/usr/lib/${MULTIARCH}/openvpn/plugins/openvpn-plugin-auth-pam.so"
+    if [[ -f "$PAM_SO" ]]; then
+        cp "$PAM_SO" /usr/lib/openvpn/openvpn-plugin-auth-pam.so
+    else
+        echo "Warning: openvpn-plugin-auth-pam.so not found at $PAM_SO"
+    fi
     sed -i 's/#AUTOSTART="all"/AUTOSTART="all"/g' /etc/default/openvpn
     systemctl enable --now openvpn-server@server-tcp
     systemctl enable --now openvpn-server@server-udp

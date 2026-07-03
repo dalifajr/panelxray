@@ -123,10 +123,11 @@ sleep 2
 ###### IZIN SC 
 
 # // Checking Os Architecture
-if [[ $( uname -m | awk '{print $1}' ) == "x86_64" ]]; then
-    echo -e "${OK} Your Architecture Is Supported ( ${green}$( uname -m )${NC} )"
+SYS_ARCH=$(uname -m)
+if [[ "$SYS_ARCH" == "x86_64" ]] || [[ "$SYS_ARCH" == "aarch64" ]]; then
+    echo -e "${OK} Your Architecture Is Supported ( ${green}${SYS_ARCH}${NC} )"
 else
-    echo -e "${EROR} Your Architecture Is Not Supported ( ${YELLOW}$( uname -m )${NC} )"
+    echo -e "${EROR} Your Architecture Is Not Supported ( ${YELLOW}${SYS_ARCH}${NC} )"
     exit 1
 fi
 }
@@ -340,7 +341,13 @@ chmod +x /etc/default/dropbear
 chmod 700 /etc/ssh/sshd_config
     wget -O /etc/kyt.txt "${REPO}ssh/issue.net"
     wget -O /etc/pam.d/common-password "https://github.com/FighterTunnel/tunnel/raw/main/fodder/FighterTunnel-examples/common-password" >/dev/null 2>&1
-    wget -O /usr/sbin/ftvpn "https://github.com/FighterTunnel/tunnel/raw/main/fodder/FighterTunnel-examples/ftvpn" >/dev/null 2>&1
+    SYS_ARCH=$(uname -m)
+    if [[ "$SYS_ARCH" == "aarch64" ]]; then
+        apt-get install -y haproxy >/dev/null 2>&1 || true
+        ln -sf /usr/sbin/haproxy /usr/sbin/ftvpn
+    else
+        wget -O /usr/sbin/ftvpn "https://github.com/FighterTunnel/tunnel/raw/main/fodder/FighterTunnel-examples/ftvpn" >/dev/null 2>&1
+    fi
     wget -q -O /etc/ipserver "https://github.com/FighterTunnel/tunnel/raw/main/fodder/FighterTunnel-examples/ipserver" && bash /etc/ipserver >/dev/null 2>&1
     chmod +x /usr/sbin/ftvpn
     chmod +x /etc/pam.d/common-password

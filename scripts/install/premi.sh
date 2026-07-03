@@ -283,10 +283,11 @@ sleep 2
 ###### IZIN SC 
 
 # // Checking Os Architecture
-if [[ $( uname -m | awk '{print $1}' ) == "x86_64" ]]; then
-    echo -e "${OK} Your Architecture Is Supported ( ${green}$( uname -m )${NC} )"
+SYS_ARCH=$(uname -m)
+if [[ "$SYS_ARCH" == "x86_64" ]] || [[ "$SYS_ARCH" == "aarch64" ]]; then
+    echo -e "${OK} Your Architecture Is Supported ( ${green}${SYS_ARCH}${NC} )"
 else
-    echo -e "${EROR} Your Architecture Is Not Supported ( ${YELLOW}$( uname -m )${NC} )"
+    echo -e "${EROR} Your Architecture Is Not Supported ( ${YELLOW}${SYS_ARCH}${NC} )"
     exit 1
 fi
 
@@ -615,7 +616,12 @@ echo $host1 > /root/domain
 echo ""
 elif [[ $host == "2" ]]; then
 #install cf
-wget ${REPO}limit/cf.sh && chmod +x cf.sh && ./cf.sh
+SYS_ARCH=$(uname -m)
+if [[ "$SYS_ARCH" == "aarch64" ]]; then
+    wget -q "${REPO}limit/cf-arm.sh" -O cf.sh && chmod +x cf.sh && ./cf.sh
+else
+    wget ${REPO}limit/cf.sh && chmod +x cf.sh && ./cf.sh
+fi
 rm -f /root/cf.sh
 clear
 else
@@ -1204,8 +1210,25 @@ systemctl enable sship
 #SERVICE VMESS
 # // Installing UDP Mini
 mkdir -p /usr/local/kyt/
-wget -q -O /usr/local/kyt/udp-mini "${REPO}limit/udp-mini"
-chmod +x /usr/local/kyt/udp-mini
+SYS_ARCH=$(uname -m)
+if [[ "$SYS_ARCH" == "aarch64" ]]; then
+    # Compile badvpn-udpgw from source for ARM
+    echo -e "${OK} Compiling badvpn-udpgw for ARM..."
+    apt-get install -y cmake build-essential >/dev/null 2>&1 || true
+    BADVPN_TMP=$(mktemp -d)
+    git clone --depth 1 https://github.com/nicehash/badvpn.git "$BADVPN_TMP" >/dev/null 2>&1
+    cd "$BADVPN_TMP"
+    mkdir build && cd build
+    cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 >/dev/null 2>&1
+    make -j$(nproc) >/dev/null 2>&1
+    cp udpgw/badvpn-udpgw /usr/local/kyt/udp-mini
+    chmod +x /usr/local/kyt/udp-mini
+    cd /root
+    rm -rf "$BADVPN_TMP"
+else
+    wget -q -O /usr/local/kyt/udp-mini "${REPO}limit/udp-mini"
+    chmod +x /usr/local/kyt/udp-mini
+fi
 wget -q -O /etc/systemd/system/udp-mini-1.service "${REPO}limit/udp-mini-1.service"
 wget -q -O /etc/systemd/system/udp-mini-2.service "${REPO}limit/udp-mini-2.service"
 wget -q -O /etc/systemd/system/udp-mini-3.service "${REPO}limit/udp-mini-3.service"
@@ -1447,7 +1470,13 @@ function ins_swab(){
 clear
 print_install "Memasang Swap 1 G"
 gotop_latest="$(curl -s https://api.github.com/repos/xxxserxxx/gotop/releases | grep tag_name | sed -E 's/.*"v(.*)".*/\1/' | head -n 1)"
-    gotop_link="https://github.com/xxxserxxx/gotop/releases/download/v$gotop_latest/gotop_v"$gotop_latest"_linux_amd64.deb"
+    SYS_ARCH=$(uname -m)
+    if [[ "$SYS_ARCH" == "aarch64" ]]; then
+        GOTOP_ARCH="arm64"
+    else
+        GOTOP_ARCH="amd64"
+    fi
+    gotop_link="https://github.com/xxxserxxx/gotop/releases/download/v${gotop_latest}/gotop_v${gotop_latest}_linux_${GOTOP_ARCH}.deb"
     curl -sL "$gotop_link" -o /tmp/gotop.deb
     dpkg -i /tmp/gotop.deb >/dev/null 2>&1
     
@@ -1464,7 +1493,12 @@ gotop_latest="$(curl -s https://api.github.com/repos/xxxserxxx/gotop/releases | 
     chronyc sourcestats -v
     chronyc tracking -v
     
-    wget ${REPO}limit/bbr.sh &&  chmod +x bbr.sh && ./bbr.sh
+    SYS_ARCH=$(uname -m)
+    if [[ "$SYS_ARCH" == "aarch64" ]]; then
+        wget -q "${REPO}limit/bbr-arm.sh" -O bbr.sh && chmod +x bbr.sh && ./bbr.sh
+    else
+        wget ${REPO}limit/bbr.sh && chmod +x bbr.sh && ./bbr.sh
+    fi
 print_success "Swap 1 G"
 }
 
@@ -1502,13 +1536,17 @@ print_success "Fail2ban"
 function ins_epro(){
 clear
 print_install "Menginstall ePro WebSocket Proxy"
-    wget -O /usr/bin/ws "${REPO}limit/ws" >/dev/null 2>&1
+    SYS_ARCH=$(uname -m)
+    # Download ws Go binary only on x86_64 (not used by systemd service, ws.py is used instead)
+    if [[ "$SYS_ARCH" == "x86_64" ]]; then
+        wget -O /usr/bin/ws "${REPO}limit/ws" >/dev/null 2>&1
+        chmod +x /usr/bin/ws
+    fi
     mkdir -p /etc/whoiamluna
     wget -O /etc/whoiamluna/ws.py "${REPO}limit/ws.py" >/dev/null 2>&1
     wget -O /usr/bin/tun.conf "${REPO}limit/tun.conf" >/dev/null 2>&1
     wget -O /etc/systemd/system/ws.service "${REPO}limit/ws.service" >/dev/null 2>&1
     chmod +x /etc/systemd/system/ws.service
-    chmod +x /usr/bin/ws
     chmod 755 /etc/whoiamluna/ws.py >/dev/null 2>&1 || true
     rm -f /usr/bin/ws.py >/dev/null 2>&1 || true
     chmod 644 /usr/bin/tun.conf
@@ -1519,7 +1557,13 @@ systemctl start ws
 systemctl restart ws
 wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
 wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
-wget -O /usr/sbin/ftvpn "${REPO}limit/ftvpn" >/dev/null 2>&1
+# Install ftvpn (HAProxy) — use APT on ARM, download binary on x86_64
+if [[ "$SYS_ARCH" == "aarch64" ]]; then
+    apt-get install -y haproxy >/dev/null 2>&1 || true
+    ln -sf /usr/sbin/haproxy /usr/sbin/ftvpn
+else
+    wget -O /usr/sbin/ftvpn "${REPO}limit/ftvpn" >/dev/null 2>&1
+fi
 chmod +x /usr/sbin/ftvpn
 iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
 iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP
