@@ -73,12 +73,31 @@ function pasang_domain() {
     sleep 1
     read -rp "Input ur domain : " -e pp
     if [ -z $pp ]; then
-        echo -e "
-        Tidak ada domain yang di input"
+        echo -e "\n        Tidak ada domain yang di input"
     else
-    echo "$pp" > /etc/xray/domain
-    echo $pp > /root/domain
+        old_domain=$(cat /etc/xray/domain 2>/dev/null || echo "")
+        echo "$pp" > /etc/xray/domain
+        echo $pp > /root/domain
         echo "IP=$pp" > /var/lib/kyt/ipvps.conf
+        
+        # Update domain in nginx configurations
+        if [[ -n "$old_domain" && -f /etc/nginx/conf.d/xray.conf ]]; then
+            sed -i "s/${old_domain}/${pp}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        fi
+        if [ -f /etc/nginx/conf.d/xray.conf ]; then
+            sed -i "s/server_name .*/server_name ${pp};/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        fi
+        
+        # Update domain in bot var.txt
+        if [ -f /usr/bin/kyt/var.txt ]; then
+            sed -i "s/DOMAIN=.*/DOMAIN='${pp}'/g" /usr/bin/kyt/var.txt 2>/dev/null || true
+            systemctl restart kyt 2>/dev/null || true
+        fi
+        
+        # Update domain in web panel .env
+        if [ -f /var/www/webpanel-mvc/.env ]; then
+            sed -i "s|^APP_URL=.*|APP_URL=https://${pp}|g" /var/www/webpanel-mvc/.env 2>/dev/null || true
+        fi
     fi
 }
 
@@ -91,10 +110,10 @@ function pasang_ssl() {
     domain=$(cat /etc/xray/domain)
     STOPWEBSERVER=$(lsof -i:80 | cut -d' ' -f1 | awk 'NR==2 {print $1}')
     rm -rf /root/.acme.sh
-    mkdir /root/.acme.sh
-    systemctl stop $STOPWEBSERVER
-    systemctl stop nginx
-    systemctl stop haproxy
+    mkdir -p /root/.acme.sh
+    systemctl stop $STOPWEBSERVER 2>/dev/null || true
+    systemctl stop nginx 2>/dev/null || true
+    systemctl stop haproxy 2>/dev/null || true
     curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
     chmod +x /root/.acme.sh/acme.sh
     /root/.acme.sh/acme.sh --upgrade --auto-upgrade
@@ -102,6 +121,10 @@ function pasang_ssl() {
     /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
     ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
     chmod 777 /etc/xray/xray.key
+    
+    # Update HAProxy PEM certificate bundle
+    cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem >/dev/null 2>&1 || true
+    
     systemctl restart nginx
     systemctl restart xray
     systemctl restart haproxy

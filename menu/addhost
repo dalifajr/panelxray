@@ -87,6 +87,17 @@ function pasang_domain() {
         if [ -f /etc/nginx/conf.d/xray.conf ]; then
             sed -i "s/server_name .*/server_name ${pp};/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         fi
+        
+        # Update domain in bot var.txt
+        if [ -f /usr/bin/kyt/var.txt ]; then
+            sed -i "s/DOMAIN=.*/DOMAIN='${pp}'/g" /usr/bin/kyt/var.txt 2>/dev/null || true
+            systemctl restart kyt 2>/dev/null || true
+        fi
+        
+        # Update domain in web panel .env
+        if [ -f /var/www/webpanel-mvc/.env ]; then
+            sed -i "s|^APP_URL=.*|APP_URL=https://${pp}|g" /var/www/webpanel-mvc/.env 2>/dev/null || true
+        fi
     fi
 }
 
