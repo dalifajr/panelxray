@@ -164,6 +164,31 @@ try:
             # Sisipkan root dan php_block setelah listen 1013
             config = re.sub(r'(listen\s+1013\s+http2\s+proxy_protocol.*?;)', r'\1\n    root /var/www/webpanel-mvc/public;\n' + php_block, config, count=1)
 
+    # Perbaiki Port 1010 (HTTP/1.1 Fallback dari HAProxy) agar bisa menyajikan Laravel Web Panel saat di-proxy Cloudflare
+    if 'listen 1010' in config:
+        port_1010_block = config.split('listen 1010', 1)[1]
+        if 'root /var/www/webpanel-mvc/public;' not in port_1010_block:
+            # Sisipkan root dan php_block setelah listen 1010
+            config = re.sub(r'(listen\s+1010\s+proxy_protocol.*?;)', r'\1\n    root /var/www/webpanel-mvc/public;\n' + php_block, config, count=1)
+            
+            # Ganti location ~ / lama pada port 1010 agar support Laravel fallback routing
+            old_loc = r'location ~ / {\s*if \(\$http_upgrade != "Websocket"\) \{\s*rewrite /\(\.\*\) /fightertunnelssh break;\s*\}\s*proxy_headers_hash_max_size 512;\s*proxy_headers_hash_bucket_size 128;\s*proxy_http_version 1.1;\s*proxy_redirect off;\s*proxy_pass http://127.0.0.1:10015;\s*proxy_set_header Upgrade \$http_upgrade;\s*proxy_set_header Connection "upgrade";\s*proxy_set_header Host \$host;\s*proxy_set_header X-Real-IP \$http_x_forwarded_for;\s*proxy_set_header X-Forwarded-For \$http_x_forwarded_for;\s*\}'
+            
+            new_loc = r"""location ~ / {
+        if ($http_upgrade = "Websocket") {
+            proxy_pass http://127.0.0.1:10015;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $http_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $http_x_forwarded_for;
+            break;
+        }
+        try_files $uri $uri/ /index.php?$query_string;
+    }"""
+            config = re.sub(old_loc, new_loc, config)
+
     with open(path, 'w') as f:
         f.write(config)
 except Exception as e:
