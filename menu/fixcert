@@ -63,10 +63,10 @@ function pasang_ssl() {
     domain=$(cat /etc/xray/domain)
     STOPWEBSERVER=$(lsof -i:80 | cut -d' ' -f1 | awk 'NR==2 {print $1}')
     rm -rf /root/.acme.sh
-    mkdir /root/.acme.sh
-    systemctl stop $STOPWEBSERVER
-    systemctl stop nginx
-    systemctl stop haproxy
+    mkdir -p /root/.acme.sh
+    systemctl stop $STOPWEBSERVER 2>/dev/null || true
+    systemctl stop nginx 2>/dev/null || true
+    systemctl stop haproxy 2>/dev/null || true
     curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
     chmod +x /root/.acme.sh/acme.sh
     /root/.acme.sh/acme.sh --upgrade --auto-upgrade
@@ -74,6 +74,10 @@ function pasang_ssl() {
     /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
     ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
     chmod 777 /etc/xray/xray.key
+    
+    # Update HAProxy PEM certificate bundle
+    cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem >/dev/null 2>&1 || true
+    
     systemctl restart nginx
     systemctl restart xray
     systemctl restart haproxy
