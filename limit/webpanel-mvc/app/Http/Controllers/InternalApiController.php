@@ -93,8 +93,8 @@ class InternalApiController extends Controller
         if (!$user) {
             $user = TelegramBotUser::create([
                 'tg_id' => $tgId,
-                'tg_username' => $request->input('tg_username', ''),
-                'tg_full_name' => $request->input('tg_full_name', ''),
+                'tg_username' => $request->input('tg_username') ?: '',
+                'tg_full_name' => $request->input('tg_full_name') ?: '',
                 'role' => 'user',
                 'status' => 'pending',
             ]);
@@ -109,11 +109,11 @@ class InternalApiController extends Controller
             // Update username/full_name if provided
             $changed = false;
             if ($request->filled('tg_username') && $request->input('tg_username') !== $user->tg_username) {
-                $user->tg_username = $request->input('tg_username');
+                $user->tg_username = $request->input('tg_username') ?: '';
                 $changed = true;
             }
             if ($request->filled('tg_full_name') && $request->input('tg_full_name') !== $user->tg_full_name) {
-                $user->tg_full_name = $request->input('tg_full_name');
+                $user->tg_full_name = $request->input('tg_full_name') ?: '';
                 $changed = true;
             }
             if ($changed) {
@@ -320,9 +320,9 @@ class InternalApiController extends Controller
 
         $ar = TelegramAccessRequest::create([
             'tg_id' => $request->input('tg_id'),
-            'tg_username' => $request->input('tg_username', ''),
-            'tg_full_name' => $request->input('tg_full_name', ''),
-            'reason' => $request->input('reason', ''),
+            'tg_username' => $request->input('tg_username') ?: '',
+            'tg_full_name' => $request->input('tg_full_name') ?: '',
+            'reason' => $request->input('reason') ?: '',
             'status' => 'pending',
         ]);
 
