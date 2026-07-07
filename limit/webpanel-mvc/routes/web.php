@@ -131,6 +131,8 @@ Route::prefix('api/internal')->group(function () {
     // Access requests
     Route::post('/bot/access-request', [\App\Http\Controllers\InternalApiController::class, 'createAccessRequest']);
     Route::get('/bot/access-requests', [\App\Http\Controllers\InternalApiController::class, 'listAccessRequests']);
+    Route::post('/bot/access-request/{id}/approve', [\App\Http\Controllers\InternalApiController::class, 'approveAccessRequest']);
+    Route::post('/bot/access-request/{id}/reject', [\App\Http\Controllers\InternalApiController::class, 'rejectAccessRequest']);
 
     // Quota requests
     Route::post('/bot/quota-request', [\App\Http\Controllers\InternalApiController::class, 'createQuotaRequest']);

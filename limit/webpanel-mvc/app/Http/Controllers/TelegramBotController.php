@@ -49,8 +49,8 @@ class TelegramBotController extends Controller
         $botUser = TelegramBotUser::firstOrCreate(
             ['tg_id' => $req->tg_id],
             [
-                'tg_username' => $req->tg_username,
-                'tg_full_name' => $req->tg_full_name,
+                'tg_username' => $req->tg_username ?? '',
+                'tg_full_name' => $req->tg_full_name ?? '',
                 'role' => 'user',
                 'status' => 'approved',
             ]
