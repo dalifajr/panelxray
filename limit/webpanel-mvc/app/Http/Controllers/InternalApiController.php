@@ -27,7 +27,7 @@ class InternalApiController extends Controller
             return false;
         }
         $storedKey = Setting::where('key', 'payment_secret_key')->value('value');
-        if (!$storedKey) {
+        if (empty($storedKey)) {
             // Fallback to legacy hardcoded key during migration period
             return $secret === 'secret123';
         }

@@ -54,6 +54,26 @@ async def require_access(event, admin_only: bool = False) -> bool:
         await upsert_message(event, "⛔ Menu ini hanya untuk admin.")
         return False
 
+    # Sales Mode Bypass Check
+    bot_mode = globals().get("BOT_MODE", "admin_only")
+    if bot_mode == "sales":
+        try:
+            record = get_user_record(sender_id) or {}
+            status = str(record.get("status", "approved") or "approved").lower()
+            if status in ["suspended", "rejected", "kicked"]:
+                try:
+                    await event.answer("Akses Anda ditangguhkan", alert=True)
+                except Exception:
+                    pass
+                msg = "⛔ Akses bot Anda sedang ditangguhkan atau ditolak oleh admin."
+                if record.get("note"):
+                    msg += f"\n\nAlasan: `{record.get('note')}`"
+                await upsert_message(event, msg)
+                return False
+        except Exception as e:
+            logging.error("Failed to check user status in sales mode: %s", e)
+        return True
+
     try:
         if valid(sender_id) == "true":
             return True
