@@ -24,14 +24,22 @@ class InternalApiController extends Controller
     {
         $secret = $request->header('X-Internal-Secret');
         if (!$secret) {
+            \Illuminate\Support\Facades\Log::warning("Internal API Auth Failed: Missing X-Internal-Secret header.");
             return false;
         }
         $storedKey = Setting::where('key', 'payment_secret_key')->value('value');
         if (empty($storedKey)) {
-            // Fallback to legacy hardcoded key during migration period
-            return $secret === 'secret123';
+            $ok = ($secret === 'secret123');
+            if (!$ok) {
+                \Illuminate\Support\Facades\Log::warning("Internal API Auth Failed: Fallback key mismatch. Received: '{$secret}'");
+            }
+            return $ok;
         }
-        return hash_equals($storedKey, $secret);
+        $ok = hash_equals($storedKey, $secret);
+        if (!$ok) {
+            \Illuminate\Support\Facades\Log::warning("Internal API Auth Failed: Key mismatch. Stored: '{$storedKey}', Received: '{$secret}'");
+        }
+        return $ok;
     }
 
     private function unauthorized(): JsonResponse
