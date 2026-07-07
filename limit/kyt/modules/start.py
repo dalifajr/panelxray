@@ -6,6 +6,7 @@ from kyt.modules.ui import require_access, menu_credit, is_admin
 async def start(event):
 	logging.info("Received /start command! Sender: %s, Text: %s", event.sender_id, getattr(event, 'text', 'Callback'))
 	try:
+		logging.info("[DEBUG START] Match pattern check")
 		match = event.pattern_match if hasattr(event, 'pattern_match') else None
 		if match and match.lastindex and match.group(1):
 			token_str = match.group(1).strip()
@@ -15,15 +16,23 @@ async def start(event):
 				return await handle_login_token(event, token_str)
 				 
 		# Determine mode and role
+		logging.info("[DEBUG START] is_admin check")
 		admin_mode = is_admin(event.sender_id)
+		logging.info("[DEBUG START] admin_mode: %s", admin_mode)
 
 		# Load bot mode from .env/var.txt
 		bot_mode = globals().get("BOT_MODE", "admin_only")
+		logging.info("[DEBUG START] bot_mode: %s", bot_mode)
 
 		# Access control check
-		if not await require_access(event):
+		logging.info("[DEBUG START] require_access start")
+		has_access = await require_access(event)
+		logging.info("[DEBUG START] require_access result: %s", has_access)
+		if not has_access:
+			logging.info("[DEBUG START] early return due to require_access False")
 			return
 
+		logging.info("[DEBUG START] building inline keyboard")
 		if bot_mode == "sales":
 			if admin_mode:
 				inline = [
@@ -45,6 +54,7 @@ async def start(event):
 				[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
 			]
 
+		logging.info("[DEBUG START] starting subprocesses")
 		try:
 			sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"
 			namaos = subprocess.check_output(sdss, shell=True, timeout=2).decode("ascii").strip().replace('"', '')
@@ -61,6 +71,7 @@ async def start(event):
 		except Exception:
 			city = "unknown"
 
+		logging.info("[DEBUG START] formatting message")
 		if bot_mode == "sales" and not admin_mode:
 			msg = (
 				"👋 **Selamat datang di Bot Jualan VPN**\n"
@@ -80,10 +91,14 @@ async def start(event):
 				f"{menu_credit()}"
 			)
 
+		logging.info("[DEBUG START] sending message (event.edit)")
 		try:
 			await event.edit(msg, buttons=inline)
-		except Exception:
+			logging.info("[DEBUG START] event.edit success")
+		except Exception as edit_err:
+			logging.info("[DEBUG START] event.edit failed: %s, trying event.reply", edit_err)
 			await event.reply(msg, buttons=inline)
+			logging.info("[DEBUG START] event.reply success")
 	except Exception as exc:
 		logging.exception("Exception inside start handler: %s", exc)
 
