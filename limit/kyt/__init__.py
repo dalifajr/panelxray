@@ -456,6 +456,7 @@ def _bootstrap_db():
 	cursor.execute("UPDATE account_registry SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
 	cursor.execute("UPDATE account_registry SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
 
+_bootstrap_db()
 
 # ─── API Integration ───
 import urllib3
