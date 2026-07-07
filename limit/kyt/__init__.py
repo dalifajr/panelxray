@@ -582,6 +582,26 @@ def create_access_request(tg_id, username: str = "", full_name: str = "", reason
 		return {"ok": False, "status": "error"}
 	return {"ok": True, "status": "created", "request": res.get("request", {})}
 
+def process_access_request(request_id, admin_id, approved: bool, note: str = "") -> Optional[Dict]:
+	action = "approve" if approved else "reject"
+	res = api_call("POST", f"/bot/access-request/{request_id}/{action}", {
+		"admin_id": str(admin_id),
+		"note": str(note or "").strip()
+	})
+	if "error" in res:
+		logging.error("process_access_request failed: %s", res)
+		return None
+	
+	req_obj = res.get("request") or {}
+	user_obj = res.get("user") or {}
+	tg_id = req_obj.get("tg_id") or user_obj.get("tg_id")
+	
+	return {
+		"ok": True,
+		"tg_id": tg_id,
+		**res
+	}
+
 def get_user_limits(tg_id) -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:

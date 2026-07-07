@@ -49,8 +49,8 @@ class TelegramBotController extends Controller
         $botUser = TelegramBotUser::firstOrCreate(
             ['tg_id' => $req->tg_id],
             [
-                'tg_username' => $req->tg_username,
-                'tg_full_name' => $req->tg_full_name,
+                'tg_username' => $req->tg_username ?? '',
+                'tg_full_name' => $req->tg_full_name ?? '',
                 'role' => 'user',
                 'status' => 'approved',
             ]
@@ -62,7 +62,7 @@ class TelegramBotController extends Controller
         $req->update([
             'status' => 'approved',
             'admin_id' => (string)auth()->id(),
-            'admin_reason' => $request->input('reason', 'Approved via Web Admin'),
+            'admin_reason' => $request->input('reason') ?: 'Approved via Web Admin',
             'processed_at' => now(),
         ]);
 
@@ -82,7 +82,7 @@ class TelegramBotController extends Controller
         $req->update([
             'status' => 'rejected',
             'admin_id' => (string)auth()->id(),
-            'admin_reason' => $request->input('reason', 'Rejected via Web Admin'),
+            'admin_reason' => $request->input('reason') ?: 'Rejected via Web Admin',
             'processed_at' => now(),
         ]);
 

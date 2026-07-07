@@ -347,6 +347,74 @@ class InternalApiController extends Controller
         return response()->json(['requests' => $requests]);
     }
 
+    /**
+     * POST /api/internal/bot/access-request/{id}/approve
+     */
+    public function approveAccessRequest(Request $request, int $id): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $req = TelegramAccessRequest::find($id);
+        if (!$req) {
+            return response()->json(['error' => 'Request not found'], 404);
+        }
+
+        $botUser = TelegramBotUser::firstOrCreate(
+            ['tg_id' => $req->tg_id],
+            [
+                'tg_username' => $req->tg_username ?? '',
+                'tg_full_name' => $req->tg_full_name ?? '',
+                'role' => 'user',
+                'status' => 'approved',
+            ]
+        );
+
+        $botUser->status = 'approved';
+        $botUser->save();
+
+        $req->status = 'approved';
+        $req->admin_id = (string)$request->input('admin_id', '');
+        $req->admin_reason = $request->input('note') ?: 'Approved via Bot';
+        $req->processed_at = now();
+        $req->save();
+
+        return response()->json(['status' => 'ok', 'user' => $botUser->fresh(), 'request' => $req->fresh()]);
+    }
+
+    /**
+     * POST /api/internal/bot/access-request/{id}/reject
+     */
+    public function rejectAccessRequest(Request $request, int $id): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $req = TelegramAccessRequest::find($id);
+        if (!$req) {
+            return response()->json(['error' => 'Request not found'], 404);
+        }
+
+        $botUser = TelegramBotUser::firstOrCreate(
+            ['tg_id' => $req->tg_id],
+            [
+                'tg_username' => $req->tg_username ?? '',
+                'tg_full_name' => $req->tg_full_name ?? '',
+                'role' => 'user',
+                'status' => 'rejected',
+            ]
+        );
+
+        $botUser->status = 'rejected';
+        $botUser->save();
+
+        $req->status = 'rejected';
+        $req->admin_id = (string)$request->input('admin_id', '');
+        $req->admin_reason = $request->input('note') ?: 'Rejected via Bot';
+        $req->processed_at = now();
+        $req->save();
+
+        return response()->json(['status' => 'ok', 'user' => $botUser->fresh(), 'request' => $req->fresh()]);
+    }
+
     // ─────────────────────────────────────────────
     // Quota Requests
     // ─────────────────────────────────────────────
@@ -396,8 +464,8 @@ class InternalApiController extends Controller
         }
 
         $qr->status = 'approved';
-        $qr->admin_id = $request->input('admin_id', '');
-        $qr->admin_reason = $request->input('note', '');
+        $qr->admin_id = $request->input('admin_id') ?: '';
+        $qr->admin_reason = $request->input('note') ?: '';
         $qr->processed_at = now();
         $qr->save();
 
@@ -429,8 +497,8 @@ class InternalApiController extends Controller
         }
 
         $qr->status = 'rejected';
-        $qr->admin_id = $request->input('admin_id', '');
-        $qr->admin_reason = $request->input('note', '');
+        $qr->admin_id = $request->input('admin_id') ?: '';
+        $qr->admin_reason = $request->input('note') ?: '';
         $qr->processed_at = now();
         $qr->save();
 
