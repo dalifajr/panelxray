@@ -20,6 +20,15 @@ async def menu(event):
 
 	sender = await event.get_sender()
 	admin_mode = is_admin(sender.id)
+	bot_mode = globals().get("BOT_MODE", "admin_only")
+
+	if bot_mode == "sales" and not admin_mode:
+		try:
+			await event.answer("⚠️ Menu khusus admin panel.", alert=True)
+		except Exception:
+			pass
+		await upsert_message(event, "⛔ Menu ini hanya untuk admin panel.")
+		return
 
 	if admin_mode:
 		inline = [

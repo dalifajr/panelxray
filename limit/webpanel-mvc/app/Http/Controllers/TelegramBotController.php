@@ -23,7 +23,7 @@ class TelegramBotController extends Controller
     public function updateUser(Request $request, TelegramBotUser $botUser)
     {
         $validated = $request->validate([
-            'role' => 'required|in:admin,reseller,user',
+            'role' => 'required|in:admin,user',
             'status' => 'required|in:pending,approved,rejected,suspended',
             'ssh_limit' => 'required|integer|min:0',
             'xray_limit' => 'required|integer|min:0',
@@ -66,12 +66,7 @@ class TelegramBotController extends Controller
         // Auto-create and sync web user account
         $botUser->syncWebUser();
 
-        $req->update([
-            'status' => 'approved',
-            'admin_id' => (string)auth()->id(),
-            'admin_reason' => $request->input('reason') ?: 'Approved via Web Admin',
-            'processed_at' => now(),
-        ]);
+        $req->delete();
 
         return back()->with('sweet_success', 'Request akses berhasil disetujui!');
     }
@@ -86,12 +81,7 @@ class TelegramBotController extends Controller
             $botUser->save();
         }
 
-        $req->update([
-            'status' => 'rejected',
-            'admin_id' => (string)auth()->id(),
-            'admin_reason' => $request->input('reason') ?: 'Rejected via Web Admin',
-            'processed_at' => now(),
-        ]);
+        $req->delete();
 
         return back()->with('sweet_success', 'Request akses berhasil ditolak.');
     }

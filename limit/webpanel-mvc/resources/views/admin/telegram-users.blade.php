@@ -64,7 +64,7 @@
                                         </div>
                                     </td>
                                     <td data-label="Role" class="px-4 py-3">
-                                        <span class="badge @if($bUser->role === 'admin') bg-danger @elseif($bUser->role === 'reseller') bg-warning text-dark @else bg-primary @endif rounded-pill px-3">
+                                        <span class="badge @if($bUser->role === 'admin') bg-danger @else bg-primary @endif rounded-pill px-3">
                                             {{ ucfirst($bUser->role) }}
                                         </span>
                                     </td>
@@ -129,7 +129,6 @@
                                                             <label class="form-label fw-bold">Role</label>
                                                             <select class="form-select border" name="role">
                                                                 <option value="user" {{ $bUser->role === 'user' ? 'selected' : '' }}>User</option>
-                                                                <option value="reseller" {{ $bUser->role === 'reseller' ? 'selected' : '' }}>Reseller</option>
                                                                 <option value="admin" {{ $bUser->role === 'admin' ? 'selected' : '' }}>Admin</option>
                                                             </select>
                                                         </div>

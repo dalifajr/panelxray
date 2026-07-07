@@ -205,15 +205,8 @@ class InternalApiController extends Controller
         // Auto-create and sync web user account
         $user->syncWebUser();
 
-        // Update related access request
-        TelegramAccessRequest::where('tg_id', $tgId)
-            ->where('status', 'pending')
-            ->update([
-                'status' => 'approved',
-                'admin_id' => $request->input('admin_id', ''),
-                'admin_reason' => $request->input('note', ''),
-                'processed_at' => now(),
-            ]);
+        // Delete related access request
+        TelegramAccessRequest::where('tg_id', $tgId)->delete();
 
         return response()->json(['status' => 'ok', 'user' => $user->fresh()]);
     }
@@ -234,14 +227,8 @@ class InternalApiController extends Controller
         $user->note = $request->input('note', $user->note);
         $user->save();
 
-        TelegramAccessRequest::where('tg_id', $tgId)
-            ->where('status', 'pending')
-            ->update([
-                'status' => 'rejected',
-                'admin_id' => $request->input('admin_id', ''),
-                'admin_reason' => $request->input('note', ''),
-                'processed_at' => now(),
-            ]);
+        // Delete related access request
+        TelegramAccessRequest::where('tg_id', $tgId)->delete();
 
         return response()->json(['status' => 'ok', 'user' => $user->fresh()]);
     }
@@ -386,11 +373,7 @@ class InternalApiController extends Controller
         // Auto-create and sync web user account
         $botUser->syncWebUser();
 
-        $req->status = 'approved';
-        $req->admin_id = (string)$request->input('admin_id', '');
-        $req->admin_reason = $request->input('note') ?: 'Approved via Bot';
-        $req->processed_at = now();
-        $req->save();
+        $req->delete();
 
         return response()->json(['status' => 'ok', 'user' => $botUser->fresh(), 'request' => $req->fresh()]);
     }
@@ -420,11 +403,7 @@ class InternalApiController extends Controller
         $botUser->status = 'rejected';
         $botUser->save();
 
-        $req->status = 'rejected';
-        $req->admin_id = (string)$request->input('admin_id', '');
-        $req->admin_reason = $request->input('note') ?: 'Rejected via Bot';
-        $req->processed_at = now();
-        $req->save();
+        $req->delete();
 
         return response()->json(['status' => 'ok', 'user' => $botUser->fresh(), 'request' => $req->fresh()]);
     }
@@ -533,21 +512,43 @@ class InternalApiController extends Controller
         $request->validate([
             'tg_id' => 'required|string',
             'service' => 'required|string',
-            'category' => 'required|string',
+            'category' => 'nullable|string',
             'username' => 'required|string',
         ]);
 
+        $botUser = TelegramBotUser::where('tg_id', $request->input('tg_id'))->first();
+        $userId = $botUser ? $botUser->user_id : null;
+
+        if (!$userId) {
+            $admin = User::where('role', 'admin')->first();
+            $userId = $admin ? $admin->id : null;
+        }
+
+        // Create VpnAccount first
+        $vpnAcc = \App\Models\VpnAccount::where('vpn_username', $request->input('username'))
+            ->where('service', $request->input('service'))
+            ->first();
+
+        if (!$vpnAcc) {
+            $vpnAcc = \App\Models\VpnAccount::create([
+                'user_id' => $userId,
+                'vpn_username' => $request->input('username'),
+                'service' => $request->input('service'),
+            ]);
+        }
+
+        // Create TelegramAccountRegistry record
         $record = TelegramAccountRegistry::create([
             'tg_id' => $request->input('tg_id'),
             'service' => $request->input('service'),
-            'category' => $request->input('category'),
+            'category' => $request->input('category') ?: $request->input('service'),
             'username' => $request->input('username'),
-            'expires_at' => $request->input('expires_at', ''),
+            'expires_at' => $request->input('expires_at') ?: ($request->input('expiry_date') ?: ''),
             'is_trial' => $request->boolean('is_trial', false),
             'active' => true,
         ]);
 
-        return response()->json(['status' => 'ok', 'account' => $record]);
+        return response()->json(['status' => 'ok', 'account' => $record, 'vpn_account' => $vpnAcc]);
     }
 
     /**

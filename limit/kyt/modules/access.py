@@ -180,6 +180,22 @@ async def callback_permission_guard(event):
     if is_admin_user(sender_id):
         return
 
+    # Sales Mode Customer Callback Guard
+    bot_mode = globals().get("BOT_MODE", "admin_only")
+    if bot_mode == "sales":
+        customer_allowed_prefixes = ("shop-", "buy-", "confirm-", "my-", "wallet-", "voucher-", "start", "request-")
+        is_allowed = False
+        for prefix in customer_allowed_prefixes:
+            if callback_data.startswith(prefix):
+                is_allowed = True
+                break
+        if not is_allowed:
+            try:
+                await event.answer("⚠️ Menu ini dinonaktifkan dalam mode jualan.", alert=True)
+            except Exception:
+                pass
+            raise events.StopPropagation
+
     if _is_admin_only_callback(callback_data):
         try:
             await event.answer("Menu khusus admin", alert=True)
