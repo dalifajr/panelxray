@@ -67,6 +67,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/admin/vouchers', [\App\Http\Controllers\VoucherController::class, 'index'])->name('admin.vouchers');
         Route::post('/admin/vouchers', [\App\Http\Controllers\VoucherController::class, 'store'])->name('admin.vouchers.store');
         Route::delete('/admin/vouchers/{voucher}', [\App\Http\Controllers\VoucherController::class, 'destroy'])->name('admin.vouchers.destroy');
+
+        // Admin Telegram Bot Management
+        Route::get('/admin/bot/users', [\App\Http\Controllers\TelegramBotController::class, 'index'])->name('admin.bot.users');
+        Route::post('/admin/bot/users/{botUser}', [\App\Http\Controllers\TelegramBotController::class, 'updateUser'])->name('admin.bot.users.update');
+        Route::delete('/admin/bot/users/{botUser}', [\App\Http\Controllers\TelegramBotController::class, 'deleteUser'])->name('admin.bot.users.delete');
+        Route::post('/admin/bot/access/{id}/approve', [\App\Http\Controllers\TelegramBotController::class, 'approveAccess'])->name('admin.bot.access.approve');
+        Route::post('/admin/bot/access/{id}/reject', [\App\Http\Controllers\TelegramBotController::class, 'rejectAccess'])->name('admin.bot.access.reject');
+        Route::post('/admin/bot/quota/{id}/approve', [\App\Http\Controllers\TelegramBotController::class, 'approveQuota'])->name('admin.bot.quota.approve');
+        Route::post('/admin/bot/quota/{id}/reject', [\App\Http\Controllers\TelegramBotController::class, 'rejectQuota'])->name('admin.bot.quota.reject');
+        Route::post('/admin/settings/bot', [\App\Http\Controllers\SettingController::class, 'updateBotSettings'])->name('admin.settings.bot');
     });
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');
 
@@ -100,6 +110,49 @@ Route::middleware('auth')->group(function () {
 
 Route::post('/api/internal/approve-token', [AuthController::class, 'approveToken']);
 Route::get('/api/internal/check-username', [VpnController::class, 'checkUsername'])->name('api.check-username');
+
+// ─── Internal API for Telegram Bot ───────────────────────────────────
+Route::prefix('api/internal')->group(function () {
+    // Bot configuration
+    Route::get('/bot/config', [\App\Http\Controllers\InternalApiController::class, 'botConfig']);
+
+    // User management
+    Route::post('/bot/user/touch', [\App\Http\Controllers\InternalApiController::class, 'touchUser']);
+    Route::get('/bot/user/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'getUser']);
+    Route::get('/bot/user/{tgId}/status', [\App\Http\Controllers\InternalApiController::class, 'getUserStatus']);
+    Route::get('/bot/user/{tgId}/quota', [\App\Http\Controllers\InternalApiController::class, 'getUserQuota']);
+    Route::get('/bot/user/{tgId}/stats', [\App\Http\Controllers\InternalApiController::class, 'getUserStats']);
+    Route::post('/bot/user/{tgId}/approve', [\App\Http\Controllers\InternalApiController::class, 'approveUser']);
+    Route::post('/bot/user/{tgId}/reject', [\App\Http\Controllers\InternalApiController::class, 'rejectUser']);
+    Route::post('/bot/user/{tgId}/suspend', [\App\Http\Controllers\InternalApiController::class, 'suspendUser']);
+    Route::post('/bot/user/{tgId}/quota/update', [\App\Http\Controllers\InternalApiController::class, 'updateUserQuota']);
+    Route::get('/bot/users', [\App\Http\Controllers\InternalApiController::class, 'listUsers']);
+
+    // Access requests
+    Route::post('/bot/access-request', [\App\Http\Controllers\InternalApiController::class, 'createAccessRequest']);
+    Route::get('/bot/access-requests', [\App\Http\Controllers\InternalApiController::class, 'listAccessRequests']);
+
+    // Quota requests
+    Route::post('/bot/quota-request', [\App\Http\Controllers\InternalApiController::class, 'createQuotaRequest']);
+    Route::get('/bot/quota-requests', [\App\Http\Controllers\InternalApiController::class, 'listQuotaRequests']);
+    Route::post('/bot/quota-request/{id}/approve', [\App\Http\Controllers\InternalApiController::class, 'approveQuotaRequest']);
+    Route::post('/bot/quota-request/{id}/reject', [\App\Http\Controllers\InternalApiController::class, 'rejectQuotaRequest']);
+
+    // Account registry
+    Route::post('/bot/account/register', [\App\Http\Controllers\InternalApiController::class, 'registerAccount']);
+    Route::post('/bot/account/deactivate', [\App\Http\Controllers\InternalApiController::class, 'deactivateAccount']);
+    Route::get('/bot/accounts/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'listAccounts']);
+
+    // Pricing
+    Route::get('/pricing', [\App\Http\Controllers\InternalApiController::class, 'getPricing']);
+
+    // Wallet
+    Route::get('/wallet/balance/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'getBalance']);
+    Route::post('/wallet/debit', [\App\Http\Controllers\InternalApiController::class, 'debitBalance']);
+
+    // Transactions
+    Route::get('/transaction/history/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'transactionHistory']);
+});
 
 // === TEMPORARY DIAGNOSTIC ROUTE — REMOVE AFTER DEBUGGING ===
 Route::get('/diag', function () {

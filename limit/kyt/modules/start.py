@@ -13,29 +13,60 @@ async def start(event):
 			logging.info("Delegating to handle_login_token for %s", token_str)
 			return await handle_login_token(event, token_str)
             
-	inline = [
-		[Button.inline("🚀 Open Panel Menu", "menu")],
-		[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
-	]
+	# Determine mode and role
+	admin_mode = is_admin(event.sender_id)
 
+	# Load bot mode from .env/var.txt
+	bot_mode = globals().get("BOT_MODE", "admin_only")
+
+	# Access control check
 	if not await require_access(event):
 		return
+
+	if bot_mode == "sales":
+		if admin_mode:
+			inline = [
+				[Button.inline("🚀 Open Panel Menu (Admin)", "menu")],
+				[Button.inline("🛒 Beli VPN (Shop)", "shop-menu"), Button.inline("📋 Akun Saya", "my-accounts")],
+				[Button.inline("💰 Saldo & Wallet", "wallet-bot")],
+				[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")]
+			]
+		else:
+			inline = [
+				[Button.inline("🛒 Beli VPN (Shop)", "shop-menu"), Button.inline("📋 Akun Saya", "my-accounts")],
+				[Button.inline("💰 Saldo & Wallet", "wallet-bot")],
+				[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")]
+			]
+	else:
+		# Default: Admin Only mode
+		inline = [
+			[Button.inline("🚀 Open Panel Menu", "menu")],
+			[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
+		]
 
 	sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"
 	namaos = subprocess.check_output(sdss, shell=True).decode("ascii").strip().replace('"', '')
 	ipsaya = subprocess.check_output("curl -s ipv4.icanhazip.com", shell=True).decode("ascii").strip()
 	city = subprocess.check_output("cat /etc/xray/city", shell=True).decode("ascii").strip()
 
-	msg = (
-		"👋 **Welcome to PanelXray Bot**\n"
-		f"🖥️ **OS:** `{namaos}`\n"
-		f"🏙️ **City:** `{city}`\n"
-		f"🌐 **Domain:** `{DOMAIN}`\n"
-		f"📡 **IP VPS:** `{ipsaya}`\n\n"
-		"🧭 Gunakan tombol `Open Panel Menu` untuk mulai kelola akun.\n"
-		"🏠 Anda juga bisa ketik `/mulai` kapan saja untuk kembali ke halaman ini.\n"
-		f"{menu_credit()}"
-	)
+	if bot_mode == "sales" and not admin_mode:
+		msg = (
+			"👋 **Selamat datang di Bot Jualan VPN**\n"
+			f"🌐 **Domain:** `{DOMAIN}`\n\n"
+			"🧭 Pilih menu di bawah ini untuk memulai pembelian akun VPN self-service atau mengelola saldo/akun Anda.\n"
+			f"{menu_credit()}"
+		)
+	else:
+		msg = (
+			"👋 **Welcome to PanelXray Bot**\n"
+			f"🖥️ **OS:** `{namaos}`\n"
+			f"🏙️ **City:** `{city}`\n"
+			f"🌐 **Domain:** `{DOMAIN}`\n"
+			f"📡 **IP VPS:** `{ipsaya}`\n\n"
+			"🧭 Gunakan tombol menu untuk mulai mengelola VPN.\n"
+			"🏠 Anda juga bisa ketik `/mulai` kapan saja untuk kembali ke halaman ini.\n"
+			f"{menu_credit()}"
+		)
 
 	x = await event.edit(msg, buttons=inline)
 	if not x:

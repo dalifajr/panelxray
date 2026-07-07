@@ -328,6 +328,9 @@
                   <a href="{{ route('admin.vouchers') }}" class="menu-item {{ request()->routeIs('admin.vouchers') ? 'active' : '' }}">
                       <i class="fas fa-ticket-alt text-danger"></i> <span>Kelola Voucher</span>
                   </a>
+                  <a href="{{ route('admin.bot.users') }}" class="menu-item {{ request()->routeIs('admin.bot.users') ? 'active' : '' }}">
+                      <i class="fab fa-telegram-plane text-info"></i> <span>Kelola Bot Telegram</span>
+                  </a>
                   <a href="{{ route('admin.settings') }}" class="menu-item {{ request()->routeIs('admin.settings') ? 'active' : '' }}">
                       <i class="fas fa-cog text-secondary"></i> <span>Pengaturan Sistem</span>
                   </a>

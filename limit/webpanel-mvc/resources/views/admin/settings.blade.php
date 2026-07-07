@@ -79,7 +79,7 @@
             </div>
 
             <!-- Pengumuman Login -->
-            <div class="card border-0 shadow-sm lift-hover">
+            <div class="card border-0 shadow-sm lift-hover mb-4">
                 <div class="card-header bg-white border-0 pt-4 pb-0">
                     <h5 class="mb-0 fw-bold"><i class="fas fa-bullhorn me-2 text-primary"></i>Pengumuman Halaman Login</h5>
                 </div>
@@ -91,6 +91,41 @@
                             <textarea class="form-control border" name="login_announcement" rows="4" required>{{ $settings['login_announcement'] ?? "Keamanan Terjamin\nLogin diotomatisasi melalui integrasi bot Telegram untuk memastikan hanya admin berwenang yang dapat mengakses kontrol panel server." }}</textarea>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Simpan Pengumuman</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Pengaturan Bot Telegram -->
+            <div class="card border-0 shadow-sm lift-hover">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="mb-0 fw-bold"><i class="fab fa-telegram-plane me-2 text-primary"></i>Pengaturan Bot Telegram</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form action="{{ route('admin.settings.bot') }}" method="POST">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Mode Operasi Bot</label>
+                            <select class="form-select border" name="bot_mode" required>
+                                <option value="admin_only" {{ ($settings['bot_mode'] ?? 'admin_only') === 'admin_only' ? 'selected' : '' }}>Admin Only (Khusus Admin / Kelola Server)</option>
+                                <option value="sales" {{ ($settings['bot_mode'] ?? 'admin_only') === 'sales' ? 'selected' : '' }}>Sales Mode (Jualan VPN / Customer Self-Service)</option>
+                            </select>
+                            <small class="text-muted">Dalam mode Sales, bot akan menampilkan menu pembelian VPN, cek saldo, dan riwayat transaksi untuk customer non-admin.</small>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" role="switch" id="botTrialSwitch" name="bot_trial_enabled" value="true" {{ ($settings['bot_trial_enabled'] ?? 'false') === 'true' ? 'checked' : '' }}>
+                                <label class="form-check-label fw-bold" for="botTrialSwitch">Aktifkan Akun Trial di Bot</label>
+                            </div>
+                            <small class="text-muted d-block mb-2">Mengizinkan customer membuat akun trial gratis langsung dari bot.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Durasi Akun Trial (Hari)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control border" name="bot_trial_days" value="{{ $settings['bot_trial_days'] ?? 1 }}" min="1" required>
+                                <span class="input-group-text bg-light border">Hari</span>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Simpan Pengaturan Bot</button>
                     </form>
                 </div>
             </div>

@@ -382,545 +382,273 @@ def _bootstrap_db():
 	x.close()
 	_sync_allow_list_from_db()
 
+	_add_column_if_missing(cursor, "telegram_users", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "telegram_users", "updated_at", "TEXT DEFAULT ''")
 
-_bootstrap_db()
+	_add_column_if_missing(cursor, "access_requests", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "access_requests", "username", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "full_name", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "status", "TEXT NOT NULL DEFAULT 'pending'")
+	_add_column_if_missing(cursor, "access_requests", "admin_id", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "admin_reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "access_requests", "processed_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "quota_limits", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "quota_limits", "ssh_limit", "INTEGER NOT NULL DEFAULT 0")
+	_add_column_if_missing(cursor, "quota_limits", "xray_limit", "INTEGER NOT NULL DEFAULT 0")
+	_add_column_if_missing(cursor, "quota_limits", "updated_by", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_limits", "updated_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "quota_requests", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "quota_requests", "reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "status", "TEXT NOT NULL DEFAULT 'pending'")
+	_add_column_if_missing(cursor, "quota_requests", "admin_id", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "admin_reason", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "quota_requests", "processed_at", "TEXT DEFAULT ''")
+
+	_add_column_if_missing(cursor, "account_registry", "tg_id", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "service", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "category", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "username", "TEXT")
+	_add_column_if_missing(cursor, "account_registry", "expires_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "account_registry", "is_trial", "INTEGER NOT NULL DEFAULT 0")
+	_add_column_if_missing(cursor, "account_registry", "active", "INTEGER NOT NULL DEFAULT 1")
+	_add_column_if_missing(cursor, "account_registry", "created_at", "TEXT DEFAULT ''")
+	_add_column_if_missing(cursor, "account_registry", "updated_at", "TEXT DEFAULT ''")
+
+	# Backfill tg_id from legacy admin table when needed.
+	cursor.execute(
+		"""
+		UPDATE telegram_users
+		SET tg_id = (SELECT user_id FROM admin LIMIT 1)
+		WHERE (tg_id IS NULL OR tg_id = '')
+		  AND role = 'admin'
+		"""
+	)
+
+	cursor.execute("UPDATE telegram_users SET role = 'user' WHERE role IS NULL OR role = ''")
+	cursor.execute("UPDATE telegram_users SET status = 'pending' WHERE status IS NULL OR status = ''")
+	cursor.execute("UPDATE telegram_users SET note = '' WHERE note IS NULL")
+	cursor.execute("UPDATE telegram_users SET username = '' WHERE username IS NULL")
+	cursor.execute("UPDATE telegram_users SET full_name = '' WHERE full_name IS NULL")
+	cursor.execute("UPDATE telegram_users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE telegram_users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
+	cursor.execute("UPDATE access_requests SET status = 'pending' WHERE status IS NULL OR status = ''")
+	cursor.execute("UPDATE access_requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE access_requests SET processed_at = '' WHERE processed_at IS NULL")
+	cursor.execute("UPDATE quota_limits SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
+	cursor.execute("UPDATE quota_requests SET status = 'pending' WHERE status IS NULL OR status = ''")
+	cursor.execute("UPDATE quota_requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE quota_requests SET processed_at = '' WHERE processed_at IS NULL")
+	cursor.execute("UPDATE account_registry SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''")
+	cursor.execute("UPDATE account_registry SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''")
 
 
-def get_db():
-	x = sqlite3.connect(DB_FILE)
-	x.row_factory = sqlite3.Row
-	return x
+# ─── API Integration ───
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+def _get_env_variable(key: str, default: str = "") -> str:
+	try:
+		env_path = "/var/www/webpanel-mvc/.env"
+		if os.path.exists(env_path):
+			with open(env_path, "r", encoding="utf-8") as f:
+				for line in f:
+					line = line.strip()
+					if line and not line.startswith("#") and "=" in line:
+						parts = line.split("=", 1)
+						if parts[0].strip() == key:
+							val = parts[1].strip()
+							if val.startswith('"') and val.endswith('"'):
+								val = val[1:-1]
+							elif val.startswith("'") and val.endswith("'"):
+								val = val[1:-1]
+							return val
+	except Exception:
+		pass
+	return default
 
-def _row_to_dict(row) -> Optional[Dict]:
-	if row is None:
-		return None
-	return {k: row[k] for k in row.keys()}
+SECRET_KEY = _get_env_variable("PAYMENT_SECRET_KEY", "secret123")
+BOT_MODE = _get_env_variable("BOT_MODE", globals().get("BOT_MODE", "admin_only"))
 
+def api_call(method: str, endpoint: str, data: dict = None) -> dict:
+	url = f"https://127.0.0.1:81/api/internal{endpoint}"
+	headers = {
+		"X-Internal-Secret": SECRET_KEY,
+		"Content-Type": "application/json",
+		"Accept": "application/json"
+	}
+	try:
+		if method.upper() == "GET":
+			res = requests.get(url, headers=headers, verify=False, timeout=5)
+		elif method.upper() == "POST":
+			res = requests.post(url, json=data, headers=headers, verify=False, timeout=5)
+		elif method.upper() == "DELETE":
+			res = requests.delete(url, headers=headers, verify=False, timeout=5)
+		else:
+			return {"error": "Invalid method"}
+		
+		if res.status_code == 200:
+			return res.json()
+		return {"error": f"HTTP {res.status_code}", "body": res.text}
+	except Exception as e:
+		logging.error("API Call to %s failed: %s", endpoint, e)
+		return {"error": str(e)}
 
 def touch_user(tg_id, username: str = "", full_name: str = ""):
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return
-
-	username = str(username or "").strip()
-	full_name = str(full_name or "").strip()
-	now = _now()
-
-	db = get_db()
-	try:
-		row = db.execute("SELECT username, full_name FROM telegram_users WHERE tg_id = ?", (uid,)).fetchone()
-		if row is None:
-			db.execute(
-				"""
-				INSERT INTO telegram_users (tg_id, username, full_name, role, status, note, created_at, updated_at)
-				VALUES (?, ?, ?, 'user', 'pending', '', ?, ?)
-				""",
-				(uid, username, full_name, now, now),
-			)
-		else:
-			db.execute(
-				"UPDATE telegram_users SET username = ?, full_name = ?, updated_at = ? WHERE tg_id = ?",
-				(username or row["username"] or "", full_name or row["full_name"] or "", now, uid),
-			)
-		db.commit()
-	finally:
-		db.close()
-
+	api_call("POST", "/bot/user/touch", {
+		"tg_id": uid,
+		"tg_username": str(username or "").strip(),
+		"tg_full_name": str(full_name or "").strip()
+	})
 
 def get_user_record(tg_id) -> Optional[Dict]:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return None
-
-	db = get_db()
-	try:
-		row = db.execute("SELECT * FROM telegram_users WHERE tg_id = ?", (uid,)).fetchone()
-		return _row_to_dict(row)
-	finally:
-		db.close()
-
+	res = api_call("GET", f"/bot/user/{uid}")
+	if "error" in res:
+		return None
+	user = res.get("user")
+	if not user:
+		return None
+	return {
+		"tg_id": user.get("tg_id"),
+		"username": user.get("tg_username", ""),
+		"full_name": user.get("tg_full_name", ""),
+		"role": user.get("role", "user"),
+		"status": user.get("status", "pending"),
+		"note": user.get("note", ""),
+		"created_at": user.get("created_at", ""),
+		"updated_at": user.get("updated_at", "")
+	}
 
 def get_primary_admin_id() -> str:
-	allow_ids = _read_allow_list_ids()
-	if allow_ids:
-		return allow_ids[0]
 	return _normalize_tg_id(globals().get("ADMIN", ""))
 
-
 def get_all_admin_ids() -> List[str]:
-	db = get_db()
-	try:
-		rows = db.execute(
-			"SELECT tg_id FROM telegram_users WHERE role = 'admin' AND status = 'approved' ORDER BY tg_id"
-		).fetchall()
-		admin_ids = [str(row[0]) for row in rows]
-	finally:
-		db.close()
-
+	res = api_call("GET", "/bot/users?status=approved")
+	if "error" in res:
+		return [get_primary_admin_id()]
+	users = res.get("users", [])
+	admins = [str(u["tg_id"]) for u in users if u.get("role") == "admin"]
 	primary = get_primary_admin_id()
-	if primary:
-		admin_ids.insert(0, primary)
-
-	return _dedupe_keep_order(admin_ids)
-
+	if primary and primary not in admins:
+		admins.insert(0, primary)
+	return admins
 
 def is_admin_user(tg_id) -> bool:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return False
-
-	db = get_db()
-	try:
-		row = db.execute(
-			"SELECT 1 FROM telegram_users WHERE tg_id = ? AND role = 'admin' AND status = 'approved'",
-			(uid,),
-		).fetchone()
-		if row is not None:
-			return True
-
-		legacy = db.execute("SELECT 1 FROM admin WHERE user_id = ?", (uid,)).fetchone()
-		return legacy is not None
-	finally:
-		db.close()
-
+	if uid == get_primary_admin_id():
+		return True
+	res = api_call("GET", f"/bot/user/{uid}/status")
+	return res.get("is_admin", False)
 
 def is_user_approved(tg_id) -> bool:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return False
-
-	if is_admin_user(uid):
+	if uid == get_primary_admin_id():
 		return True
-
-	db = get_db()
-	try:
-		row = db.execute(
-			"SELECT 1 FROM telegram_users WHERE tg_id = ? AND status = 'approved'",
-			(uid,),
-		).fetchone()
-		return row is not None
-	finally:
-		db.close()
-
+	res = api_call("GET", f"/bot/user/{uid}/status")
+	return res.get("is_approved", False)
 
 def valid(user_id):
 	if is_user_approved(user_id):
 		return "true"
 	return "false"
 
-
 def create_access_request(tg_id, username: str = "", full_name: str = "", reason: str = "") -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return {"ok": False, "status": "invalid"}
-
-	if is_user_approved(uid):
-		return {"ok": False, "status": "already-approved"}
-
-	touch_user(uid, username, full_name)
-	reason = str(reason or "").strip()
-
-	db = get_db()
-	try:
-		pending = db.execute(
-			"SELECT * FROM access_requests WHERE tg_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1",
-			(uid,),
-		).fetchone()
-		if pending is not None:
-			return {"ok": False, "status": "pending", "request": _row_to_dict(pending)}
-
-		user = db.execute("SELECT username, full_name FROM telegram_users WHERE tg_id = ?", (uid,)).fetchone()
-		now = _now()
-		cur = db.execute(
-			"""
-			INSERT INTO access_requests (tg_id, username, full_name, reason, status, created_at)
-			VALUES (?, ?, ?, ?, 'pending', ?)
-			""",
-			(
-				uid,
-				(username or (user["username"] if user else "") or ""),
-				(full_name or (user["full_name"] if user else "") or ""),
-				reason,
-				now,
-			),
-		)
-		db.execute(
-			"UPDATE telegram_users SET status = 'pending', note = ?, updated_at = ? WHERE tg_id = ?",
-			(reason, now, uid),
-		)
-		db.commit()
-		request_id = int(cur.lastrowid)
-	finally:
-		db.close()
-
-	return {"ok": True, "status": "created", "request": get_access_request(request_id)}
-
-
-def get_access_request(request_id: int) -> Optional[Dict]:
-	db = get_db()
-	try:
-		row = db.execute("SELECT * FROM access_requests WHERE id = ?", (int(request_id),)).fetchone()
-		return _row_to_dict(row)
-	finally:
-		db.close()
-
-
-def list_pending_access_requests(limit: int = 20) -> List[Dict]:
-	db = get_db()
-	try:
-		rows = db.execute(
-			"SELECT * FROM access_requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?",
-			(max(1, int(limit)),),
-		).fetchall()
-		return [_row_to_dict(row) for row in rows]
-	finally:
-		db.close()
-
-
-def process_access_request(request_id: int, admin_id, approved: bool, admin_reason: str = "") -> Optional[Dict]:
-	admin_uid = _normalize_tg_id(admin_id)
-	reason = str(admin_reason or "").strip()
-	status = "approved" if approved else "rejected"
-	now = _now()
-
-	db = get_db()
-	try:
-		row = db.execute(
-			"SELECT * FROM access_requests WHERE id = ? AND status = 'pending'",
-			(int(request_id),),
-		).fetchone()
-		if row is None:
-			return None
-
-		request = _row_to_dict(row)
-		tg_id = str(request["tg_id"])
-
-		db.execute(
-			"""
-			UPDATE access_requests
-			SET status = ?, admin_id = ?, admin_reason = ?, processed_at = ?
-			WHERE id = ?
-			""",
-			(status, admin_uid, reason, now, int(request_id)),
-		)
-
-		user = db.execute("SELECT role FROM telegram_users WHERE tg_id = ?", (tg_id,)).fetchone()
-		role = user["role"] if user else "user"
-		if role != "admin":
-			role = "user"
-		db.execute(
-			"""
-			INSERT INTO telegram_users (tg_id, username, full_name, role, status, note, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(tg_id) DO UPDATE SET
-				username = excluded.username,
-				full_name = excluded.full_name,
-				role = CASE WHEN telegram_users.role = 'admin' THEN 'admin' ELSE excluded.role END,
-				status = excluded.status,
-				note = excluded.note,
-				updated_at = excluded.updated_at
-			""",
-			(
-				tg_id,
-				request.get("username", "") or "",
-				request.get("full_name", "") or "",
-				role,
-				status,
-				reason,
-				now,
-				now,
-			),
-		)
-
-		db.commit()
-	finally:
-		db.close()
-
-	_sync_allow_list_from_db()
-	result = get_access_request(request_id)
-	if result is None:
-		return None
-	result["target_status"] = status
-	return result
-
-
-def set_user_status(tg_id, status: str, note: str = "") -> bool:
-	uid = _normalize_tg_id(tg_id)
-	status = str(status or "").strip().lower()
-	if not uid or status not in {"pending", "approved", "rejected", "suspended", "kicked"}:
-		return False
-
-	now = _now()
-	note = str(note or "").strip()
-	db = get_db()
-	try:
-		row = db.execute("SELECT role FROM telegram_users WHERE tg_id = ?", (uid,)).fetchone()
-		if row is None:
-			db.execute(
-				"""
-				INSERT INTO telegram_users (tg_id, role, status, note, created_at, updated_at)
-				VALUES (?, 'user', ?, ?, ?, ?)
-				""",
-				(uid, status, note, now, now),
-			)
-		else:
-			role = row["role"]
-			if role == "admin" and status != "approved":
-				return False
-			db.execute(
-				"UPDATE telegram_users SET status = ?, note = ?, updated_at = ? WHERE tg_id = ?",
-				(status, note, now, uid),
-			)
-		db.commit()
-	finally:
-		db.close()
-
-	_sync_allow_list_from_db()
-	return True
-
-
-def list_managed_users(include_admin: bool = False) -> List[Dict]:
-	db = get_db()
-	try:
-		if include_admin:
-			rows = db.execute(
-				"SELECT * FROM telegram_users ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, status, updated_at DESC"
-			).fetchall()
-		else:
-			rows = db.execute(
-				"SELECT * FROM telegram_users WHERE role != 'admin' ORDER BY status, updated_at DESC"
-			).fetchall()
-		return [_row_to_dict(row) for row in rows]
-	finally:
-		db.close()
-
-
-def _sanitize_limit_value(value, default: Optional[int] = None) -> Optional[int]:
-	if value is None:
-		return default
-	text = str(value).strip()
-	if not text:
-		return default
-	if not text.isdigit():
-		return default
-	return max(0, int(text))
-
+	
+	res = api_call("POST", "/bot/access-request", {
+		"tg_id": uid,
+		"tg_username": str(username or "").strip(),
+		"tg_full_name": str(full_name or "").strip(),
+		"reason": str(reason or "").strip()
+	})
+	if "error" in res:
+		return {"ok": False, "status": "error"}
+	return {"ok": True, "status": "created"}
 
 def get_user_limits(tg_id) -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return {"tg_id": "", "ssh_limit": 0, "xray_limit": 0}
-
-	db = get_db()
-	try:
-		row = db.execute("SELECT * FROM quota_limits WHERE tg_id = ?", (uid,)).fetchone()
-		if row is None:
-			return {"tg_id": uid, "ssh_limit": 0, "xray_limit": 0}
-		return {
-			"tg_id": uid,
-			"ssh_limit": int(row["ssh_limit"] or 0),
-			"xray_limit": int(row["xray_limit"] or 0),
-		}
-	finally:
-		db.close()
-
-
-def set_user_limits(tg_id, ssh_limit=None, xray_limit=None, updated_by: str = "") -> Dict:
-	uid = _normalize_tg_id(tg_id)
-	if not uid:
-		return {"ok": False, "limits": {"tg_id": "", "ssh_limit": 0, "xray_limit": 0}}
-
-	current = get_user_limits(uid)
-	next_ssh = _sanitize_limit_value(ssh_limit, current["ssh_limit"])
-	next_xray = _sanitize_limit_value(xray_limit, current["xray_limit"])
-	now = _now()
-
-	db = get_db()
-	try:
-		db.execute(
-			"""
-			INSERT INTO quota_limits (tg_id, ssh_limit, xray_limit, updated_by, updated_at)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(tg_id) DO UPDATE SET
-				ssh_limit = excluded.ssh_limit,
-				xray_limit = excluded.xray_limit,
-				updated_by = excluded.updated_by,
-				updated_at = excluded.updated_at
-			""",
-			(uid, next_ssh, next_xray, str(updated_by or "").strip(), now),
-		)
-		db.commit()
-	finally:
-		db.close()
-
-	return {"ok": True, "limits": get_user_limits(uid)}
-
-
-def service_to_category(service: str) -> str:
-	name = str(service or "").strip().lower()
-	if name == "ssh":
-		return "ssh"
-	return "xray"
-
+	res = api_call("GET", f"/bot/user/{uid}/quota")
+	return {
+		"tg_id": uid,
+		"ssh_limit": res.get("ssh_limit", 0),
+		"xray_limit": res.get("xray_limit", 0)
+	}
 
 def get_user_usage(tg_id, category: str, active_only: bool = False) -> int:
 	uid = _normalize_tg_id(tg_id)
+	res = api_call("GET", f"/bot/user/{uid}/quota")
 	cat = str(category or "").strip().lower()
-	if not uid or cat not in {"ssh", "xray"}:
-		return 0
-
-	query = "SELECT COUNT(*) AS total FROM account_registry WHERE tg_id = ? AND category = ?"
-	params = [uid, cat]
-	if active_only:
-		query += " AND active = 1"
-
-	db = get_db()
-	try:
-		row = db.execute(query, tuple(params)).fetchone()
-		return int((row["total"] if row else 0) or 0)
-	finally:
-		db.close()
-
+	if cat == "ssh":
+		return res.get("ssh_total", 0)
+	return res.get("xray_total", 0)
 
 def get_user_stats(tg_id) -> Dict:
 	uid = _normalize_tg_id(tg_id)
-	if not uid:
-		return {
-			"ssh_total": 0,
-			"xray_total": 0,
-			"ssh_active": 0,
-			"xray_active": 0,
-		}
-
-	db = get_db()
-	try:
-		row = db.execute(
-			"""
-			SELECT
-				SUM(CASE WHEN category = 'ssh' THEN 1 ELSE 0 END) AS ssh_total,
-				SUM(CASE WHEN category = 'xray' THEN 1 ELSE 0 END) AS xray_total,
-				SUM(CASE WHEN category = 'ssh' AND active = 1 THEN 1 ELSE 0 END) AS ssh_active,
-				SUM(CASE WHEN category = 'xray' AND active = 1 THEN 1 ELSE 0 END) AS xray_active
-			FROM account_registry
-			WHERE tg_id = ?
-			""",
-			(uid,),
-		).fetchone()
-		return {
-			"ssh_total": int((row["ssh_total"] if row else 0) or 0),
-			"xray_total": int((row["xray_total"] if row else 0) or 0),
-			"ssh_active": int((row["ssh_active"] if row else 0) or 0),
-			"xray_active": int((row["xray_active"] if row else 0) or 0),
-		}
-	finally:
-		db.close()
-
+	res = api_call("GET", f"/bot/user/{uid}/quota")
+	return {
+		"ssh_total": res.get("ssh_total", 0),
+		"xray_total": res.get("xray_total", 0),
+		"ssh_active": res.get("ssh_total", 0),
+		"xray_active": res.get("xray_total", 0)
+	}
 
 def check_creation_quota(tg_id, category: str) -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	cat = str(category or "").strip().lower()
-	if cat not in {"ssh", "xray"}:
-		return {"ok": True, "message": ""}
-
 	if is_admin_user(uid):
 		return {"ok": True, "message": ""}
-
+	
 	if not is_user_approved(uid):
-		return {
-			"ok": False,
-			"message": "Akses bot belum disetujui admin.",
-		}
-
+		return {"ok": False, "message": "Akses bot belum disetujui admin."}
+	
 	limits = get_user_limits(uid)
 	limit_value = int(limits["ssh_limit"] if cat == "ssh" else limits["xray_limit"])
 	if limit_value <= 0:
 		return {"ok": True, "message": ""}
-
-	used = get_user_usage(uid, cat, active_only=False)
+	
+	used = get_user_usage(uid, cat)
 	if used < limit_value:
-		remain = limit_value - used
-		return {
-			"ok": True,
-			"message": f"Sisa kuota create {cat.upper()}: {remain}",
-		}
-
-	return {
-		"ok": False,
-		"message": f"Limit pembuatan akun {cat.upper()} sudah tercapai ({used}/{limit_value}).",
-	}
-
+		return {"ok": True, "message": f"Sisa kuota: {limit_value - used}"}
+	
+	return {"ok": False, "message": f"Limit pembuatan akun {cat.upper()} tercapai ({used}/{limit_value})."}
 
 def register_account_creation(tg_id, service: str, username: str, expires_at: str = "", is_trial: bool = False):
 	uid = _normalize_tg_id(tg_id)
-	if not uid:
-		return
-
-	service_name = str(service or "").strip().lower()
-	account_name = str(username or "").strip()
-	if not service_name or not account_name:
-		return
-
-	category = service_to_category(service_name)
-	now = _now()
-
-	db = get_db()
-	try:
-		db.execute(
-			"""
-			INSERT INTO account_registry
-			(tg_id, service, category, username, expires_at, is_trial, active, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-			""",
-			(uid, service_name, category, account_name, str(expires_at or "").strip(), 1 if is_trial else 0, now, now),
-		)
-		db.commit()
-	finally:
-		db.close()
-
+	api_call("POST", "/bot/account/register", {
+		"tg_id": uid,
+		"service": str(service or "").strip().lower(),
+		"category": "create",
+		"username": str(username or "").strip(),
+		"expires_at": str(expires_at or "").strip(),
+		"is_trial": is_trial
+	})
 
 def refresh_account_expiry(service: str, username: str, expires_at: str):
-	service_name = str(service or "").strip().lower()
-	account_name = str(username or "").strip()
-	if not service_name or not account_name:
-		return
-
-	now = _now()
-	db = get_db()
-	try:
-		db.execute(
-			"""
-			UPDATE account_registry
-			SET expires_at = ?, updated_at = ?
-			WHERE service = ? AND username = ? AND active = 1
-			""",
-			(str(expires_at or "").strip(), now, service_name, account_name),
-		)
-		db.commit()
-	finally:
-		db.close()
-
+	pass
 
 def mark_account_inactive(service: str, username: str):
-	service_name = str(service or "").strip().lower()
-	account_name = str(username or "").strip()
-	if not service_name or not account_name:
-		return
-
-	now = _now()
-	db = get_db()
-	try:
-		db.execute(
-			"""
-			UPDATE account_registry
-			SET active = 0, updated_at = ?
-			WHERE service = ? AND username = ? AND active = 1
-			""",
-			(now, service_name, account_name),
-		)
-		db.commit()
-	finally:
-		db.close()
+	api_call("POST", "/bot/account/deactivate", {
+		"service": str(service or "").strip().lower(),
+		"username": str(username or "").strip()
+	})
 
 
 XRAY_ACCOUNT_MARKERS = {

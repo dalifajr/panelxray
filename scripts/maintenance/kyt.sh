@@ -202,6 +202,19 @@ admin="$(trim_text "${PANEL_BOT_ADMIN_ID:-${ADMIN:-$EXISTING_ADMIN_ID}}")"
 prompt_or_default "[*] Input your Bot Token : " "$bottoken" bottoken
 prompt_or_default "[*] Input Your Id Telegram :" "$admin" admin
 
+echo -e ""
+echo -e "\033[1;36mPILIH MODE OPERASI BOT TELEGRAM\033[0m"
+echo -e "  1) Admin Only (Khusus Admin / Kelola Server)"
+echo -e "  2) Sales Mode (Jualan / Customer Self-Service)"
+echo -e ""
+prompt_or_default "[*] Pilih mode bot (1/2) [1] : " "1" botmode_choice
+
+if [ "$botmode_choice" = "2" ]; then
+	botmode="sales"
+else
+	botmode="admin_only"
+fi
+
 if [ -z "$bottoken" ]; then
 	echo "BOT_TOKEN kosong. Instalasi bot dibatalkan."
 	echo "Tips: export PANEL_BOT_TOKEN='123456:ABC...' sebelum jalankan script untuk mode non-interaktif."
@@ -234,7 +247,23 @@ PUB='${PUB}'
 HOST='${NS}'
 API_ID='6'
 API_HASH='eb06d4abfb49dc3eeb1aeb98ae0f581e'
+BOT_MODE='${botmode}'
 EOF
+
+# Sinkronkan mode bot ke database web panel
+if [ -d /var/www/webpanel-mvc ]; then
+	echo "Menghubungkan mode bot ke web panel..."
+	cd /var/www/webpanel-mvc
+	php artisan tinker --execute="App\Models\Setting::updateOrCreate(['key'=>'bot_mode'],['value'=>'${botmode}']);" 2>/dev/null || true
+	
+	# Juga update di .env file
+	if grep -q "^BOT_MODE=" .env; then
+		sed -i "s/^BOT_MODE=.*/BOT_MODE=\"${botmode}\"/" .env
+	else
+		echo "BOT_MODE=\"${botmode}\"" >> .env
+	fi
+	cd - >/dev/null
+fi
 
 # Clean possibly corrupted Telethon session files from old installs.
 rm -f /usr/bin/ddsdswl.session /usr/bin/ddsdswl.session-journal /usr/bin/ddsdswl.session-wal /usr/bin/ddsdswl.session-shm 2>/dev/null || true
