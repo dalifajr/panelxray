@@ -290,3 +290,28 @@ Route::get('/test-auth-detail', function() {
         'fallback_would_be_used' => empty($dbKey)
     ]);
 });
+
+Route::get('/test-api-call', function() {
+    try {
+        $controller = new \App\Http\Controllers\InternalApiController();
+        
+        $request = new \Illuminate\Http\Request();
+        $request->replace([
+            'tg_id' => '123456789',
+            'reason' => 'Test Reason',
+            'tg_username' => 'test_user',
+            'tg_full_name' => 'Test User',
+        ]);
+        $request->headers->set('X-Internal-Secret', \App\Models\Setting::where('key', 'payment_secret_key')->value('value') ?: 'secret123');
+        
+        $res = $controller->createAccessRequest($request);
+        return $res;
+    } catch (\Throwable $e) {
+        return response()->json([
+            'error' => get_class($e),
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ], 500);
+    }
+});
