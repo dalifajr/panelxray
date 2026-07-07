@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import require_access, menu_credit
+from kyt.modules.ui import require_access, menu_credit, is_admin
 
 @bot.on(events.NewMessage(pattern=r"(?i)^(?:[./](?:start|mulai)(?:@\w+)?)(?:\s+(login_[a-zA-Z0-9_]+))?\s*$"))
 @bot.on(events.CallbackQuery(data=b'start'))

@@ -225,7 +225,7 @@
                                         <span class="text-dark">{{ $req->reason ?: '-' }}</span>
                                     </td>
                                     <td class="px-4 py-3">
-                                        <span class="text-secondary small">{{ $req->created_at->format('d M Y H:i:s') }}</span>
+                                        <span class="text-secondary small">{{ $req->created_at ? $req->created_at->format('d M Y H:i:s') : '-' }}</span>
                                     </td>
                                     <td class="px-4 py-3 text-end">
                                         <div class="d-flex justify-content-end gap-2">
@@ -340,7 +340,7 @@
                                         <span class="text-dark">{{ $qReq->reason ?: '-' }}</span>
                                     </td>
                                     <td class="px-4 py-3">
-                                        <span class="text-secondary small">{{ $qReq->created_at->format('d M Y H:i:s') }}</span>
+                                        <span class="text-secondary small">{{ $qReq->created_at ? $qReq->created_at->format('d M Y H:i:s') : '-' }}</span>
                                     </td>
                                     <td class="px-4 py-3 text-end">
                                         <div class="d-flex justify-content-end gap-2">
