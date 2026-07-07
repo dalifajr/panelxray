@@ -269,3 +269,24 @@ Route::get('/test-db', function() {
         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
     }
 });
+
+Route::get('/test-auth-detail', function() {
+    $dbKey = \App\Models\Setting::where('key', 'payment_secret_key')->value('value');
+    
+    // Read from .env file
+    $envPath = base_path('.env');
+    $envKey = null;
+    if (file_exists($envPath)) {
+        $content = file_get_contents($envPath);
+        if (preg_match('/^PAYMENT_SECRET_KEY=(.*)$/m', $content, $matches)) {
+            $envKey = trim($matches[1], '"\'');
+        }
+    }
+    
+    return response()->json([
+        'db_key' => $dbKey,
+        'env_key' => $envKey,
+        'matches' => ($dbKey === $envKey),
+        'fallback_would_be_used' => empty($dbKey)
+    ]);
+});
