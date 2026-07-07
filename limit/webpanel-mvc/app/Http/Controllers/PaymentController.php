@@ -287,12 +287,34 @@ class PaymentController extends Controller
                 $user->balance += $transaction->total_amount;
                 $user->save();
                 
-                \App\Models\Notification::create([
+                 \App\Models\Notification::create([
                     'user_id' => $user->id,
                     'type' => 'order',
                     'message' => "Gagal memperpanjang VPN {$protocol} ({$userStr}). Alasan: " . $e->getMessage() . ". Dana sebesar Rp " . number_format($transaction->total_amount, 0, ',', '.') . " telah dikembalikan ke Saldo Akun Anda.",
                 ]);
             }
+        }
+
+        // Send Telegram Notification if transaction was initiated from Bot Telegram
+        try {
+            $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
+            $tgId = $meta['tg_id'] ?? null;
+            if ($tgId) {
+                $msg = "";
+                if ($transaction->type === 'topup') {
+                    $msg = "✅ **Top Up Saldo Berhasil!**\n\n"
+                         . "💰 Nominal: `Rp " . number_format($transaction->amount, 0, ',', '.') . "`\n"
+                         . "🔢 Kode Unik: `Rp " . $transaction->unique_code . "`\n"
+                         . "💵 Total Masuk: `Rp " . number_format($transaction->total_amount, 0, ',', '.') . "`\n\n"
+                         . "Saldo Anda telah otomatis ditambahkan.";
+                } else {
+                    $msg = "✅ **Pembayaran Berhasil!**\n\n"
+                         . "Layanan Anda telah otomatis diproses.";
+                }
+                $this->sendTelegramNotification($tgId, $msg);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Telegram Bot notification failed: " . $e->getMessage());
         }
 
         return response()->json(['status' => 'success']);
@@ -346,5 +368,40 @@ class PaymentController extends Controller
         }
 
         return response()->json(['status' => 'success', 'message' => 'Connection OK']);
+    }
+
+    protected function sendTelegramNotification($tgId, $message)
+    {
+        // Fetch BOT_TOKEN
+        $varPath = '/usr/bin/kyt/var.txt';
+        $botToken = null;
+        if (file_exists($varPath)) {
+            $content = file_get_contents($varPath);
+            if (preg_match("/BOT_TOKEN='(.*?)'/m", $content, $matches)) {
+                $botToken = $matches[1];
+            }
+        }
+        
+        if (!$botToken) {
+            // Fallback to setting/env
+            $botToken = env('TELEGRAM_BOT_TOKEN');
+        }
+        
+        if ($botToken && $tgId) {
+            $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
+            $data = [
+                'chat_id' => $tgId,
+                'text' => $message,
+                'parse_mode' => 'Markdown',
+            ];
+            
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            curl_exec($ch);
+            curl_close($ch);
+        }
     }
 }

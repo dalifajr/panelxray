@@ -616,6 +616,167 @@ class InternalApiController extends Controller
         ]);
     }
 
+    /**
+     * POST /api/internal/wallet/topup
+     * Initiate a pending topup transaction from Telegram bot.
+     */
+    public function topup(Request $request): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $request->validate([
+            'tg_id' => 'required|string',
+            'amount' => 'required|integer|min:5000',
+        ]);
+
+        $tgId = $request->input('tg_id');
+        $amount = (int)$request->input('amount');
+
+        if ($amount % 5000 !== 0) {
+            return response()->json(['error' => 'Nominal top up harus kelipatan Rp 5.000'], 400);
+        }
+
+        $botUser = TelegramBotUser::where('tg_id', $tgId)->first();
+        if (!$botUser || !$botUser->user_id) {
+            return response()->json(['error' => 'Akun Telegram Anda belum terhubung ke web panel. Silakan lakukan integrasi di Profil Pengguna.'], 400);
+        }
+
+        $webUser = User::find($botUser->user_id);
+        if (!$webUser) {
+            return response()->json(['error' => 'Akun web panel tidak ditemukan.'], 404);
+        }
+
+        // Cancel existing pending topups of this user
+        Transaction::where('user_id', $webUser->id)
+            ->where('status', 'pending')
+            ->where('type', 'topup')
+            ->update(['status' => 'cancelled']);
+
+        $uniqueCode = rand(1, 100);
+        $totalAmount = $amount + $uniqueCode;
+
+        $qrisPayload = Setting::where('key', 'qris_payload')->value('value');
+        if (!$qrisPayload) {
+            return response()->json(['error' => 'Metode pembayaran QRIS belum dikonfigurasi oleh admin.'], 400);
+        }
+
+        // Generate dynamic QRIS string
+        $dynamicQris = \App\Helpers\QrisHelper::generateDynamic($qrisPayload, $totalAmount);
+
+        // Create transaction
+        $transaction = Transaction::create([
+            'reference' => 'TOP-BOT-' . strtoupper(\Illuminate\Support\Str::random(10)),
+            'user_id' => $webUser->id,
+            'type' => 'topup',
+            'amount' => $amount,
+            'unique_code' => $uniqueCode,
+            'total_amount' => $totalAmount,
+            'status' => 'pending',
+            'description' => 'Top Up Saldo via Bot Telegram',
+            'metadata' => json_encode(['source' => 'telegram_bot', 'tg_id' => $tgId]),
+        ]);
+
+        return response()->json([
+            'status' => 'ok',
+            'reference' => $transaction->reference,
+            'amount' => $amount,
+            'unique_code' => $uniqueCode,
+            'total_amount' => $totalAmount,
+            'dynamic_qris' => $dynamicQris,
+            'qr_code_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($dynamicQris),
+        ]);
+    }
+
+    /**
+     * POST /api/internal/wallet/voucher/redeem
+     * Redeem a voucher code for a Telegram user.
+     */
+    public function redeemVoucher(Request $request): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $request->validate([
+            'tg_id' => 'required|string',
+            'voucher_code' => 'required|string|max:30',
+        ]);
+
+        $tgId = $request->input('tg_id');
+        $code = strtoupper(trim($request->input('voucher_code')));
+
+        $botUser = TelegramBotUser::where('tg_id', $tgId)->first();
+        if (!$botUser || !$botUser->user_id) {
+            return response()->json(['error' => 'Akun Telegram Anda belum terhubung ke web panel.'], 400);
+        }
+
+        $webUser = User::find($botUser->user_id);
+        if (!$webUser) {
+            return response()->json(['error' => 'Akun web panel tidak ditemukan.'], 404);
+        }
+
+        $voucher = \App\Models\Voucher::where('code', $code)->first();
+
+        if (!$voucher) {
+            return response()->json(['error' => 'Kode voucher tidak ditemukan!'], 404);
+        }
+
+        if (!$voucher->is_active) {
+            return response()->json(['error' => 'Voucher ini sudah tidak aktif!'], 400);
+        }
+
+        if ($voucher->used_count >= $voucher->usage_limit) {
+            return response()->json(['error' => 'Kuota penggunaan voucher ini sudah habis!'], 400);
+        }
+
+        if ($voucher->expires_at && $voucher->expires_at->isPast()) {
+            return response()->json(['error' => 'Voucher ini sudah kedaluwarsa!'], 400);
+        }
+
+        $alreadyUsed = \App\Models\VoucherUsage::where('user_id', $webUser->id)
+            ->where('voucher_id', $voucher->id)
+            ->exists();
+        if ($alreadyUsed) {
+            return response()->json(['error' => 'Anda sudah pernah menggunakan voucher ini!'], 400);
+        }
+
+        if ($voucher->type === 'free_balance') {
+            // Add balance
+            $webUser->balance += $voucher->benefit_value;
+            $webUser->save();
+
+            // Log voucher usage
+            \App\Models\VoucherUsage::create([
+                'user_id' => $webUser->id,
+                'voucher_id' => $voucher->id,
+                'benefit_type' => 'free_balance',
+                'benefit_amount' => $voucher->benefit_value,
+            ]);
+
+            $voucher->increment('used_count');
+
+            // Create successful transaction log
+            Transaction::create([
+                'reference' => 'VCH-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                'user_id' => $webUser->id,
+                'type' => 'topup',
+                'amount' => $voucher->benefit_value,
+                'unique_code' => 0,
+                'total_amount' => $voucher->benefit_value,
+                'status' => 'success',
+                'description' => "Klaim Voucher Saldo Gratis ({$voucher->code}) via Bot",
+            ]);
+
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Voucher berhasil diklaim! Saldo gratis Rp ' . number_format($voucher->benefit_value, 0, ',', '.') . ' telah ditambahkan ke dompet Anda.',
+                'new_balance' => (int)$webUser->balance,
+            ]);
+        } elseif ($voucher->type === 'double_saldo') {
+            return response()->json(['error' => 'Voucher Double Saldo hanya dapat digunakan pada menu Top Up.'], 400);
+        }
+
+        return response()->json(['error' => 'Tipe voucher tidak didukung di bot.'], 400);
+    }
+
     // ─────────────────────────────────────────────
     // Transactions
     // ─────────────────────────────────────────────
