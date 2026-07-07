@@ -374,7 +374,11 @@ class InternalApiController extends Controller
 
         $req->status = 'approved';
         $req->admin_id = (string)$request->input('admin_id', '');
+<<<<<<< HEAD
         $req->admin_reason = $request->input('note') ?: 'Approved via Bot';
+=======
+        $req->admin_reason = $request->input('note', 'Approved via Bot');
+>>>>>>> 139ab32b48e8b292fc02963ebe5b317b8a852224
         $req->processed_at = now();
         $req->save();
 
@@ -408,7 +412,11 @@ class InternalApiController extends Controller
 
         $req->status = 'rejected';
         $req->admin_id = (string)$request->input('admin_id', '');
+<<<<<<< HEAD
         $req->admin_reason = $request->input('note') ?: 'Rejected via Bot';
+=======
+        $req->admin_reason = $request->input('note', 'Rejected via Bot');
+>>>>>>> 139ab32b48e8b292fc02963ebe5b317b8a852224
         $req->processed_at = now();
         $req->save();
 
