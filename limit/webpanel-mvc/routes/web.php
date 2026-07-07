@@ -260,3 +260,12 @@ Route::get('/diag', function () {
 
     return response()->json($results, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 });
+
+Route::get('/test-db', function() {
+    try {
+        $count = \App\Models\TelegramAccessRequest::count();
+        return response()->json(['status' => 'ok', 'table_exists' => true, 'count' => $count]);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+});
