@@ -77,8 +77,9 @@ async def menu(event):
 			f"\nGunakan menu di bawah untuk membuat akun atau request kuota tambahan."
 		)
 
-	x = await event.edit(msg, buttons=inline)
-	if not x:
+	try:
+		await event.edit(msg, buttons=inline)
+	except Exception:
 		await event.reply(msg, buttons=inline)
 
 

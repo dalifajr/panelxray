@@ -68,8 +68,9 @@ async def start(event):
 			f"{menu_credit()}"
 		)
 
-	x = await event.edit(msg, buttons=inline)
-	if not x:
+	try:
+		await event.edit(msg, buttons=inline)
+	except Exception:
 		await event.reply(msg, buttons=inline)
 
 async def handle_login_token(event, token):
