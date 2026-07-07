@@ -153,16 +153,59 @@ async def _show_admin_user_detail(event, target_id: str, notice: str = ""):
 
 @bot.on(events.CallbackQuery(pattern=b".+"))
 async def callback_permission_guard(event):
+    sender_id = str(event.sender_id)
     sender = await event.get_sender()
-    sender_id = str(sender.id)
     touch_user(
         sender_id,
-        getattr(sender, "username", "") or "",
-        f"{getattr(sender, 'first_name', '') or ''} {getattr(sender, 'last_name', '') or ''}".strip(),
+        (getattr(sender, "username", "") or "") if sender else "",
+        (f"{getattr(sender, 'first_name', '') or ''} {getattr(sender, 'last_name', '') or ''}".strip()) if sender else f"User {sender_id}",
     )
 
     callback_data = _decode_callback_data(event)
+    bot_mode = globals().get("BOT_MODE", "admin_only")
 
+    # If sales mode, check if user status is blocked (suspended/rejected/kicked)
+    if bot_mode == "sales":
+        try:
+            record = get_user_record(sender_id) or {}
+            status = str(record.get("status", "approved") or "approved").lower()
+            if status in ["suspended", "rejected", "kicked"]:
+                try:
+                    await event.answer("Akses Anda ditangguhkan", alert=True)
+                except Exception:
+                    pass
+                msg = "⛔ Akses bot Anda sedang ditangguhkan atau ditolak oleh admin."
+                if record.get("note"):
+                    msg += f"\n\nAlasan: `{record.get('note')}`"
+                await upsert_message(event, msg)
+                raise events.StopPropagation
+        except Exception as e:
+            logging.error("Failed to check status in sales mode callback: %s", e)
+
+        # Non-admin sales mode callback whitelist
+        if not is_admin_user(sender_id):
+            customer_allowed_prefixes = ("shop-", "buy-", "confirm-", "my-", "wallet-", "voucher-", "start", "request-")
+            is_allowed = False
+            for prefix in customer_allowed_prefixes:
+                if callback_data.startswith(prefix):
+                    is_allowed = True
+                    break
+            if not is_allowed:
+                try:
+                    await event.answer("⚠️ Menu ini dinonaktifkan dalam mode jualan.", alert=True)
+                except Exception:
+                    pass
+                raise events.StopPropagation
+
+            if _is_admin_only_callback(callback_data):
+                try:
+                    await event.answer("Menu khusus admin", alert=True)
+                except Exception:
+                    pass
+                raise events.StopPropagation
+        return
+
+    # Admin only mode guard (default)
     if not is_user_approved(sender_id):
         if callback_data == "request-access":
             return
@@ -180,22 +223,6 @@ async def callback_permission_guard(event):
     if is_admin_user(sender_id):
         return
 
-    # Sales Mode Customer Callback Guard
-    bot_mode = globals().get("BOT_MODE", "admin_only")
-    if bot_mode == "sales":
-        customer_allowed_prefixes = ("shop-", "buy-", "confirm-", "my-", "wallet-", "voucher-", "start", "request-")
-        is_allowed = False
-        for prefix in customer_allowed_prefixes:
-            if callback_data.startswith(prefix):
-                is_allowed = True
-                break
-        if not is_allowed:
-            try:
-                await event.answer("⚠️ Menu ini dinonaktifkan dalam mode jualan.", alert=True)
-            except Exception:
-                pass
-            raise events.StopPropagation
-
     if _is_admin_only_callback(callback_data):
         try:
             await event.answer("Menu khusus admin", alert=True)
@@ -206,8 +233,8 @@ async def callback_permission_guard(event):
 
 @bot.on(events.CallbackQuery(data=b"request-access"))
 async def request_access_handler(event):
+    sender_id = str(event.sender_id)
     sender = await event.get_sender()
-    sender_id = str(sender.id)
 
     if is_user_approved(sender_id):
         await upsert_message(event, "✅ Akses Anda sudah aktif.", buttons=[[Button.inline("⬅️ Menu", b"menu")]])
@@ -217,17 +244,17 @@ async def request_access_handler(event):
     reason, msgs = await ask_text_clean(
         event,
         chat,
-        sender.id,
+        event.sender_id,
         "📝 **Alasan request akses (opsional, ketik `-` jika kosong):**",
         [],
     )
     await delete_messages(chat, msgs)
     reason = _optional_reason(reason)
 
-    full_name = f"{getattr(sender, 'first_name', '') or ''} {getattr(sender, 'last_name', '') or ''}".strip()
+    full_name = (f"{getattr(sender, 'first_name', '') or ''} {getattr(sender, 'last_name', '') or ''}".strip()) if sender else f"User {sender_id}"
     result = create_access_request(
         sender_id,
-        getattr(sender, "username", "") or "",
+        ((getattr(sender, "username", "") or "") if sender else ""),
         full_name,
         reason,
     )

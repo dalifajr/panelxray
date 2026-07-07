@@ -90,13 +90,16 @@ class InternalApiController extends Controller
         $tgId = $request->input('tg_id');
         $user = TelegramBotUser::where('tg_id', $tgId)->first();
 
+        $botMode = env('BOT_MODE') ?: Setting::where('key', 'bot_mode')->value('value') ?: 'admin_only';
+        $status = ($botMode === 'sales') ? 'approved' : 'pending';
+
         if (!$user) {
             $user = TelegramBotUser::create([
                 'tg_id' => $tgId,
                 'tg_username' => $request->input('tg_username') ?: '',
                 'tg_full_name' => $request->input('tg_full_name') ?: '',
                 'role' => 'user',
-                'status' => 'pending',
+                'status' => $status,
             ]);
 
             // Try to auto-link if a web panel user has this telegram_id
@@ -105,7 +108,17 @@ class InternalApiController extends Controller
                 $user->user_id = $webUser->id;
                 $user->save();
             }
+
+            if ($status === 'approved') {
+                $user->syncWebUser();
+            }
         } else {
+            if ($user->status === 'pending' && $botMode === 'sales') {
+                $user->status = 'approved';
+                $user->save();
+                $user->syncWebUser();
+            }
+
             // Update username/full_name if provided
             $changed = false;
             if ($request->filled('tg_username') && $request->input('tg_username') !== $user->tg_username) {
@@ -121,7 +134,7 @@ class InternalApiController extends Controller
             }
         }
 
-        return response()->json(['status' => 'ok', 'user' => $user]);
+        return response()->json(['status' => 'ok', 'user' => $user->fresh()]);
     }
 
     /**

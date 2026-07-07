@@ -30,10 +30,10 @@ def quota_request_buttons():
 
 
 async def require_access(event, admin_only: bool = False) -> bool:
+    sender_id = str(event.sender_id)
     sender = await event.get_sender()
-    sender_id = str(sender.id)
-    username = getattr(sender, "username", "") or ""
-    full_name = _sender_full_name(sender)
+    username = getattr(sender, "username", "") or "" if sender else ""
+    full_name = _sender_full_name(sender) if sender else f"User {sender_id}"
     try:
         touch_user(sender_id, username, full_name)
     except Exception as e:
@@ -45,7 +45,7 @@ async def require_access(event, admin_only: bool = False) -> bool:
         return False
 
     if admin_only:
-        if is_admin(sender.id):
+        if is_admin(sender_id):
             return True
         try:
             await event.answer("Menu khusus admin", alert=True)
