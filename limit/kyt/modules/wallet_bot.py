@@ -13,7 +13,7 @@ async def wallet_bot(event):
             "Silakan hubungkan Telegram Anda terlebih dahulu di website panel:\n"
             "**Profil Pengguna** → **Hubungkan Telegram**"
         )
-        buttons = [[Button.inline("⬅️ Main Menu", "menu")]]
+        buttons = [[Button.inline("⬅️ Main Menu", "start")]]
         await event.edit(msg, buttons=buttons)
         return
 
@@ -30,7 +30,7 @@ async def wallet_bot(event):
     inline = [
         [Button.inline("💳 Top Up Saldo", "topup-info"), Button.inline("🎫 Klaim Voucher", "claim-voucher")],
         [Button.inline("📜 Riwayat Transaksi", "tx-history")],
-        [Button.inline("⬅️ Main Menu", "menu")]
+        [Button.inline("⬅️ Main Menu", "start")]
     ]
 
     await event.edit(msg, buttons=inline)
@@ -185,7 +185,10 @@ async def topup_info(event):
         "Pastikan membayar **EXACTLY / SAMA PERSIS** dengan total pembayaran di atas agar otomatis masuk dalam hitungan detik!"
     )
 
-    buttons = [[Button.inline("🏠 Main Menu", "menu")]]
+    buttons = [
+        [Button.inline("❌ Batalkan Top Up", "cancel-topup")],
+        [Button.inline("🏠 Main Menu", "start")]
+    ]
 
     # Send the QR Code image directly using the URL!
     try:
@@ -197,3 +200,17 @@ async def topup_info(event):
             f"🔗 [Klik di sini untuk melihat Kode QR Anda]({qr_url})"
         )
         await bot.send_message(chat, fallback_msg, buttons=buttons)
+
+@bot.on(events.CallbackQuery(data=b'cancel-topup'))
+async def handle_cancel_topup(event):
+    sender = await event.get_sender()
+    res = api_call("POST", "/wallet/topup/cancel", {"tg_id": str(sender.id)})
+    if "error" in res:
+        await event.answer(f"❌ Gagal membatalkan top up: {res['error']}", alert=True)
+        return
+    
+    await event.edit(
+        "❌ **Transaksi Dibatalkan**\n\n"
+        "Instruksi pembayaran QRIS telah berhasil dibatalkan.",
+        buttons=[[Button.inline("⬅️ Kembali ke Dompet", "wallet-bot"), Button.inline("🏠 Main Menu", "start")]]
+    )

@@ -66,6 +66,7 @@ class InternalApiController extends Controller
             'bot_trial_enabled' => ($settings['bot_trial_enabled'] ?? 'false') === 'true',
             'bot_trial_days' => (int)($settings['bot_trial_days'] ?? 1),
             'qris_payload' => $settings['qris_payload'] ?? '',
+            'max_ip_limit' => (int)($settings['max_ip_limit'] ?? 0),
         ]);
     }
 
@@ -708,7 +709,7 @@ class InternalApiController extends Controller
             'total_amount' => $amount,
             'description' => $request->input('description', 'Pembelian via Bot Telegram'),
             'status' => 'success',
-            'metadata' => json_encode(['source' => 'telegram_bot', 'tg_id' => $tgId]),
+            'metadata' => ['source' => 'telegram_bot', 'tg_id' => $tgId],
         ]);
 
         return response()->json([
@@ -774,7 +775,7 @@ class InternalApiController extends Controller
             'total_amount' => $totalAmount,
             'status' => 'pending',
             'description' => 'Top Up Saldo via Bot Telegram',
-            'metadata' => json_encode(['source' => 'telegram_bot', 'tg_id' => $tgId]),
+            'metadata' => ['source' => 'telegram_bot', 'tg_id' => $tgId],
         ]);
 
         return response()->json([
@@ -900,5 +901,128 @@ class InternalApiController extends Controller
             ->get();
 
         return response()->json(['transactions' => $transactions]);
+    }
+
+    /**
+     * POST /api/internal/wallet/topup/cancel
+     */
+    public function cancelTopup(Request $request): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $request->validate([
+            'tg_id' => 'required|string',
+        ]);
+
+        $tgId = $request->input('tg_id');
+        $botUser = TelegramBotUser::where('tg_id', $tgId)->first();
+        if (!$botUser || !$botUser->user_id) {
+            return response()->json(['error' => 'Akun Telegram belum terhubung.'], 400);
+        }
+
+        $count = Transaction::where('user_id', $botUser->user_id)
+            ->where('status', 'pending')
+            ->whereIn('type', ['topup', 'vpn_purchase_qris'])
+            ->update(['status' => 'cancelled']);
+
+        return response()->json(['status' => 'ok', 'cancelled' => $count > 0]);
+    }
+
+    /**
+     * POST /api/internal/bot/purchase/qris
+     */
+    public function purchaseViaQris(Request $request): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $request->validate([
+            'tg_id' => 'required|string',
+            'protocol' => 'required|string',
+            'username' => 'required|string|max:30|regex:/^[a-zA-Z0-9_.-]+$/',
+            'days' => 'required|integer|min:1',
+            'limit_ip' => 'required|integer|min:1',
+            'quota' => 'nullable|integer',
+        ]);
+
+        $tgId = $request->input('tg_id');
+        $protocol = $request->input('protocol');
+        $userStr = $request->input('username');
+        $exp = (int)$request->input('days');
+        $ip = (int)$request->input('limit_ip');
+        $quota = (int)$request->input('quota', 100);
+        $pw = $request->input('password', '1');
+        $sni = $request->input('sni_config', '3');
+
+        $botUser = TelegramBotUser::where('tg_id', $tgId)->first();
+        if (!$botUser || !$botUser->user_id) {
+            return response()->json(['error' => 'Akun Telegram Anda belum terhubung ke web panel.'], 400);
+        }
+
+        $webUser = User::find($botUser->user_id);
+        if (!$webUser) {
+            return response()->json(['error' => 'Akun web panel tidak ditemukan.'], 404);
+        }
+
+        // Hitung harga
+        $basePriceObj = Price::where('protocol', $protocol)->first();
+        $basePrice = $basePriceObj->price ?? 0;
+        $ipPriceObj = Price::where('protocol', 'add_ip')->first();
+        $ipPrice = $ipPriceObj->price ?? 0;
+
+        $vpnCost = round(($basePrice / 30) * $exp);
+        $extraIpCost = $ip > 1 ? ($ipPrice * ($ip - 1)) : 0;
+        $totalPrice = $vpnCost + $extraIpCost;
+
+        if ($totalPrice <= 0) {
+            return response()->json(['error' => 'Layanan ini belum memiliki harga.'], 400);
+        }
+
+        $uniqueCode = rand(1, 100);
+        $finalTotal = $totalPrice + $uniqueCode;
+
+        $qrisPayload = Setting::where('key', 'qris_payload')->value('value');
+        if (!$qrisPayload) {
+            return response()->json(['error' => 'Metode pembayaran QRIS belum dikonfigurasi oleh admin.'], 400);
+        }
+
+        $dynamicQris = \App\Helpers\QrisHelper::generateDynamic($qrisPayload, $finalTotal);
+
+        // Cancel existing pending topups or purchases to avoid confusion
+        Transaction::where('user_id', $webUser->id)
+            ->where('status', 'pending')
+            ->whereIn('type', ['topup', 'vpn_purchase_qris'])
+            ->update(['status' => 'cancelled']);
+
+        $trx = Transaction::create([
+            'reference' => 'VPN-BOT-' . strtoupper(\Illuminate\Support\Str::random(10)),
+            'user_id' => $webUser->id,
+            'type' => 'vpn_purchase_qris',
+            'amount' => $totalPrice,
+            'unique_code' => $uniqueCode,
+            'total_amount' => $finalTotal,
+            'status' => 'pending',
+            'description' => "Pembelian VPN $protocol ($userStr) $exp Hari via Bot Telegram",
+            'metadata' => [
+                'source' => 'telegram_bot',
+                'tg_id' => $tgId,
+                'protocol' => $protocol,
+                'username' => $userStr,
+                'password' => $pw,
+                'days' => $exp,
+                'limit_ip' => $ip,
+                'sni_config' => $sni,
+                'quota' => $quota
+            ]
+        ]);
+
+        return response()->json([
+            'status' => 'ok',
+            'reference' => $trx->reference,
+            'amount' => $totalPrice,
+            'unique_code' => $uniqueCode,
+            'total_amount' => $finalTotal,
+            'dynamic_qris' => $dynamicQris,
+            'qr_code_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($dynamicQris),
+        ]);
     }
 }
