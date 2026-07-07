@@ -194,6 +194,9 @@ class InternalApiController extends Controller
         $user->note = $request->input('note', $user->note);
         $user->save();
 
+        // Auto-create and sync web user account
+        $user->syncWebUser();
+
         // Update related access request
         TelegramAccessRequest::where('tg_id', $tgId)
             ->where('status', 'pending')
@@ -372,13 +375,12 @@ class InternalApiController extends Controller
         $botUser->status = 'approved';
         $botUser->save();
 
+        // Auto-create and sync web user account
+        $botUser->syncWebUser();
+
         $req->status = 'approved';
         $req->admin_id = (string)$request->input('admin_id', '');
-<<<<<<< HEAD
         $req->admin_reason = $request->input('note') ?: 'Approved via Bot';
-=======
-        $req->admin_reason = $request->input('note', 'Approved via Bot');
->>>>>>> 139ab32b48e8b292fc02963ebe5b317b8a852224
         $req->processed_at = now();
         $req->save();
 
@@ -412,11 +414,7 @@ class InternalApiController extends Controller
 
         $req->status = 'rejected';
         $req->admin_id = (string)$request->input('admin_id', '');
-<<<<<<< HEAD
         $req->admin_reason = $request->input('note') ?: 'Rejected via Bot';
-=======
-        $req->admin_reason = $request->input('note', 'Rejected via Bot');
->>>>>>> 139ab32b48e8b292fc02963ebe5b317b8a852224
         $req->processed_at = now();
         $req->save();
 

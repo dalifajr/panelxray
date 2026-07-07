@@ -33,6 +33,10 @@ class TelegramBotController extends Controller
 
         $botUser->update($validated);
 
+        if ($botUser->status === 'approved') {
+            $botUser->syncWebUser();
+        }
+
         return back()->with('sweet_success', 'Data user bot Telegram berhasil diperbarui!');
     }
 
@@ -58,6 +62,9 @@ class TelegramBotController extends Controller
 
         $botUser->status = 'approved';
         $botUser->save();
+
+        // Auto-create and sync web user account
+        $botUser->syncWebUser();
 
         $req->update([
             'status' => 'approved',
