@@ -261,57 +261,31 @@ Route::get('/diag', function () {
     return response()->json($results, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 });
 
-Route::get('/test-db', function() {
+Route::get('/test-approve', function() {
     try {
-        $count = \App\Models\TelegramAccessRequest::count();
-        return response()->json(['status' => 'ok', 'table_exists' => true, 'count' => $count]);
-    } catch (\Throwable $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
-    }
-});
-
-Route::get('/test-auth-detail', function() {
-    $dbKey = \App\Models\Setting::where('key', 'payment_secret_key')->value('value');
-    
-    // Read from .env file
-    $envPath = base_path('.env');
-    $envKey = null;
-    if (file_exists($envPath)) {
-        $content = file_get_contents($envPath);
-        if (preg_match('/^PAYMENT_SECRET_KEY=(.*)$/m', $content, $matches)) {
-            $envKey = trim($matches[1], '"\'');
+        $controller = new \App\Http\Controllers\TelegramBotController();
+        
+        $req = \App\Models\TelegramAccessRequest::first();
+        if (!$req) {
+            return response()->json(['error' => 'No access request found in DB to test. please make one from bot first.']);
         }
-    }
-    
-    return response()->json([
-        'db_key' => $dbKey,
-        'env_key' => $envKey,
-        'matches' => ($dbKey === $envKey),
-        'fallback_would_be_used' => empty($dbKey)
-    ]);
-});
-
-Route::get('/test-api-call', function() {
-    try {
-        $controller = new \App\Http\Controllers\InternalApiController();
         
         $request = new \Illuminate\Http\Request();
-        $request->replace([
-            'tg_id' => '123456789',
-            'reason' => 'Test Reason',
-            'tg_username' => 'test_user',
-            'tg_full_name' => 'Test User',
-        ]);
-        $request->headers->set('X-Internal-Secret', \App\Models\Setting::where('key', 'payment_secret_key')->value('value') ?: 'secret123');
+        $request->replace(['reason' => 'Test Approve']);
         
-        $res = $controller->createAccessRequest($request);
-        return $res;
+        $admin = \App\Models\User::where('role', 'admin')->first();
+        if ($admin) {
+            auth()->login($admin);
+        }
+        
+        return $controller->approveAccess($request, $req->id);
     } catch (\Throwable $e) {
         return response()->json([
-            'error' => get_class($e),
+            'error_class' => get_class($e),
             'message' => $e->getMessage(),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
+            'trace' => array_slice($e->getTrace(), 0, 10),
         ], 500);
     }
 });
