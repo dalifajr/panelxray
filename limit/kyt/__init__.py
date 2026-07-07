@@ -578,8 +578,9 @@ def create_access_request(tg_id, username: str = "", full_name: str = "", reason
 		"reason": str(reason or "").strip()
 	})
 	if "error" in res:
+		logging.error("create_access_request API error: %s", res)
 		return {"ok": False, "status": "error"}
-	return {"ok": True, "status": "created"}
+	return {"ok": True, "status": "created", "request": res.get("request", {})}
 
 def get_user_limits(tg_id) -> Dict:
 	uid = _normalize_tg_id(tg_id)
