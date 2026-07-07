@@ -91,12 +91,15 @@ async def start(event):
 				f"{menu_credit()}"
 			)
 
-		logging.info("[DEBUG START] sending message (event.edit)")
-		try:
-			await event.edit(msg, buttons=inline)
-			logging.info("[DEBUG START] event.edit success")
-		except Exception as edit_err:
-			logging.info("[DEBUG START] event.edit failed: %s, trying event.reply", edit_err)
+		if isinstance(event, events.CallbackQuery):
+			try:
+				await event.edit(msg, buttons=inline)
+				logging.info("[DEBUG START] event.edit success")
+			except Exception as edit_err:
+				logging.info("[DEBUG START] event.edit failed: %s, fallback to reply", edit_err)
+				await event.reply(msg, buttons=inline)
+				logging.info("[DEBUG START] event.reply success")
+		else:
 			await event.reply(msg, buttons=inline)
 			logging.info("[DEBUG START] event.reply success")
 	except Exception as exc:
