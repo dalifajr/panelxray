@@ -10,16 +10,6 @@ use Illuminate\Http\Request;
 
 class TelegramBotController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware(function ($request, $next) {
-            if (auth()->user()->role !== 'admin') {
-                abort(403);
-            }
-            return $next($request);
-        });
-    }
-
     public function index()
     {
         $botUsers = TelegramBotUser::with('webUser')->orderBy('created_at', 'desc')->get();

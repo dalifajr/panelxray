@@ -260,19 +260,3 @@ Route::get('/diag', function () {
 
     return response()->json($results, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 });
-
-// === TEMPORARY ERROR DIAGNOSTIC ROUTE ===
-Route::get('/test-err', function() {
-    try {
-        $controller = new \App\Http\Controllers\TelegramBotController();
-        return $controller->index();
-    } catch (\Throwable $e) {
-        return response()->json([
-            'error_class' => get_class($e),
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => array_slice($e->getTrace(), 0, 15),
-        ], 500);
-    }
-});
