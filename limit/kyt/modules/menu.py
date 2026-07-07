@@ -15,72 +15,75 @@ def _run_count(cmd: str, divisor: int = 1) -> str:
 @bot.on(events.NewMessage(pattern=r"(?i)^(?:[./]menu(?:@\w+)?)\s*$"))
 @bot.on(events.CallbackQuery(data=b'menu'))
 async def menu(event):
-	if not await require_access(event):
-		return
-
-	sender = await event.get_sender()
-	admin_mode = is_admin(sender.id)
-	bot_mode = globals().get("BOT_MODE", "admin_only")
-
-	if bot_mode == "sales" and not admin_mode:
-		try:
-			await event.answer("⚠️ Menu khusus admin panel.", alert=True)
-		except Exception:
-			pass
-		await upsert_message(event, "⛔ Menu ini hanya untuk admin panel.")
-		return
-
-	if admin_mode:
-		inline = [
-			[Button.inline("👤 SSH", "ssh"), Button.inline("🛰️ VMESS", "vmess")],
-			[Button.inline("🧩 VLESS", "vless"), Button.inline("🛡️ TROJAN", "trojan")],
-			[Button.inline("🌘 SHADOWSOCKS", "shadowsocks"), Button.inline("📊 VPS Info", "info")],
-			[Button.inline("👥 Kelola User", "admin-users"), Button.inline("⚙️ Settings", "setting")],
-			[Button.inline("⬅️ Back", "start")],
-		]
-	else:
-		inline = [
-			[Button.inline("👤 SSH", "ssh"), Button.inline("🛰️ VMESS", "vmess")],
-			[Button.inline("🧩 VLESS", "vless"), Button.inline("🛡️ TROJAN", "trojan")],
-			[Button.inline("🌘 SHADOWSOCKS", "shadowsocks")],
-			[Button.inline("📈 Kuota Saya", "quota-my"), Button.inline("📨 Request Kuota", "quota-request")],
-			[Button.inline("⬅️ Back", "start")],
-		]
-
-	# Keep source in sync with shell panel counters.
-	ssh = _run_count("awk -F: '$3>=1000 && $1!=\"nobody\" {c++} END{print c+0}' /etc/passwd 2>/dev/null")
-	vms = _run_count("grep -c -E '^### ' /etc/xray/config.json 2>/dev/null", divisor=2)
-	vls = _run_count("grep -c -E '^#& ' /etc/xray/config.json 2>/dev/null", divisor=2)
-	trj = _run_count("grep -c -E '^#! ' /etc/xray/config.json 2>/dev/null", divisor=2)
-	ssn = _run_count("grep -c -E '^#!# ' /etc/xray/config.json 2>/dev/null", divisor=2)
-
-	if admin_mode:
-		msg = (
-			f"{manager_banner('PanelXray Telegram Bot', 'All Services')}\n\n"
-			f"📦 **Total Account**\n"
-			f"▪ SSH: `{ssh}`\n"
-			f"▪ VMESS: `{vms}`\n"
-			f"▪ VLESS: `{vls}`\n"
-			f"▪ TROJAN: `{trj}`\n"
-			f"▪ SHADOWSOCKS: `{ssn}`"
-		)
-	else:
-		stats = get_user_stats(str(sender.id))
-		limits = get_user_limits(str(sender.id))
-		ssh_limit_text = "unlimited" if int(limits.get("ssh_limit", 0)) <= 0 else str(limits.get("ssh_limit", 0))
-		xray_limit_text = "unlimited" if int(limits.get("xray_limit", 0)) <= 0 else str(limits.get("xray_limit", 0))
-		msg = (
-			f"{manager_banner('PanelXray Telegram Bot', 'User Access')}\n\n"
-			f"📊 **Stat Akun Anda**\n"
-			f"▪ SSH dibuat: `{stats.get('ssh_total', 0)}` / `{ssh_limit_text}`\n"
-			f"▪ XRAY dibuat: `{stats.get('xray_total', 0)}` / `{xray_limit_text}`\n"
-			f"\nGunakan menu di bawah untuk membuat akun atau request kuota tambahan."
-		)
-
 	try:
-		await event.edit(msg, buttons=inline)
-	except Exception:
-		await event.reply(msg, buttons=inline)
+		if not await require_access(event):
+			return
+
+		sender_id = str(event.sender_id)
+		admin_mode = is_admin(event.sender_id)
+		bot_mode = globals().get("BOT_MODE", "admin_only")
+
+		if bot_mode == "sales" and not admin_mode:
+			try:
+				await event.answer("⚠️ Menu khusus admin panel.", alert=True)
+			except Exception:
+				pass
+			await upsert_message(event, "⛔ Menu ini hanya untuk admin panel.")
+			return
+
+		if admin_mode:
+			inline = [
+				[Button.inline("👤 SSH", "ssh"), Button.inline("🛰️ VMESS", "vmess")],
+				[Button.inline("🧩 VLESS", "vless"), Button.inline("🛡️ TROJAN", "trojan")],
+				[Button.inline("🌘 SHADOWSOCKS", "shadowsocks"), Button.inline("📊 VPS Info", "info")],
+				[Button.inline("👥 Kelola User", "admin-users"), Button.inline("⚙️ Settings", "setting")],
+				[Button.inline("⬅️ Back", "start")],
+			]
+		else:
+			inline = [
+				[Button.inline("👤 SSH", "ssh"), Button.inline("🛰️ VMESS", "vmess")],
+				[Button.inline("🧩 VLESS", "vless"), Button.inline("🛡️ TROJAN", "trojan")],
+				[Button.inline("🌘 SHADOWSOCKS", "shadowsocks")],
+				[Button.inline("📈 Kuota Saya", "quota-my"), Button.inline("📨 Request Kuota", "quota-request")],
+				[Button.inline("⬅️ Back", "start")],
+			]
+
+		# Keep source in sync with shell panel counters.
+		ssh = _run_count("awk -F: '$3>=1000 && $1!=\"nobody\" {c++} END{print c+0}' /etc/passwd 2>/dev/null")
+		vms = _run_count("grep -c -E '^### ' /etc/xray/config.json 2>/dev/null", divisor=2)
+		vls = _run_count("grep -c -E '^#& ' /etc/xray/config.json 2>/dev/null", divisor=2)
+		trj = _run_count("grep -c -E '^#! ' /etc/xray/config.json 2>/dev/null", divisor=2)
+		ssn = _run_count("grep -c -E '^#!# ' /etc/xray/config.json 2>/dev/null", divisor=2)
+
+		if admin_mode:
+			msg = (
+				f"{manager_banner('PanelXray Telegram Bot', 'All Services')}\n\n"
+				f"📦 **Total Account**\n"
+				f"▪ SSH: `{ssh}`\n"
+				f"▪ VMESS: `{vms}`\n"
+				f"▪ VLESS: `{vls}`\n"
+				f"▪ TROJAN: `{trj}`\n"
+				f"▪ SHADOWSOCKS: `{ssn}`"
+			)
+		else:
+			stats = get_user_stats(sender_id)
+			limits = get_user_limits(sender_id)
+			ssh_limit_text = "unlimited" if int(limits.get("ssh_limit", 0)) <= 0 else str(limits.get("ssh_limit", 0))
+			xray_limit_text = "unlimited" if int(limits.get("xray_limit", 0)) <= 0 else str(limits.get("xray_limit", 0))
+			msg = (
+				f"{manager_banner('PanelXray Telegram Bot', 'User Access')}\n\n"
+				f"📊 **Stat Akun Anda**\n"
+				f"▪ SSH dibuat: `{stats.get('ssh_total', 0)}` / `{ssh_limit_text}`\n"
+				f"▪ XRAY dibuat: `{stats.get('xray_total', 0)}` / `{xray_limit_text}`\n"
+				f"\nGunakan menu di bawah untuk membuat akun atau request kuota tambahan."
+			)
+
+		try:
+			await event.edit(msg, buttons=inline)
+		except Exception:
+			await event.reply(msg, buttons=inline)
+	except Exception as exc:
+		logging.exception("Exception inside menu handler: %s", exc)
 
 
 @bot.on(events.CallbackQuery(data=b'create-menu'))

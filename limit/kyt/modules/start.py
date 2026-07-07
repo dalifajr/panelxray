@@ -5,84 +5,87 @@ from kyt.modules.ui import require_access, menu_credit, is_admin
 @bot.on(events.CallbackQuery(data=b'start'))
 async def start(event):
 	logging.info("Received /start command! Sender: %s, Text: %s", event.sender_id, getattr(event, 'text', 'Callback'))
-	match = event.pattern_match if hasattr(event, 'pattern_match') else None
-	if match and match.lastindex and match.group(1):
-		token_str = match.group(1).strip()
-		logging.info("Matched token_str: %s", token_str)
-		if token_str.startswith("login_"):
-			logging.info("Delegating to handle_login_token for %s", token_str)
-			return await handle_login_token(event, token_str)
-            
-	# Determine mode and role
-	admin_mode = is_admin(event.sender_id)
+	try:
+		match = event.pattern_match if hasattr(event, 'pattern_match') else None
+		if match and match.lastindex and match.group(1):
+			token_str = match.group(1).strip()
+			logging.info("Matched token_str: %s", token_str)
+			if token_str.startswith("login_"):
+				logging.info("Delegating to handle_login_token for %s", token_str)
+				return await handle_login_token(event, token_str)
+				 
+		# Determine mode and role
+		admin_mode = is_admin(event.sender_id)
 
-	# Load bot mode from .env/var.txt
-	bot_mode = globals().get("BOT_MODE", "admin_only")
+		# Load bot mode from .env/var.txt
+		bot_mode = globals().get("BOT_MODE", "admin_only")
 
-	# Access control check
-	if not await require_access(event):
-		return
+		# Access control check
+		if not await require_access(event):
+			return
 
-	if bot_mode == "sales":
-		if admin_mode:
-			inline = [
-				[Button.inline("🚀 Open Panel Menu (Admin)", "menu")],
-				[Button.inline("🛒 Beli VPN (Shop)", "shop-menu"), Button.inline("📋 Akun Saya", "my-accounts")],
-				[Button.inline("💰 Saldo & Wallet", "wallet-bot")],
-				[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")]
-			]
+		if bot_mode == "sales":
+			if admin_mode:
+				inline = [
+					[Button.inline("🚀 Open Panel Menu (Admin)", "menu")],
+					[Button.inline("🛒 Beli VPN (Shop)", "shop-menu"), Button.inline("📋 Akun Saya", "my-accounts")],
+					[Button.inline("💰 Saldo & Wallet", "wallet-bot")],
+					[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")]
+				]
+			else:
+				inline = [
+					[Button.inline("🛒 Beli VPN (Shop)", "shop-menu"), Button.inline("📋 Akun Saya", "my-accounts")],
+					[Button.inline("💰 Saldo & Wallet", "wallet-bot")],
+					[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")]
+				]
 		else:
+			# Default: Admin Only mode
 			inline = [
-				[Button.inline("🛒 Beli VPN (Shop)", "shop-menu"), Button.inline("📋 Akun Saya", "my-accounts")],
-				[Button.inline("💰 Saldo & Wallet", "wallet-bot")],
-				[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")]
+				[Button.inline("🚀 Open Panel Menu", "menu")],
+				[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
 			]
-	else:
-		# Default: Admin Only mode
-		inline = [
-			[Button.inline("🚀 Open Panel Menu", "menu")],
-			[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
-		]
 
-	try:
-		sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"
-		namaos = subprocess.check_output(sdss, shell=True, timeout=2).decode("ascii").strip().replace('"', '')
-	except Exception:
-		namaos = "Ubuntu/Debian"
+		try:
+			sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"
+			namaos = subprocess.check_output(sdss, shell=True, timeout=2).decode("ascii").strip().replace('"', '')
+		except Exception:
+			namaos = "Ubuntu/Debian"
 
-	try:
-		ipsaya = subprocess.check_output("curl -s --connect-timeout 2 -m 3 ipv4.icanhazip.com", shell=True, timeout=3).decode("ascii").strip()
-	except Exception:
-		ipsaya = "unknown"
+		try:
+			ipsaya = subprocess.check_output("curl -s --connect-timeout 2 -m 3 ipv4.icanhazip.com", shell=True, timeout=3).decode("ascii").strip()
+		except Exception:
+			ipsaya = "unknown"
 
-	try:
-		city = subprocess.check_output("cat /etc/xray/city", shell=True, timeout=2).decode("ascii").strip()
-	except Exception:
-		city = "unknown"
+		try:
+			city = subprocess.check_output("cat /etc/xray/city", shell=True, timeout=2).decode("ascii").strip()
+		except Exception:
+			city = "unknown"
 
-	if bot_mode == "sales" and not admin_mode:
-		msg = (
-			"👋 **Selamat datang di Bot Jualan VPN**\n"
-			f"🌐 **Domain:** `{DOMAIN}`\n\n"
-			"🧭 Pilih menu di bawah ini untuk memulai pembelian akun VPN self-service atau mengelola saldo/akun Anda.\n"
-			f"{menu_credit()}"
-		)
-	else:
-		msg = (
-			"👋 **Welcome to PanelXray Bot**\n"
-			f"🖥️ **OS:** `{namaos}`\n"
-			f"🏙️ **City:** `{city}`\n"
-			f"🌐 **Domain:** `{DOMAIN}`\n"
-			f"📡 **IP VPS:** `{ipsaya}`\n\n"
-			"🧭 Gunakan tombol menu untuk mulai mengelola VPN.\n"
-			"🏠 Anda juga bisa ketik `/mulai` kapan saja untuk kembali ke halaman ini.\n"
-			f"{menu_credit()}"
-		)
+		if bot_mode == "sales" and not admin_mode:
+			msg = (
+				"👋 **Selamat datang di Bot Jualan VPN**\n"
+				f"🌐 **Domain:** `{DOMAIN}`\n\n"
+				"🧭 Pilih menu di bawah ini untuk memulai pembelian akun VPN self-service atau mengelola saldo/akun Anda.\n"
+				f"{menu_credit()}"
+			)
+		else:
+			msg = (
+				"👋 **Welcome to PanelXray Bot**\n"
+				f"🖥️ **OS:** `{namaos}`\n"
+				f"🏙️ **City:** `{city}`\n"
+				f"🌐 **Domain:** `{DOMAIN}`\n"
+				f"📡 **IP VPS:** `{ipsaya}`\n\n"
+				"🧭 Gunakan tombol menu untuk mulai mengelola VPN.\n"
+				"🏠 Anda juga bisa ketik `/mulai` kapan saja untuk kembali ke halaman ini.\n"
+				f"{menu_credit()}"
+			)
 
-	try:
-		await event.edit(msg, buttons=inline)
-	except Exception:
-		await event.reply(msg, buttons=inline)
+		try:
+			await event.edit(msg, buttons=inline)
+		except Exception:
+			await event.reply(msg, buttons=inline)
+	except Exception as exc:
+		logging.exception("Exception inside start handler: %s", exc)
 
 async def handle_login_token(event, token):
     logging.info("Entering handle_login_token with token: %s for sender_id: %s", token, event.sender_id)
