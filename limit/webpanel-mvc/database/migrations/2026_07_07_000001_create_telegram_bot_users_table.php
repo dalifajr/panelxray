@@ -27,10 +27,10 @@ return new class extends Migration
             $table->string('tg_id');
             $table->string('tg_username')->default('');
             $table->string('tg_full_name')->default('');
-            $table->text('reason')->default('');
+            $table->text('reason')->nullable();
             $table->string('status')->default('pending'); // pending, approved, rejected
             $table->string('admin_id')->default('');
-            $table->text('admin_reason')->default('');
+            $table->text('admin_reason')->nullable();
             $table->timestamp('processed_at')->nullable();
             $table->timestamps();
         });
@@ -38,10 +38,10 @@ return new class extends Migration
         Schema::create('telegram_quota_requests', function (Blueprint $table) {
             $table->id();
             $table->string('tg_id');
-            $table->text('reason')->default('');
+            $table->text('reason')->nullable();
             $table->string('status')->default('pending');
             $table->string('admin_id')->default('');
-            $table->text('admin_reason')->default('');
+            $table->text('admin_reason')->nullable();
             $table->timestamp('processed_at')->nullable();
             $table->timestamps();
         });
