@@ -44,10 +44,21 @@ async def start(event):
 			[Button.url("💬 WhatsApp", "https://wa.me/6282269245660")],
 		]
 
-	sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"
-	namaos = subprocess.check_output(sdss, shell=True).decode("ascii").strip().replace('"', '')
-	ipsaya = subprocess.check_output("curl -s ipv4.icanhazip.com", shell=True).decode("ascii").strip()
-	city = subprocess.check_output("cat /etc/xray/city", shell=True).decode("ascii").strip()
+	try:
+		sdss = "cat /etc/os-release | grep -w PRETTY_NAME | head -n1 | sed 's/=//g' | sed 's/PRETTY_NAME//g'"
+		namaos = subprocess.check_output(sdss, shell=True, timeout=2).decode("ascii").strip().replace('"', '')
+	except Exception:
+		namaos = "Ubuntu/Debian"
+
+	try:
+		ipsaya = subprocess.check_output("curl -s --connect-timeout 2 -m 3 ipv4.icanhazip.com", shell=True, timeout=3).decode("ascii").strip()
+	except Exception:
+		ipsaya = "unknown"
+
+	try:
+		city = subprocess.check_output("cat /etc/xray/city", shell=True, timeout=2).decode("ascii").strip()
+	except Exception:
+		city = "unknown"
 
 	if bot_mode == "sales" and not admin_mode:
 		msg = (

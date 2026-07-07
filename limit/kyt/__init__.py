@@ -85,6 +85,16 @@ def _start_bot_client() -> TelegramClient:
 bot = _start_bot_client()
 
 
+def get_db():
+	conn = sqlite3.connect(DB_FILE)
+	conn.row_factory = sqlite3.Row
+	return conn
+
+
+def _row_to_dict(row) -> dict:
+	return dict(row) if row else {}
+
+
 def _normalize_tg_id(value) -> str:
 	return str(value or "").strip()
 
@@ -471,7 +481,23 @@ def _get_env_variable(key: str, default: str = "") -> str:
 		pass
 	return default
 
-SECRET_KEY = _get_env_variable("PAYMENT_SECRET_KEY", "secret123")
+def _get_stored_payment_secret() -> str:
+	try:
+		db_path = "/var/www/webpanel-mvc/database/database.sqlite"
+		if os.path.exists(db_path):
+			conn = sqlite3.connect(db_path)
+			try:
+				cursor = conn.cursor()
+				row = cursor.execute("SELECT value FROM settings WHERE key = 'payment_secret_key' LIMIT 1").fetchone()
+				if row:
+					return str(row[0]).strip()
+			finally:
+				conn.close()
+	except Exception:
+		pass
+	return ""
+
+SECRET_KEY = _get_stored_payment_secret() or _get_env_variable("PAYMENT_SECRET_KEY", "secret123")
 BOT_MODE = _get_env_variable("BOT_MODE", globals().get("BOT_MODE", "admin_only"))
 
 def api_call(method: str, endpoint: str, data: dict = None) -> dict:
