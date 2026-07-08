@@ -72,10 +72,11 @@ async def start(event):
 			city = "unknown"
 
 		logging.info("[DEBUG START] formatting message")
+		bot_domain = str(globals().get("DOMAIN", globals().get("domain", "-")) or "-")
 		if bot_mode == "sales" and not admin_mode:
 			msg = (
 				"👋 **Selamat datang di Bot Jualan VPN**\n"
-				f"🌐 **Domain:** `{DOMAIN}`\n\n"
+				f"🌐 **Domain:** `{bot_domain}`\n\n"
 				"🧭 Pilih menu di bawah ini untuk memulai pembelian akun VPN self-service atau mengelola saldo/akun Anda.\n"
 				f"{menu_credit()}"
 			)
@@ -84,7 +85,7 @@ async def start(event):
 				"👋 **Welcome to PanelXray Bot**\n"
 				f"🖥️ **OS:** `{namaos}`\n"
 				f"🏙️ **City:** `{city}`\n"
-				f"🌐 **Domain:** `{DOMAIN}`\n"
+				f"🌐 **Domain:** `{bot_domain}`\n"
 				f"📡 **IP VPS:** `{ipsaya}`\n\n"
 				"🧭 Gunakan tombol menu untuk mulai mengelola VPN.\n"
 				"🏠 Anda juga bisa ketik `/mulai` kapan saja untuk kembali ke halaman ini.\n"

@@ -708,7 +708,7 @@ class InternalApiController extends Controller
             'total_amount' => $amount,
             'description' => $request->input('description', 'Pembelian via Bot Telegram'),
             'status' => 'success',
-            'metadata' => json_encode(['source' => 'telegram_bot', 'tg_id' => $tgId]),
+            'metadata' => ['source' => 'telegram_bot', 'tg_id' => $tgId],
         ]);
 
         return response()->json([
@@ -774,7 +774,7 @@ class InternalApiController extends Controller
             'total_amount' => $totalAmount,
             'status' => 'pending',
             'description' => 'Top Up Saldo via Bot Telegram',
-            'metadata' => json_encode(['source' => 'telegram_bot', 'tg_id' => $tgId]),
+            'metadata' => ['source' => 'telegram_bot', 'tg_id' => $tgId],
         ]);
 
         return response()->json([
