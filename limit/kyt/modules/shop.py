@@ -300,7 +300,7 @@ async def confirm_buy(event):
             if code != 0:
                 if price > 0:
                     api_call("POST", "/wallet/debit", {
-                        "tg_id": str(sender.id),
+                        "tg_id": str(event.sender_id),
                         "amount": -price,
                         "description": f"Refund: Gagal pembuatan akun {real_proto.upper()} {user}"
                     })
@@ -316,7 +316,7 @@ async def confirm_buy(event):
             import re
             
             expiry_date = (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
-            register_account_creation(str(sender.id), real_proto, user, expiry_date, is_trial=is_trial)
+            register_account_creation(str(event.sender_id), real_proto, user, expiry_date, is_trial=is_trial)
 
             # Strip ANSI escape codes
             clean_out = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', out).strip()
@@ -369,13 +369,6 @@ async def confirm_buy(event):
                 if link_grpc != "-": success_msg += f"▪ <b>GRPC:</b>\n<code>{esc(link_grpc)}</code>\n\n"
                 if openclash != "-": success_msg += f"▪ <b>OpenClash:</b>\n<a href='{esc(openclash)}'>{esc(openclash)}</a>\n\n"
 
-                success_msg += (
-                    "🧾 <b>QR TLS/Koneksi</b>\n"
-                    "🔐 Scan QR yang diberikan untuk koneksi, atau copy link di atas.\n\n"
-                    "🏠 Ketik /menu untuk kembali ke menu utama."
-                )
-                parse_m = 'html'
-                
                 photo = None
                 if link_tls != "-":
                     try:
@@ -384,13 +377,13 @@ async def confirm_buy(event):
                         import io
                         qr_path = f"/tmp/qr-{user}.png"
                         os.makedirs("/tmp", exist_ok=True)
-                        proc = subprocess.run(["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
+                        proc = await asyncio.to_thread(subprocess.run, ["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
                         if proc.returncode != 0:
                             if os.path.exists("/usr/bin/apt-get"):
-                                subprocess.run("apt-get update && apt-get install -y qrencode", shell=True, capture_output=True, timeout=30)
+                                await asyncio.to_thread(subprocess.run, "apt-get update && apt-get install -y qrencode", shell=True, capture_output=True, timeout=30)
                             elif os.path.exists("/usr/bin/yum"):
-                                subprocess.run("yum install -y qrencode", shell=True, capture_output=True, timeout=30)
-                            proc = subprocess.run(["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
+                                await asyncio.to_thread(subprocess.run, "yum install -y qrencode", shell=True, capture_output=True, timeout=30)
+                            proc = await asyncio.to_thread(subprocess.run, ["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
                         if proc.returncode == 0 and os.path.exists(qr_path):
                             with open(qr_path, "rb") as f:
                                 photo = io.BytesIO(f.read())
@@ -398,12 +391,25 @@ async def confirm_buy(event):
                             os.remove(qr_path)
                     except Exception as e:
                         logging.exception("Failed to generate local QR code: %s", e)
-
+                
                 if not photo and link_tls != "-":
                     try:
                         from kyt.modules.ui import get_qr_url
-                        photo = get_qr_url(link_tls, 512)
-                    except Exception: pass
+                        qr_url = get_qr_url(link_tls, 512)
+                        success_msg += f"🧾 <b>QR TLS/Koneksi</b>\n🔗 <a href='{esc(qr_url)}'>Klik di sini untuk Scan QR</a>\n\n"
+                    except Exception:
+                        success_msg += (
+                            "🧾 <b>QR TLS/Koneksi</b>\n"
+                            "🔐 Scan QR yang diberikan untuk koneksi, atau copy link di atas.\n\n"
+                        )
+                elif not photo:
+                    success_msg += (
+                        "🧾 <b>QR TLS/Koneksi</b>\n"
+                        "🔐 Scan QR yang diberikan untuk koneksi, atau copy link di atas.\n\n"
+                    )
+
+                success_msg += "🏠 Ketik /start untuk kembali ke menu utama."
+                parse_m = 'html'
 
             buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
             try:
@@ -437,7 +443,7 @@ async def confirm_buy(event):
         if price > 0:
             desc = f"Pembelian akun {proto.upper()} username {user} ({days} hari) via Bot Telegram"
             debit_res = api_call("POST", "/wallet/debit", {
-                "tg_id": str(sender.id),
+                "tg_id": str(event.sender_id),
                 "amount": price,
                 "description": desc
             })
@@ -449,7 +455,7 @@ async def confirm_buy(event):
     elif method == "qris":
         await event.edit("⏳ **Menyiapkan QRIS Pembelian Anda...**")
         res = api_call("POST", "/wallet/vpn_qris", {
-            "tg_id": str(sender.id), 
+            "tg_id": str(event.sender_id), 
             "amount": price,
             "protocol": proto,
             "days": days,

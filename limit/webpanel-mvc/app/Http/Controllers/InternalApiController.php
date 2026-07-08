@@ -536,6 +536,8 @@ class InternalApiController extends Controller
             'username' => 'required|string',
         ]);
 
+        \Illuminate\Support\Facades\Log::info("registerAccount input tg_id: " . $request->input('tg_id') . " username: " . $request->input('username'));
+
         $botUser = TelegramBotUser::where('tg_id', $request->input('tg_id'))->first();
         if ($botUser && empty($botUser->user_id) && $botUser->status === 'approved') {
             $botUser->syncWebUser();
