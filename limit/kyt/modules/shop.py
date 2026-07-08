@@ -328,7 +328,7 @@ async def confirm_buy(event):
                 import html
                 def esc(text): return html.escape(str(text))
                 def extract_val(key_regex):
-                    m = re.search(fr"{key_regex}\s*:\s*(.+)", clean_out, re.IGNORECASE)
+                    m = re.search(fr"(?:{key_regex})\s*:\s*(.+)", clean_out, re.IGNORECASE)
                     return m.group(1).strip() if m else "-"
 
                 remarks = extract_val("Remarks")
