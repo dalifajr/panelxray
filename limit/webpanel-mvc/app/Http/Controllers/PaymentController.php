@@ -161,12 +161,22 @@ class PaymentController extends Controller
             $vpnService = app(\App\Services\VpnService::class);
             $meta = is_string($transaction->metadata) ? json_decode($transaction->metadata, true) : $transaction->metadata;
             $protocol = $meta['protocol'] ?? 'vmess';
-            $userStr = $meta['username'] ?? 'user';
+            $userStr = $meta['username'] ?? ($meta['tg_id'] ?? 'user');
             $exp = $meta['days'] ?? 30;
             $pw = $meta['password'] ?? '1';
-            $ip = $meta['limit_ip'] ?? '1';
+            $ip = $meta['ip_limit'] ?? ($meta['limit_ip'] ?? '1');
             $sni = $meta['sni_config'] ?? '3';
             $quota = $meta['quota'] ?? '0';
+
+            // Jika transaksi dari Telegram Bot, biarkan Bot yang mengeksekusi agar bisa kirim text ke user
+            if (isset($meta['source']) && $meta['source'] === 'telegram_bot') {
+                \App\Models\Notification::create([
+                    'user_id' => $user->id,
+                    'type' => 'order',
+                    'message' => "Pembayaran berhasil. Layanan VPN $protocol Anda sedang diproses oleh Bot Telegram.",
+                ]);
+                return response()->json(['status' => 'success', 'message' => 'Delegated to Telegram Bot'], 200);
+            }
 
             try {
                 // Pengecekan apakah username sudah terpakai

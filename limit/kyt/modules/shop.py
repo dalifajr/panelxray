@@ -271,15 +271,18 @@ async def confirm_buy(event):
                 code, out = run_command(cmd, [domain, user, str(days), "100", str(iplimit)])
 
             if code != 0:
-                if price > 0 and method == "saldo":
+                if price > 0:
                     api_call("POST", "/wallet/debit", {
                         "tg_id": str(sender.id),
                         "amount": -price,
                         "description": f"Refund: Gagal pembuatan akun {real_proto.upper()} {user}"
                     })
                 err_msg = f"❌ **Gagal membuat akun VPN.**\nSystem log:\n`{out[:200]}`"
-                if method == "saldo": err_msg += "\n\nSaldo Anda telah dikembalikan."
-                await msg_ref.edit(err_msg)
+                if price > 0: err_msg += "\n\nSaldo Anda telah dikembalikan."
+                try:
+                    await msg_ref.edit(err_msg)
+                except Exception:
+                    await bot.send_message(chat, err_msg)
                 return
 
             import datetime
@@ -296,10 +299,23 @@ async def confirm_buy(event):
                 "Detail akun koneksi:\n"
                 f"```\n{out}\n```"
             )
-            await msg_ref.edit(success_msg, buttons=[[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]])
+            buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
+            try:
+                # If msg_ref is a media message (QR code), editing caption will fail if text > 1024 chars
+                if getattr(msg_ref, 'media', None):
+                    await bot.send_message(chat, success_msg, buttons=buttons)
+                    await msg_ref.delete()
+                else:
+                    await msg_ref.edit(success_msg, buttons=buttons)
+            except Exception as e:
+                logging.exception("Failed to edit success message: %s", e)
+                await bot.send_message(chat, success_msg, buttons=buttons)
         except Exception as e:
             logging.exception("Purchase execution failed: %s", e)
-            await msg_ref.edit(f"❌ Terjadi kesalahan internal: {e}")
+            try:
+                await msg_ref.edit(f"❌ Terjadi kesalahan internal: {e}")
+            except:
+                await bot.send_message(chat, f"❌ Terjadi kesalahan internal: {e}")
 
     if method == "saldo":
         if price > 0:
