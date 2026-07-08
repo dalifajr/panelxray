@@ -398,15 +398,17 @@ async def confirm_buy(event):
                         import subprocess
                         import os
                         import io
+                        import shutil
                         qr_path = f"/tmp/qr-{user}.png"
                         os.makedirs("/tmp", exist_ok=True)
-                        proc = await asyncio.to_thread(subprocess.run, ["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
-                        if proc.returncode != 0:
+                        
+                        if not shutil.which("qrencode"):
                             if os.path.exists("/usr/bin/apt-get"):
                                 await asyncio.to_thread(subprocess.run, "apt-get update && apt-get install -y qrencode", shell=True, capture_output=True, timeout=30)
                             elif os.path.exists("/usr/bin/yum"):
                                 await asyncio.to_thread(subprocess.run, "yum install -y qrencode", shell=True, capture_output=True, timeout=30)
-                            proc = await asyncio.to_thread(subprocess.run, ["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
+                        
+                        proc = await asyncio.to_thread(subprocess.run, ["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
                         if proc.returncode == 0 and os.path.exists(qr_path):
                             with open(qr_path, "rb") as f:
                                 photo = io.BytesIO(f.read())
