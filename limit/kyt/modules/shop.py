@@ -118,13 +118,7 @@ async def start_purchase_flow(event, proto, days, price):
     sender = await event.get_sender()
     chat = event.chat_id
 
-    # Double check balance
-    if price > 0:
-        balance_res = api_call("GET", f"/wallet/balance/{sender.id}")
-        balance = balance_res.get("balance", 0)
-        if balance < price:
-            await event.answer(f"❌ Saldo tidak cukup! Saldo Anda: Rp {balance:,}", alert=True)
-            return
+    # Removed early balance check to allow QRIS direct checkout
 
     msgs_to_del = []
     

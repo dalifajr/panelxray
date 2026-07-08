@@ -184,7 +184,11 @@ async def callback_permission_guard(event):
 
         # Non-admin sales mode callback whitelist
         if not is_admin_user(sender_id):
-            customer_allowed_prefixes = ("shop-", "buy-", "confirm-", "my-", "wallet-", "voucher-", "start", "request-", "menu", "backer", "main_menu")
+            customer_allowed_prefixes = (
+                "shop-", "buy-", "confirm-", "my-", "wallet-", "voucher-", "start", 
+                "request-", "menu", "backer", "main_menu",
+                "list-", "show-", "topup-", "claim-", "check-", "cancel-", "ip-", "pay-", "ignore"
+            )
             is_allowed = False
             for prefix in customer_allowed_prefixes:
                 if callback_data.startswith(prefix):

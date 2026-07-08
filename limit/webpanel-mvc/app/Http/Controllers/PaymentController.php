@@ -38,15 +38,26 @@ class PaymentController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Unauthorized: Invalid signature'], 401);
         }
 
-        $amountStr = $request->input('amount');
-        // Bersihkan amount misal "Rp 5.023" -> 5023
-        $amount = preg_replace('/[^0-9]/', '', $amountStr);
+        $amountStr = $request->input('amount') ?? '';
+        $rawText = $request->input('raw_text') ?? '';
+        
+        // Bersihkan string dari ,00 atau .00 di akhir
+        $cleanStr = preg_replace('/[,.]00$/', '', $amountStr);
+        $amount = preg_replace('/[^0-9]/', '', $cleanStr);
+        
+        // Fallback jika amount kosong, cari angka di raw_text
+        if (!$amount && $rawText) {
+            // Cari pola seperti Rp 5.023 atau 5,023
+            if (preg_match('/(?:Rp|IDR)?\s*([0-9]{1,3}(?:[.,][0-9]{3})+)(?:[,.]00)?/', $rawText, $matches)) {
+                $amount = preg_replace('/[^0-9]/', '', preg_replace('/[,.]00$/', '', $matches[1]));
+            }
+        }
+
         $sourceApp = $request->input('source_app');
         $reference = $request->input('reference');
-        $rawText = $request->input('raw_text');
 
         if (!$amount) {
-            return response()->json(['status' => 'error', 'message' => 'Amount not found'], 400);
+            return response()->json(['status' => 'error', 'message' => 'Amount not found in payload'], 400);
         }
 
         // Pengecekan Idempotency (cegah proses ganda untuk event yang sama)
