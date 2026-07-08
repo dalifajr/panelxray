@@ -13,7 +13,7 @@ async def wallet_bot(event):
             "Silakan hubungkan Telegram Anda terlebih dahulu di website panel:\n"
             "**Profil Pengguna** → **Hubungkan Telegram**"
         )
-        buttons = [[Button.inline("⬅️ Main Menu", "start")]]
+        buttons = [[Button.inline("⬅️ Main Menu", "menu")]]
         await event.edit(msg, buttons=buttons)
         return
 
@@ -30,7 +30,7 @@ async def wallet_bot(event):
     inline = [
         [Button.inline("💳 Top Up Saldo", "topup-info"), Button.inline("🎫 Klaim Voucher", "claim-voucher")],
         [Button.inline("📜 Riwayat Transaksi", "tx-history")],
-        [Button.inline("⬅️ Main Menu", "start")]
+        [Button.inline("⬅️ Main Menu", "menu")]
     ]
 
     await event.edit(msg, buttons=inline)
@@ -186,31 +186,77 @@ async def topup_info(event):
     )
 
     buttons = [
-        [Button.inline("❌ Batalkan Top Up", "cancel-topup")],
-        [Button.inline("🏠 Main Menu", "start")]
+        [Button.inline("🔄 Cek Status", f"check-topup:{ref}"), Button.inline("❌ Batalkan", f"cancel-topup:{ref}")],
+        [Button.inline("🏠 Main Menu", "menu")]
     ]
 
     # Send the QR Code image directly using the URL!
     try:
-        await bot.send_file(chat, qr_url, caption=payment_instructions, buttons=buttons)
+        sent_msg = await bot.send_file(chat, qr_url, caption=payment_instructions, buttons=buttons)
     except Exception as e:
         # Fallback to text message with URL if send_file fails
         fallback_msg = (
             f"{payment_instructions}\n\n"
             f"🔗 [Klik di sini untuk melihat Kode QR Anda]({qr_url})"
         )
-        await bot.send_message(chat, fallback_msg, buttons=buttons)
+        sent_msg = await bot.send_message(chat, fallback_msg, buttons=buttons)
 
-@bot.on(events.CallbackQuery(data=b'cancel-topup'))
-async def handle_cancel_topup(event):
-    sender = await event.get_sender()
-    res = api_call("POST", "/wallet/topup/cancel", {"tg_id": str(sender.id)})
-    if "error" in res:
-        await event.answer(f"❌ Gagal membatalkan top up: {res['error']}", alert=True)
-        return
+    # Start background polling task
+    import asyncio
     
-    await event.edit(
-        "❌ **Transaksi Dibatalkan**\n\n"
-        "Instruksi pembayaran QRIS telah berhasil dibatalkan.",
-        buttons=[[Button.inline("⬅️ Kembali ke Dompet", "wallet-bot"), Button.inline("🏠 Main Menu", "start")]]
-    )
+    async def poll_transaction():
+        for _ in range(120): # 120 * 5s = 10 minutes
+            await asyncio.sleep(5)
+            status_res = api_call("GET", f"/transaction/status/{ref}")
+            if "error" not in status_res:
+                if status_res.get("status") == "success":
+                    success_text = (
+                        "✅ **PEMBAYARAN BERHASIL**\n\n"
+                        f"Top Up sebesar `Rp {amount:,}` telah berhasil dan masuk ke saldo Anda!\n"
+                        f"Referensi: `{ref}`"
+                    )
+                    try:
+                        await sent_msg.edit(success_text, buttons=[[Button.inline("⬅️ Kembali ke Dompet", "wallet-bot"), Button.inline("🏠 Main Menu", "menu")]])
+                    except:
+                        pass
+                    return
+                elif status_res.get("status") == "cancelled":
+                    return # Stop polling if cancelled
+        
+        # If loop finishes without success
+        api_call("POST", "/transaction/cancel", {"reference": ref})
+        try:
+            await sent_msg.edit(f"❌ Waktu pembayaran habis untuk transaksi `{ref}`.", buttons=[[Button.inline("⬅️ Kembali", "wallet-bot")]])
+        except:
+            pass
+
+    bot.loop.create_task(poll_transaction())
+
+@bot.on(events.CallbackQuery(pattern=b'^check-topup:(.*)$'))
+async def check_topup(event):
+    ref = event.pattern_match.group(1).decode('utf-8')
+    status_res = api_call("GET", f"/transaction/status/{ref}")
+    
+    if "error" in status_res:
+        await event.answer("❌ Transaksi tidak ditemukan.", alert=True)
+        return
+        
+    status = status_res.get("status")
+    if status == "success":
+        await event.answer("✅ Pembayaran telah berhasil! Saldo sudah bertambah.", alert=True)
+    elif status == "cancelled":
+        await event.answer("❌ Transaksi telah dibatalkan.", alert=True)
+    else:
+        await event.answer("⏳ Pembayaran belum diterima. Pastikan nominal transfer SAMA PERSIS.", alert=True)
+
+@bot.on(events.CallbackQuery(pattern=b'^cancel-topup:(.*)$'))
+async def cancel_topup(event):
+    ref = event.pattern_match.group(1).decode('utf-8')
+    res = api_call("POST", "/transaction/cancel", {"reference": ref})
+    
+    if "error" in res:
+        await event.answer(f"❌ Gagal: {res['error']}", alert=True)
+    else:
+        await event.answer("✅ Transaksi dibatalkan.", alert=True)
+        await event.edit(f"❌ Transaksi `{ref}` telah dibatalkan oleh Anda.", buttons=[[Button.inline("⬅️ Kembali", "wallet-bot")]])
+

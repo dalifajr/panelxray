@@ -310,14 +310,6 @@ class PaymentController extends Controller
                 } else {
                     $msg = "✅ **Pembayaran Berhasil!**\n\n"
                          . "Layanan Anda telah otomatis diproses.";
-                    if ($transaction->type === 'vpn_purchase_qris') {
-                        $protocol = $meta['protocol'] ?? '';
-                        $userStr = $meta['username'] ?? '';
-                        if ($protocol && $userStr) {
-                            $configText = app(\App\Services\VpnService::class)->getAccountConfig($protocol, $userStr);
-                            $msg .= "\n\nBerikut adalah detail koneksi VPN Anda:\n```\n" . $configText . "\n```";
-                        }
-                    }
                 }
                 $this->sendTelegramNotification($tgId, $msg);
             }

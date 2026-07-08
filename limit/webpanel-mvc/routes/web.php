@@ -152,12 +152,12 @@ Route::prefix('api/internal')->group(function () {
     Route::get('/wallet/balance/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'getBalance']);
     Route::post('/wallet/debit', [\App\Http\Controllers\InternalApiController::class, 'debitBalance']);
     Route::post('/wallet/topup', [\App\Http\Controllers\InternalApiController::class, 'topup']);
-    Route::post('/wallet/topup/cancel', [\App\Http\Controllers\InternalApiController::class, 'cancelTopup']);
     Route::post('/wallet/voucher/redeem', [\App\Http\Controllers\InternalApiController::class, 'redeemVoucher']);
-    Route::post('/bot/purchase/qris', [\App\Http\Controllers\InternalApiController::class, 'purchaseViaQris']);
 
     // Transactions
     Route::get('/transaction/history/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'transactionHistory']);
+    Route::get('/transaction/status/{reference}', [\App\Http\Controllers\InternalApiController::class, 'transactionStatus']);
+    Route::post('/transaction/cancel', [\App\Http\Controllers\InternalApiController::class, 'transactionCancel']);
 });
 
 // === TEMPORARY DIAGNOSTIC ROUTE — REMOVE AFTER DEBUGGING ===

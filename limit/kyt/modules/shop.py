@@ -27,7 +27,7 @@ async def shop_menu(event):
             "3. Klik tombol **Hubungkan Telegram**.\n\n"
             "Setelah terhubung, saldo website Anda otomatis sinkron dengan bot ini."
         )
-        buttons = [[Button.inline("⬅️ Kembali ke Menu", "start")]]
+        buttons = [[Button.inline("⬅️ Kembali ke Menu", "menu")]]
         await event.edit(msg, buttons=buttons)
         return
 
@@ -56,7 +56,9 @@ async def shop_menu(event):
         [Button.inline(f"🌘 SHADOWSOCKS (Rp {ss_price:,} / 30 Hari)", "buy-proto:shadowsocks")],
     ]
 
-    inline.append([Button.inline("⬅️ Kembali ke Menu", "start")])
+
+
+    inline.append([Button.inline("⬅️ Kembali ke Menu", "menu")])
 
     msg = (
         f"{manager_banner('Shop Menu', 'Beli VPN Self-Service')}\n\n"
@@ -87,13 +89,12 @@ async def buy_proto(event):
     inline = [
         [Button.inline(f"📅 30 Hari — Rp {price:,}", f"buy-pkg:{proto}:30:{price}")],
         [Button.inline(f"📅 60 Hari — Rp {price*2:,}", f"buy-pkg:{proto}:60:{price*2}")],
-        [Button.inline(f"📅 90 Hari — Rp {price*3:,}", f"buy-pkg:{proto}:90:{price*3}")],
+        [Button.inline(f"📅 90 Hari — Rp {price*3:,}", f"buy-pkg:{proto}:90:{price*3}")]
     ]
 
-    # Check if trial is enabled for individual protocol
-    if config.get("bot_trial_enabled", False):
+    if str(config.get("bot_trial_enabled", "false")).lower() == "true":
         trial_days = config.get("bot_trial_days", 1)
-        inline.append([Button.inline(f"✨ Coba Gratis (Trial {trial_days} Hari)", f"buy-trial:{proto}:{trial_days}")])
+        inline.append([Button.inline(f"✨ Coba Gratis (Trial {trial_days} Hari)", f"buy-pkg:{proto}:{trial_days}:0:trial")])
 
     inline.append([Button.inline("⬅️ Kembali ke Katalog", "shop-menu")])
 
@@ -110,22 +111,15 @@ async def buy_pkg(event):
     days = int(event.pattern_match.group(2).decode('utf-8'))
     price = int(event.pattern_match.group(3).decode('utf-8'))
 
-    await start_purchase_flow(event, proto, days, price, is_trial=False)
+    await start_purchase_flow(event, proto, days, price)
 
 
-@bot.on(events.CallbackQuery(data=re.compile(b'buy-trial:(.*?):(.*)')))
-async def buy_trial(event):
-    proto = event.pattern_match.group(1).decode('utf-8')
-    days = int(event.pattern_match.group(2).decode('utf-8'))
-    await start_purchase_flow(event, proto, days, price=0, is_trial=True)
-
-
-async def start_purchase_flow(event, proto, days, price, is_trial=False):
+async def start_purchase_flow(event, proto, days, price):
     sender = await event.get_sender()
     chat = event.chat_id
 
     # Double check balance
-    if not is_trial and price > 0:
+    if price > 0:
         balance_res = api_call("GET", f"/wallet/balance/{sender.id}")
         balance = balance_res.get("balance", 0)
         if balance < price:
@@ -151,315 +145,225 @@ async def start_purchase_flow(event, proto, days, price, is_trial=False):
         await event.reply("❌ Username hanya boleh mengandung huruf dan angka (tanpa simbol/spasi).")
         return
 
-    # Proceed to confirmation / setup
-    await delete_messages(chat, msgs_to_del)
+    if proto in ["ssh", "trial"]:
+        # No IP limit for SSH
+        await _show_payment_methods(event, chat, proto, days, price, user, 2, price)
+    else:
+        # Show IP Limit Selector
+        await _show_ip_limit_selector(event, chat, proto, days, price, user, 2)
 
-    if is_trial:
-        confirm_msg = (
-            "🛒 **Konfirmasi Akun Trial**\n\n"
-            f"▪ Layanan: `{proto.upper()} (TRIAL)`\n"
-            f"▪ Username: `{user}`\n"
-            f"▪ Masa Aktif: `{days} Hari`\n"
-            f"▪ Total Pembayaran: `Gratis (Rp 0)`\n\n"
-            "Apakah Anda yakin ingin mengaktifkan akun trial ini?"
-        )
-        inline = [
-            [Button.inline("✅ Konfirmasi", f"conf-trial:{proto}:{days}:{user}"),
-             Button.inline("❌ Batal", "shop-menu")]
-        ]
+
+async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, iplimit):
+    pricing_res = api_call("GET", "/pricing")
+    prices = pricing_res.get("prices", [])
+    extra_ip_price = 0
+    for p in prices:
+        if p.get("protocol") == "add_ip":
+            extra_ip_price = p.get("price", 0)
+
+    # Calculate total
+    extra_ips = max(0, iplimit - 2)
+    total_price = base_price + (extra_ips * extra_ip_price)
+
+    msg = (
+        f"⚙️ **Atur Limit IP Device**\n\n"
+        f"▪ Layanan: `{proto.upper()}`\n"
+        f"▪ Username: `{user}`\n"
+        f"▪ Harga Dasar: `Rp {base_price:,}`\n"
+        f"▪ Limit IP Saat Ini: `{iplimit} IP`\n"
+        f"▪ Tambahan Harga: `Rp {(extra_ips * extra_ip_price):,}`\n"
+        f"▪ **Total Harga:** `Rp {total_price:,}`\n\n"
+        "Silakan atur limit IP yang Anda inginkan:"
+    )
+
+    prev_ip = max(2, iplimit - 1)
+    next_ip = iplimit + 1
+
+    inline = [
+        [
+            Button.inline("➖", f"ip-lim:{proto}:{days}:{base_price}:{user}:{prev_ip}"),
+            Button.inline(f"{iplimit} IP", "ignore"),
+            Button.inline("➕", f"ip-lim:{proto}:{days}:{base_price}:{user}:{next_ip}")
+        ],
+        [Button.inline("✅ Konfirmasi & Pilih Pembayaran", f"pay-meth:{proto}:{days}:{base_price}:{user}:{iplimit}")],
+        [Button.inline("❌ Batal", "shop-menu")]
+    ]
+    
+    if isinstance(event, events.CallbackQuery):
+        await event.edit(msg, buttons=inline)
+    else:
+        await bot.send_message(chat, msg, buttons=inline)
+
+@bot.on(events.CallbackQuery(data=re.compile(b'ip-lim:(.*?):(.*?):(.*?):(.*?):(.*)')))
+async def handle_ip_lim(event):
+    proto = event.pattern_match.group(1).decode('utf-8')
+    days = int(event.pattern_match.group(2).decode('utf-8'))
+    base_price = int(event.pattern_match.group(3).decode('utf-8'))
+    user = event.pattern_match.group(4).decode('utf-8')
+    iplimit = int(event.pattern_match.group(5).decode('utf-8'))
+    await _show_ip_limit_selector(event, event.chat_id, proto, days, base_price, user, iplimit)
+
+
+@bot.on(events.CallbackQuery(data=re.compile(b'pay-meth:(.*?):(.*?):(.*?):(.*?):(.*)')))
+async def handle_pay_meth(event):
+    proto = event.pattern_match.group(1).decode('utf-8')
+    days = int(event.pattern_match.group(2).decode('utf-8'))
+    base_price = int(event.pattern_match.group(3).decode('utf-8'))
+    user = event.pattern_match.group(4).decode('utf-8')
+    iplimit = int(event.pattern_match.group(5).decode('utf-8'))
+
+    pricing_res = api_call("GET", "/pricing")
+    extra_ip_price = next((p.get("price", 0) for p in pricing_res.get("prices", []) if p.get("protocol") == "add_ip"), 0)
+    total_price = base_price + (max(0, iplimit - 2) * extra_ip_price)
+
+    await _show_payment_methods(event, event.chat_id, proto, days, base_price, user, iplimit, total_price)
+
+
+async def _show_payment_methods(event, chat, proto, days, base_price, user, iplimit, total_price):
+    confirm_msg = (
+        "🛒 **Konfirmasi Pembelian & Pembayaran**\n\n"
+        f"▪ Layanan: `{proto.upper() if proto != 'trial' else 'TRIAL'}`\n"
+        f"▪ Username: `{user}`\n"
+        f"▪ Masa Aktif: `{days} Hari`\n"
+        f"▪ Limit IP: `{iplimit} IP`\n"
+        f"▪ **Total Pembayaran:** `Rp {total_price:,}`\n\n"
+        "Silakan pilih metode pembayaran:"
+    )
+
+    inline = []
+    if total_price > 0:
+        inline.append([Button.inline(f"💳 Bayar via Saldo (Rp {total_price:,})", f"confirm-buy:{proto}:{days}:{total_price}:{user}:{iplimit}:saldo")])
+        inline.append([Button.inline(f"📱 Bayar via QRIS (Rp {total_price:,})", f"confirm-buy:{proto}:{days}:{total_price}:{user}:{iplimit}:qris")])
+    else:
+        inline.append([Button.inline("✅ Konfirmasi Gratis", f"confirm-buy:{proto}:{days}:0:{user}:{iplimit}:saldo")])
+        
+    inline.append([Button.inline("❌ Batal", "shop-menu")])
+
+    if isinstance(event, events.CallbackQuery):
         await event.edit(confirm_msg, buttons=inline)
     else:
-        await render_purchase_config(event, proto, days, limit_ip=2, pay_method='s', username=user)
+        await bot.send_message(chat, confirm_msg, buttons=inline)
 
 
-async def render_purchase_config(event, proto, days, limit_ip, pay_method, username):
-    sender = await event.get_sender()
-    
-    # 1. Fetch balance
-    balance_res = api_call("GET", f"/wallet/balance/{sender.id}")
-    balance = balance_res.get("balance", 0)
-    
-    # 2. Fetch pricing
-    pricing_res = api_call("GET", "/pricing")
-    prices = pricing_res.get("prices", [])
-    
-    price_dict = {}
-    for p in prices:
-        price_dict[p.get("protocol")] = p.get("price", 0)
-        
-    base_price = price_dict.get(proto, 15000)
-    ip_price = price_dict.get("add_ip", 5000)
-    
-    # 3. Fetch bot config
-    config = api_call("GET", "/bot/config")
-    max_ip_limit = config.get("max_ip_limit", 5)
-    if max_ip_limit <= 0:
-        max_ip_limit = 5
-        
-    # 4. Calculate prices
-    vpn_cost = round((base_price / 30) * days)
-    extra_ip_cost = (limit_ip - 1) * ip_price if limit_ip > 1 else 0
-    total_price = vpn_cost + extra_ip_cost
-    
-    # Text
-    pay_method_text = "💰 Saldo Website" if pay_method == 's' else "💳 QRIS (Bayar Langsung)"
-    
-    msg = (
-        "⚙️ **Pengaturan Akun VPN Anda**\n\n"
-        f"▪ **Layanan:** `{proto.upper()}`\n"
-        f"▪ **Username:** `{username}`\n"
-        f"▪ **Masa Aktif:** `{days} Hari`\n"
-        f"▪ **Limit IP:** `{limit_ip} IP`\n"
-        f"▪ **Metode Bayar:** `{pay_method_text}`\n\n"
-        f"💵 **Harga VPN:** `Rp {vpn_cost:,}`\n"
-        f"➕ **Biaya IP Ekstra:** `Rp {extra_ip_cost:,}`\n"
-        f"⚠️ **TOTAL PEMBAYARAN:** `Rp {total_price:,}`\n"
-    )
-    if pay_method == 's':
-        msg += f"💰 **Saldo Anda:** `Rp {balance:,}`\n"
-        
-    # Buttons
-    buttons = []
-    
-    # Limit IP buttons
-    ip_row = []
-    if limit_ip > 1:
-        ip_row.append(Button.inline("➖ IP", f"b-c:{proto}:{days}:{limit_ip - 1}:{pay_method}:{username}"))
-    else:
-        ip_row.append(Button.inline("➖ IP (Min)", "noop"))
-        
-    ip_row.append(Button.inline(f"{limit_ip} IP", "noop"))
-    
-    if limit_ip < max_ip_limit:
-        ip_row.append(Button.inline("➕ IP", f"b-c:{proto}:{days}:{limit_ip + 1}:{pay_method}:{username}"))
-    else:
-        ip_row.append(Button.inline("➕ IP (Max)", "noop"))
-        
-    buttons.append(ip_row)
-    
-    # Payment method toggle button
-    if pay_method == 's':
-        buttons.append([Button.inline("➡️ Ubah ke QRIS (Bayar Langsung)", f"b-c:{proto}:{days}:{limit_ip}:q:{username}")])
-    else:
-        buttons.append([Button.inline("➡️ Ubah ke Saldo Website", f"b-c:{proto}:{days}:{limit_ip}:s:{username}")])
-        
-    # Lanjutkan & Batal buttons
-    buttons.append([
-        Button.inline("✅ Lanjutkan Pembayaran", f"b-pay:{proto}:{days}:{limit_ip}:{pay_method}:{username}"),
-        Button.inline("❌ Batal", "shop-menu")
-    ])
-    
-    await event.edit(msg, buttons=buttons)
-
-
-@bot.on(events.CallbackQuery(data=re.compile(b'b-c:(.*?):(.*?):(.*?):(.*?):(.*)')))
-async def handle_buy_config(event):
-    proto = event.pattern_match.group(1).decode('utf-8')
-    days = int(event.pattern_match.group(2).decode('utf-8'))
-    limit_ip = int(event.pattern_match.group(3).decode('utf-8'))
-    pay_method = event.pattern_match.group(4).decode('utf-8')
-    username = event.pattern_match.group(5).decode('utf-8')
-    
-    await render_purchase_config(event, proto, days, limit_ip, pay_method, username)
-
-
-@bot.on(events.CallbackQuery(data=b'noop'))
-async def handle_noop(event):
-    await event.answer()
-
-
-@bot.on(events.CallbackQuery(data=re.compile(b'b-pay:(.*?):(.*?):(.*?):(.*?):(.*)')))
-async def handle_buy_pay(event):
+@bot.on(events.CallbackQuery(data=re.compile(b'confirm-buy:(.*?):(.*?):(.*?):(.*?):(.*?):(.*)')))
+async def confirm_buy(event):
     sender = await event.get_sender()
     chat = event.chat_id
-    
+
     proto = event.pattern_match.group(1).decode('utf-8')
     days = int(event.pattern_match.group(2).decode('utf-8'))
-    limit_ip = int(event.pattern_match.group(3).decode('utf-8'))
-    pay_method = event.pattern_match.group(4).decode('utf-8')
-    username = event.pattern_match.group(5).decode('utf-8')
+    price = int(event.pattern_match.group(3).decode('utf-8'))
+    user = event.pattern_match.group(4).decode('utf-8')
+    iplimit = event.pattern_match.group(5).decode('utf-8')
+    method = event.pattern_match.group(6).decode('utf-8')
 
-    # Fetch pricing again to verify price and calculate it
-    pricing_res = api_call("GET", "/pricing")
-    prices = pricing_res.get("prices", [])
-    
-    price_dict = {}
-    for p in prices:
-        price_dict[p.get("protocol")] = p.get("price", 0)
-        
-    base_price = price_dict.get(proto, 15000)
-    ip_price = price_dict.get("add_ip", 5000)
-    
-    vpn_cost = round((base_price / 30) * days)
-    extra_ip_cost = (limit_ip - 1) * ip_price if limit_ip > 1 else 0
-    total_price = vpn_cost + extra_ip_cost
-
-    if pay_method == 's':
-        # Double check balance
-        balance_res = api_call("GET", f"/wallet/balance/{sender.id}")
-        balance = balance_res.get("balance", 0)
-        if balance < total_price:
-            await event.answer(f"❌ Saldo tidak cukup! Saldo Anda: Rp {balance:,}", alert=True)
-            return
-
-        # Debit balance
-        desc = f"Pembelian akun {proto.upper()} username {username} ({days} hari) via Bot Telegram"
-        debit_res = api_call("POST", "/wallet/debit", {
-            "tg_id": str(sender.id),
-            "amount": total_price,
-            "description": desc
-        })
-        if "error" in debit_res:
-            await event.answer(f"❌ Transaksi gagal: {debit_res['error']}", alert=True)
-            return
-
-        await event.edit("⏳ **Memproses pembuatan akun VPN Anda...**\nMohon tunggu beberapa detik.")
-
-        # Execute creation command
+    async def execute_vpn_creation(msg_ref=None):
         try:
-            domain = globals().get("DOMAIN", "localhost")
-            if proto == "ssh":
-                password = "".join(random.choices("0123456789", k=6))
-                code, out = run_command("addssh", [username, password, str(days)])
+            if msg_ref is None:
+                msg_ref = event
+                await msg_ref.edit("⏳ **Memproses pembuatan akun VPN Anda...**\nMohon tunggu beberapa detik.")
             else:
-                script_map = {
-                    "vmess": "addws",
-                    "vless": "addvless",
-                    "trojan": "addtr",
-                    "shadowsocks": "addss"
-                }
-                cmd = script_map.get(proto, "addws")
-                # Parameter: username, expiry, quota(100GB), iplimit
-                code, out = run_command(cmd, ["3", username, str(days), "100", str(limit_ip)])
+                try:
+                    await msg_ref.edit("⏳ **Pembayaran Berhasil! Memproses pembuatan akun VPN Anda...**\nMohon tunggu beberapa detik.")
+                except: pass
+
+            domain = globals().get("DOMAIN", "localhost")
+            is_trial = (proto == "trial")
+            real_proto = proto if proto != "trial" else "ssh"
+            
+            if real_proto == "ssh":
+                password = "".join(random.choices("0123456789", k=6))
+                code, out = run_command("addssh", [user, password, str(days)])
+            else:
+                script_map = {"vmess": "addws", "vless": "addvless", "trojan": "addtr", "shadowsocks": "addss"}
+                cmd = script_map.get(real_proto, "addws")
+                code, out = run_command(cmd, [domain, user, str(days), "100", str(iplimit)])
 
             if code != 0:
-                # Refund balance if failed
-                api_call("POST", "/wallet/debit", {
-                    "tg_id": str(sender.id),
-                    "amount": -total_price,
-                    "description": f"Refund: Gagal pembuatan akun {proto.upper()} {username}"
-                })
-                await event.edit(f"❌ **Gagal membuat akun VPN.**\nSystem log:\n`{out[:200]}`\n\nSaldo Anda telah dikembalikan.")
+                if price > 0 and method == "saldo":
+                    api_call("POST", "/wallet/debit", {
+                        "tg_id": str(sender.id),
+                        "amount": -price,
+                        "description": f"Refund: Gagal pembuatan akun {real_proto.upper()} {user}"
+                    })
+                err_msg = f"❌ **Gagal membuat akun VPN.**\nSystem log:\n`{out[:200]}`"
+                if method == "saldo": err_msg += "\n\nSaldo Anda telah dikembalikan."
+                await msg_ref.edit(err_msg)
                 return
 
-            # Register creation
-            service_name = proto
             import datetime
             expiry_date = (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
-            register_account_creation(str(sender.id), service_name, username, expiry_date, is_trial=False)
+            register_account_creation(str(sender.id), real_proto, user, expiry_date, is_trial=is_trial)
 
             success_msg = (
                 "✅ **Pembelian Berhasil!**\n\n"
                 f"Akun VPN Anda telah sukses dibuat.\n"
-                f"Username: `{username}`\n"
+                f"Username: `{user}`\n"
                 f"Masa Aktif: `{days} Hari`\n"
+                f"Limit IP: `{iplimit} IP`\n"
                 f"Kedaluwarsa: `{expiry_date}`\n\n"
                 "Detail akun koneksi:\n"
                 f"```\n{out}\n```"
             )
-            await event.edit(success_msg, buttons=[[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Main Menu", "start")]])
-
+            await msg_ref.edit(success_msg, buttons=[[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Main Menu", "menu")]])
         except Exception as e:
             logging.exception("Purchase execution failed: %s", e)
-            await event.edit(f"❌ Terjadi kesalahan internal: {e}")
-            
-    elif pay_method == 'q':
-        # Direct QRIS purchase
-        await event.edit("⏳ **Menyiapkan pembayaran QRIS Anda...**")
-        
-        res = api_call("POST", "/bot/purchase/qris", {
-            "tg_id": str(sender.id),
-            "protocol": proto,
-            "username": username,
-            "days": days,
-            "limit_ip": limit_ip,
-            "quota": 100,
-            "sni_config": "3"
-        })
+            await msg_ref.edit(f"❌ Terjadi kesalahan internal: {e}")
 
+    if method == "saldo":
+        if price > 0:
+            desc = f"Pembelian akun {proto.upper()} username {user} ({days} hari) via Bot Telegram"
+            debit_res = api_call("POST", "/wallet/debit", {
+                "tg_id": str(sender.id),
+                "amount": price,
+                "description": desc
+            })
+            if "error" in debit_res:
+                await event.answer(f"❌ Transaksi gagal: {debit_res['error']}", alert=True)
+                return
+        await execute_vpn_creation()
+
+    elif method == "qris":
+        await event.edit("⏳ **Menyiapkan QRIS Pembelian Anda...**")
+        res = api_call("POST", "/wallet/topup", {"tg_id": str(sender.id), "amount": price})
         if "error" in res:
             await event.edit(f"❌ **Gagal menyiapkan QRIS:**\n`{res['error']}`", buttons=[[Button.inline("⬅️ Kembali", "shop-menu")]])
             return
 
         qr_url = res.get("qr_code_url")
         total_amount = res.get("total_amount")
-        unique_code = res.get("unique_code")
         ref = res.get("reference")
 
         payment_instructions = (
             "💳 **PEMBAYARAN QRIS OTOMATIS**\n\n"
+            f"▪ Pembelian: `{proto.upper()} ({days} Hari, {iplimit} IP)`\n"
             f"▪ ID Referensi: `{ref}`\n"
-            f"▪ Pembelian: `VPN {proto.upper()} ({username})`\n"
-            f"▪ Nominal: `Rp {total_price:,}`\n"
-            f"▪ Kode Unik: `Rp {unique_code}`\n"
             f"⚠️ **TOTAL PEMBAYARAN:** `Rp {total_amount:,}`\n\n"
-            "**PENTING:** Silakan scan kode QR di atas menggunakan aplikasi e-wallet Anda atau Mobile Banking.\n"
-            "Pastikan membayar **EXACTLY / SAMA PERSIS** dengan total pembayaran di atas agar otomatis masuk dalam hitungan detik!\n"
-            "Setelah terverifikasi, akun VPN akan otomatis terbuat dan dikirim ke Telegram Anda."
+            "**PENTING:** Scan QR Code ini dan pastikan membayar **EXACTLY / SAMA PERSIS** agar otomatis masuk!"
         )
 
         buttons = [
-            [Button.inline("❌ Batalkan Pesanan", "cancel-topup")],
-            [Button.inline("🏠 Main Menu", "start")]
+            [Button.inline("🔄 Cek Status", f"check-topup:{ref}"), Button.inline("❌ Batalkan", f"cancel-topup:{ref}")],
+            [Button.inline("🏠 Main Menu", "menu")]
         ]
-
         try:
-            await bot.send_file(chat, qr_url, caption=payment_instructions, buttons=buttons)
-        except Exception as e:
-            fallback_msg = (
-                f"{payment_instructions}\n\n"
-                f"🔗 [Klik di sini untuk melihat Kode QR Anda]({qr_url})"
-            )
-            await bot.send_message(chat, fallback_msg, buttons=buttons)
+            sent_msg = await bot.send_file(chat, qr_url, caption=payment_instructions, buttons=buttons)
+        except:
+            sent_msg = await bot.send_message(chat, payment_instructions + f"\n\n🔗 [Link QR]({qr_url})", buttons=buttons)
 
+        import asyncio
+        async def poll_purchase_transaction():
+            for _ in range(120):
+                await asyncio.sleep(5)
+                status_res = api_call("GET", f"/transaction/status/{ref}")
+                if "error" not in status_res:
+                    if status_res.get("status") == "success":
+                        await execute_vpn_creation(msg_ref=sent_msg)
+                        return
+                    elif status_res.get("status") == "cancelled":
+                        return
+            api_call("POST", "/transaction/cancel", {"reference": ref})
+            try: await sent_msg.edit(f"❌ Waktu pembayaran habis untuk transaksi `{ref}`.", buttons=[[Button.inline("🏠 Main Menu", "menu")]])
+            except: pass
 
-@bot.on(events.CallbackQuery(data=re.compile(b'conf-trial:(.*?):(.*?):(.*)')))
-async def handle_confirm_trial(event):
-    sender = await event.get_sender()
-    chat = event.chat_id
-    
-    proto = event.pattern_match.group(1).decode('utf-8')
-    days = int(event.pattern_match.group(2).decode('utf-8'))
-    username = event.pattern_match.group(3).decode('utf-8')
-    
-    await event.edit("⏳ **Memproses pembuatan akun Trial Anda...**\nMohon tunggu beberapa detik.")
-
-    try:
-        domain = globals().get("DOMAIN", "localhost")
-        if proto == "ssh":
-            password = "".join(random.choices("0123456789", k=6))
-            code, out = run_command("addssh", [username, password, str(days)])
-        else:
-            script_map = {
-                "vmess": "addws",
-                "vless": "addvless",
-                "trojan": "addtr",
-                "shadowsocks": "addss"
-            }
-            cmd = script_map.get(proto, "addws")
-            code, out = run_command(cmd, ["3", username, str(days), "100", "2"])
-
-        if code != 0:
-            await event.edit(f"❌ **Gagal membuat akun Trial.**\nSystem log:\n`{out[:200]}`")
-            return
-
-        # Register creation as trial
-        service_name = proto
-        import datetime
-        expiry_date = (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
-        register_account_creation(str(sender.id), service_name, username, expiry_date, is_trial=True)
-
-        success_msg = (
-            "🎉 **Akun Trial Berhasil Dibuat!**\n\n"
-            f"Akun trial VPN Anda telah aktif.\n"
-            f"Username: `{username}`\n"
-            f"Masa Aktif: `{days} Hari`\n"
-            f"Kedaluwarsa: `{expiry_date}`\n\n"
-            "Detail akun koneksi:\n"
-            f"```\n{out}\n```"
-        )
-        await event.edit(success_msg, buttons=[[Button.inline("🏠 Main Menu", "start")]])
-
-    except Exception as e:
-        logging.exception("Trial execution failed: %s", e)
-        await event.edit(f"❌ Terjadi kesalahan internal: {e}")
+        bot.loop.create_task(poll_purchase_transaction())
