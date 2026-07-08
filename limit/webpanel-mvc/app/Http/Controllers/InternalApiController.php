@@ -591,6 +591,10 @@ class InternalApiController extends Controller
             ->where('service', $service)
             ->update(['active' => false]);
 
+        \App\Models\VpnAccount::where('vpn_username', $username)
+            ->where('service', $service)
+            ->delete();
+
         return response()->json(['status' => 'ok', 'deactivated' => $count]);
     }
 
