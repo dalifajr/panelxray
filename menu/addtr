@@ -244,8 +244,12 @@ systemctl reload nginx
 service cron restart
 trojanlink="trojan://${uuid}@${WS_ADDR}:443?path=%2Ftrojan-ws&security=tls&host=${WS_HOST}&type=ws&sni=${TLS_SNI}&allowInsecure=1#${user}"
 trojanlink1="trojan://${uuid}@${WS_ADDR}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${TLS_SNI}&allowInsecure=1#${user}"
-QR_WS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$trojanlink")"
-wget -q -O /var/www/html/trojan-${user}-ws.png "$QR_WS_LINK" >/dev/null 2>&1 || true
+if command -v qrencode >/dev/null 2>&1; then
+  qrencode -s 6 -o /var/www/html/trojan-${user}-ws.png "$trojanlink"
+else
+  QR_WS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$trojanlink")"
+  wget -q --timeout=5 -t 1 -O /var/www/html/trojan-${user}-ws.png "$QR_WS_LINK" >/dev/null 2>&1 || true
+fi
 if [ ! -e /etc/trojan ]; then
   mkdir -p /etc/trojan
 fi

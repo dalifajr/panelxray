@@ -318,8 +318,12 @@ ${vmesslink3}
 
 END
 
-QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$vmesslink1")"
-wget -q -O /var/www/html/vmess-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
+if command -v qrencode >/dev/null 2>&1; then
+  qrencode -s 6 -o /var/www/html/vmess-${user}-tls.png "$vmesslink1"
+else
+  QR_TLS_LINK="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=$(url_encode "$vmesslink1")"
+  wget -q --timeout=5 -t 1 -O /var/www/html/vmess-${user}-tls.png "$QR_TLS_LINK" >/dev/null 2>&1 || true
+fi
 
 if [ ! -e /etc/vmess ]; then
   mkdir -p /etc/vmess

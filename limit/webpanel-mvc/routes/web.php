@@ -295,10 +295,3 @@ Route::get('/test-approve', function() {
     }
 });
 
-Route::get('/diag-bot', function() {
-    $out = "Current User: " . shell_exec("whoami") . "\n";
-    $out .= "Bot status:\n" . shell_exec("systemctl status kyt 2>&1") . "\n";
-    $out .= "Bot logs:\n" . shell_exec("journalctl -u kyt -n 100 --no-pager 2>&1") . "\n";
-    return response($out)->header('Content-Type', 'text/plain');
-});
-
