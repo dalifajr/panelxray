@@ -455,6 +455,12 @@ def api_call(method: str, endpoint: str, data: dict = None) -> dict:
 		
 		if res.status_code == 200:
 			return res.json()
+		try:
+			err_data = res.json()
+			if "error" in err_data:
+				return {"error": err_data["error"], "body": res.text}
+		except Exception:
+			pass
 		return {"error": f"HTTP {res.status_code}", "body": res.text}
 	except Exception as e:
 		logging.error("API Call to %s failed: %s", endpoint, e)

@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import require_access, menu_credit, is_admin
+from kyt.modules.ui import require_access, menu_credit, is_admin, upsert_message
 
 @bot.on(events.NewMessage(pattern=r"(?i)^(?:[./](?:start|mulai)(?:@\w+)?)(?:\s+(login_[a-zA-Z0-9_]+))?\s*$"))
 @bot.on(events.CallbackQuery(data=b'start'))
@@ -92,17 +92,7 @@ async def start(event):
 				f"{menu_credit()}"
 			)
 
-		if isinstance(event, events.CallbackQuery):
-			try:
-				await event.edit(msg, buttons=inline)
-				logging.info("[DEBUG START] event.edit success")
-			except Exception as edit_err:
-				logging.info("[DEBUG START] event.edit failed: %s, fallback to reply", edit_err)
-				await event.reply(msg, buttons=inline)
-				logging.info("[DEBUG START] event.reply success")
-		else:
-			await event.reply(msg, buttons=inline)
-			logging.info("[DEBUG START] event.reply success")
+		await upsert_message(event, msg, buttons=inline)
 	except Exception as exc:
 		logging.exception("Exception inside start handler: %s", exc)
 

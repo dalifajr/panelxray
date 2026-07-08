@@ -78,13 +78,7 @@ async def menu(event):
 				f"\nGunakan menu di bawah untuk membuat akun atau request kuota tambahan."
 			)
 
-		if isinstance(event, events.CallbackQuery):
-			try:
-				await event.edit(msg, buttons=inline)
-			except Exception:
-				await event.reply(msg, buttons=inline)
-		else:
-			await event.reply(msg, buttons=inline)
+		await upsert_message(event, msg, buttons=inline)
 	except Exception as exc:
 		logging.exception("Exception inside menu handler: %s", exc)
 

@@ -141,10 +141,10 @@ async def start_purchase_flow(event, proto, days, price):
 
     if proto in ["ssh", "trial"]:
         # No IP limit for SSH
-        await _show_payment_methods(None, chat, proto, days, price, user, 2, price)
+        await _show_payment_methods(event, chat, proto, days, price, user, 1, price)
     else:
         # Show IP Limit Selector
-        await _show_ip_limit_selector(None, chat, proto, days, price, user, 2)
+        await _show_ip_limit_selector(event, chat, proto, days, price, user, 1)
 
 
 async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, iplimit):
@@ -156,7 +156,7 @@ async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, ip
             extra_ip_price = p.get("price", 0)
 
     # Calculate total
-    extra_ips = max(0, iplimit - 2)
+    extra_ips = max(0, iplimit - 1)
     total_price = base_price + (extra_ips * extra_ip_price)
 
     msg = (
@@ -170,7 +170,7 @@ async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, ip
         "Silakan atur limit IP yang Anda inginkan:"
     )
 
-    prev_ip = max(2, iplimit - 1)
+    prev_ip = max(1, iplimit - 1)
     next_ip = iplimit + 1
 
     inline = [
@@ -184,7 +184,7 @@ async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, ip
     ]
     
     if isinstance(event, events.CallbackQuery):
-        await event.edit(msg, buttons=inline)
+        await upsert_message(event, msg, buttons=inline)
     else:
         await bot.send_message(chat, msg, buttons=inline)
 
@@ -208,7 +208,7 @@ async def handle_pay_meth(event):
 
     pricing_res = api_call("GET", "/pricing")
     extra_ip_price = next((p.get("price", 0) for p in pricing_res.get("prices", []) if p.get("protocol") == "add_ip"), 0)
-    total_price = base_price + (max(0, iplimit - 2) * extra_ip_price)
+    total_price = base_price + (max(0, iplimit - 1) * extra_ip_price)
 
     await _show_payment_methods(event, event.chat_id, proto, days, base_price, user, iplimit, total_price)
 
@@ -234,7 +234,7 @@ async def _show_payment_methods(event, chat, proto, days, base_price, user, ipli
     inline.append([Button.inline("❌ Batal", "shop-menu")])
 
     if isinstance(event, events.CallbackQuery):
-        await event.edit(confirm_msg, buttons=inline)
+        await upsert_message(event, confirm_msg, buttons=inline)
     else:
         await bot.send_message(chat, confirm_msg, buttons=inline)
 
@@ -319,7 +319,7 @@ async def confirm_buy(event):
 
     elif method == "qris":
         await event.edit("⏳ **Menyiapkan QRIS Pembelian Anda...**")
-        res = api_call("POST", "/wallet/topup", {"tg_id": str(sender.id), "amount": price})
+        res = api_call("POST", "/wallet/vpn_qris", {"tg_id": str(sender.id), "amount": price})
         if "error" in res:
             await event.edit(f"❌ **Gagal menyiapkan QRIS:**\n`{res['error']}`", buttons=[[Button.inline("⬅️ Kembali", "shop-menu")]])
             return

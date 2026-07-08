@@ -1,5 +1,5 @@
 from kyt import *
-from kyt.modules.ui import manager_banner, delete_messages, upsert_message
+from kyt.modules.ui import manager_banner, delete_messages, upsert_message, run_command
 
 @bot.on(events.CallbackQuery(data=b'my-accounts'))
 async def my_accounts(event):
