@@ -203,30 +203,55 @@ async def handle_pay_meth(event):
     user = event.pattern_match.group(4).decode('utf-8')
     iplimit = int(event.pattern_match.group(5).decode('utf-8'))
 
+    if proto not in ["ssh", "trial"]:
+        msg = "🌐 **Pilih Profil SNI (Bug):**"
+        inline = [
+            [Button.inline("support.zoom.us", f"conf-sni:{proto}:{days}:{base_price}:{user}:{iplimit}:1")],
+            [Button.inline("live.iflix.com", f"conf-sni:{proto}:{days}:{base_price}:{user}:{iplimit}:2")],
+            [Button.inline("Tanpa SNI", f"conf-sni:{proto}:{days}:{base_price}:{user}:{iplimit}:3")],
+            [Button.inline("❌ Batal", "shop-menu")]
+        ]
+        await upsert_message(event, msg, buttons=inline)
+    else:
+        pricing_res = api_call("GET", "/pricing")
+        extra_ip_price = next((p.get("price", 0) for p in pricing_res.get("prices", []) if p.get("protocol") == "add_ip"), 0)
+        total_price = base_price + (max(0, iplimit - 1) * extra_ip_price)
+        await _show_payment_methods(event, event.chat_id, proto, days, base_price, user, iplimit, total_price, sni_profile="3")
+
+@bot.on(events.CallbackQuery(data=re.compile(b'conf-sni:(.*?):(.*?):(.*?):(.*?):(.*?):(.*)')))
+async def handle_conf_sni(event):
+    proto = event.pattern_match.group(1).decode('utf-8')
+    days = int(event.pattern_match.group(2).decode('utf-8'))
+    base_price = int(event.pattern_match.group(3).decode('utf-8'))
+    user = event.pattern_match.group(4).decode('utf-8')
+    iplimit = int(event.pattern_match.group(5).decode('utf-8'))
+    sni_profile = event.pattern_match.group(6).decode('utf-8')
+
     pricing_res = api_call("GET", "/pricing")
     extra_ip_price = next((p.get("price", 0) for p in pricing_res.get("prices", []) if p.get("protocol") == "add_ip"), 0)
     total_price = base_price + (max(0, iplimit - 1) * extra_ip_price)
 
-    await _show_payment_methods(event, event.chat_id, proto, days, base_price, user, iplimit, total_price)
+    await _show_payment_methods(event, event.chat_id, proto, days, base_price, user, iplimit, total_price, sni_profile)
 
-
-async def _show_payment_methods(event, chat, proto, days, base_price, user, iplimit, total_price):
+async def _show_payment_methods(event, chat, proto, days, base_price, user, iplimit, total_price, sni_profile="3"):
+    sni_name = "support.zoom.us" if sni_profile == "1" else ("live.iflix.com" if sni_profile == "2" else "Tanpa SNI")
     confirm_msg = (
         "🛒 **Konfirmasi Pembelian & Pembayaran**\n\n"
         f"▪ Layanan: `{proto.upper() if proto != 'trial' else 'TRIAL'}`\n"
         f"▪ Username: `{user}`\n"
         f"▪ Masa Aktif: `{days} Hari`\n"
         f"▪ Limit IP: `{iplimit} IP`\n"
+        f"▪ SNI/Bug: `{sni_name}`\n"
         f"▪ **Total Pembayaran:** `Rp {total_price:,}`\n\n"
         "Silakan pilih metode pembayaran:"
     )
 
     inline = []
     if total_price > 0:
-        inline.append([Button.inline(f"💳 Bayar via Saldo (Rp {total_price:,})", f"confirm-buy:{proto}:{days}:{total_price}:{user}:{iplimit}:saldo")])
-        inline.append([Button.inline(f"📱 Bayar via QRIS (Rp {total_price:,})", f"confirm-buy:{proto}:{days}:{total_price}:{user}:{iplimit}:qris")])
+        inline.append([Button.inline(f"💳 Bayar via Saldo (Rp {total_price:,})", f"confirm-buy:{proto}:{days}:{total_price}:{user}:{iplimit}:{sni_profile}:saldo")])
+        inline.append([Button.inline(f"📱 Bayar via QRIS (Rp {total_price:,})", f"confirm-buy:{proto}:{days}:{total_price}:{user}:{iplimit}:{sni_profile}:qris")])
     else:
-        inline.append([Button.inline("✅ Konfirmasi Gratis", f"confirm-buy:{proto}:{days}:0:{user}:{iplimit}:saldo")])
+        inline.append([Button.inline("✅ Konfirmasi Gratis", f"confirm-buy:{proto}:{days}:0:{user}:{iplimit}:{sni_profile}:saldo")])
         
     inline.append([Button.inline("❌ Batal", "shop-menu")])
 
@@ -236,7 +261,7 @@ async def _show_payment_methods(event, chat, proto, days, base_price, user, ipli
         await bot.send_message(chat, confirm_msg, buttons=inline)
 
 
-@bot.on(events.CallbackQuery(data=re.compile(b'confirm-buy:(.*?):(.*?):(.*?):(.*?):(.*?):(.*)')))
+@bot.on(events.CallbackQuery(data=re.compile(b'confirm-buy:(.*?):(.*?):(.*?):(.*?):(.*?):(.*?):(.*)')))
 async def confirm_buy(event):
     sender = await event.get_sender()
     chat = event.chat_id
@@ -246,7 +271,8 @@ async def confirm_buy(event):
     price = int(event.pattern_match.group(3).decode('utf-8'))
     user = event.pattern_match.group(4).decode('utf-8')
     iplimit = event.pattern_match.group(5).decode('utf-8')
-    method = event.pattern_match.group(6).decode('utf-8')
+    sni_profile = event.pattern_match.group(6).decode('utf-8')
+    method = event.pattern_match.group(7).decode('utf-8')
 
     async def execute_vpn_creation(msg_ref=None):
         try:
@@ -269,7 +295,7 @@ async def confirm_buy(event):
             else:
                 script_map = {"vmess": "addws", "vless": "addvless", "trojan": "addtr", "shadowsocks": "addss"}
                 cmd = script_map.get(real_proto, "addws")
-                code, out = await asyncio.to_thread(run_command, cmd, [domain, user, str(days), "100", str(iplimit)])
+                code, out = await asyncio.to_thread(run_command, cmd, [sni_profile, user, str(days), "100", str(iplimit)])
 
             if code != 0:
                 if price > 0:
@@ -295,23 +321,83 @@ async def confirm_buy(event):
             # Strip ANSI escape codes
             clean_out = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', out).strip()
             
-            success_msg = f"{clean_out}\n\n🏠 Ketik /menu untuk kembali ke menu utama."
-            
-            # Ensure it fits within Telegram limits safely
-            if len(success_msg) > 4000:
-                success_msg = success_msg[:4000] + "\n... (Terpotong)"
+            if real_proto == "ssh":
+                success_msg = f"✅ **SSH Account Created**\n\n`{clean_out}`\n\n🏠 Ketik /menu untuk kembali ke menu utama."
+                parse_m = None
+            else:
+                import html
+                def esc(text): return html.escape(str(text))
+                def extract_val(key_regex):
+                    m = re.search(fr"{key_regex}\s*:\s*(.+)", clean_out, re.IGNORECASE)
+                    return m.group(1).strip() if m else "-"
+
+                remarks = extract_val("Remarks")
+                if remarks == "-": remarks = user
+                domain_vpn = extract_val("Domain")
+                quota = extract_val("User Quota")
+                iplim_val = extract_val("User Ip")
+                uuid_val = extract_val("id")
+                exp_date = extract_val("Berakhir Pada")
+                
+                link_tls = extract_val(r"Link TLS|Link WS TLS")
+                link_ntls = extract_val(r"Link none TLS|Link WS None TLS")
+                link_grpc = extract_val("Link GRPC")
+                openclash = extract_val("Format OpenClash")
+                
+                xray_dns = globals().get("NS", "-")
+                sni_n = "support.zoom.us" if sni_profile == "1" else ("live.iflix.com" if sni_profile == "2" else "")
+                full_domain = f"{sni_n}.{domain_vpn}" if sni_n and domain_vpn != "-" else domain_vpn
+
+                success_msg = (
+                    f"✅ <b>{real_proto.upper()} Account Created</b>\n\n"
+                    f"▸ <b>Username:</b> <code>{esc(remarks)}</code>\n"
+                    f"▸ <b>Domain:</b> <code>{esc(full_domain)}</code>\n"
+                    f"▸ <b>XRAY DNS:</b> <code>{esc(xray_dns)}</code>\n"
+                    f"▸ <b>Quota:</b> {esc(quota)}\n"
+                    f"▸ <b>Limit IP:</b> {esc(iplim_val)}\n"
+                    f"▸ <b>Config:</b> TLS / NTLS / GRPC\n"
+                    f"▸ <b>User ID:</b> <code>{esc(uuid_val)}</code>\n"
+                    f"▸ <b>Aktif sampai:</b> {esc(exp_date)}\n\n"
+                    f"🔗 <b>Connection Links</b>\n"
+                )
+                if link_tls != "-": success_msg += f"▪ <b>TLS:</b>\n<code>{esc(link_tls)}</code>\n\n"
+                if link_ntls != "-": success_msg += f"▪ <b>NTLS:</b>\n<code>{esc(link_ntls)}</code>\n\n"
+                if link_grpc != "-": success_msg += f"▪ <b>GRPC:</b>\n<code>{esc(link_grpc)}</code>\n\n"
+                if openclash != "-": success_msg += f"▪ <b>OpenClash:</b>\n<a href='{esc(openclash)}'>{esc(openclash)}</a>\n\n"
+
+                success_msg += (
+                    "🧾 <b>QR TLS/Koneksi</b>\n"
+                    "🔐 Scan QR yang diberikan untuk koneksi, atau copy link di atas.\n\n"
+                    "🏠 Ketik /menu untuk kembali ke menu utama."
+                )
+                parse_m = 'html'
+                
+                photo = None
+                if link_tls != "-":
+                    try:
+                        from kyt.modules.ui import fetch_qr_photo
+                        photo = await asyncio.to_thread(fetch_qr_photo, link_tls, 512)
+                        if photo: photo.name = "qr-code.png"
+                    except: pass
 
             buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
             try:
-                # If msg_ref is a media message (QR code), editing caption will fail if text > 1024 chars
-                if getattr(msg_ref, 'media', None):
-                    await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=None)
-                    await msg_ref.delete()
+                if photo:
+                    await bot.send_message(chat, success_msg, file=photo, buttons=buttons, parse_mode=parse_m)
+                    try: await msg_ref.delete()
+                    except: pass
+                elif getattr(msg_ref, 'media', None):
+                    await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=parse_m)
+                    try: await msg_ref.delete()
+                    except: pass
                 else:
-                    await msg_ref.edit(success_msg, buttons=buttons, parse_mode=None)
+                    await msg_ref.edit(success_msg, buttons=buttons, parse_mode=parse_m)
             except Exception as e:
                 logging.exception("Failed to edit success message: %s", e)
-                await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=None)
+                if photo:
+                    await bot.send_message(chat, success_msg, file=photo, buttons=buttons, parse_mode=parse_m)
+                else:
+                    await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=parse_m)
         except Exception as e:
             logging.exception("Purchase execution failed: %s", e)
             try:
