@@ -375,10 +375,16 @@ async def confirm_buy(event):
                 photo = None
                 if link_tls != "-":
                     try:
-                        from kyt.modules.ui import fetch_qr_photo
+                        from kyt.modules.ui import fetch_qr_photo, get_qr_url
                         photo = await asyncio.to_thread(fetch_qr_photo, link_tls, 512)
-                        if photo: photo.name = "qr-code.png"
-                    except: pass
+                        if photo:
+                            photo.name = "qr-code.png"
+                        else:
+                            photo = get_qr_url(link_tls, 512)
+                    except Exception:
+                        try:
+                            photo = get_qr_url(link_tls, 512)
+                        except: pass
 
             buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
             try:
@@ -393,11 +399,14 @@ async def confirm_buy(event):
                 else:
                     await msg_ref.edit(success_msg, buttons=buttons, parse_mode=parse_m)
             except Exception as e:
-                logging.exception("Failed to edit success message: %s", e)
-                if photo:
-                    await bot.send_message(chat, success_msg, file=photo, buttons=buttons, parse_mode=parse_m)
-                else:
+                logging.exception("Failed to send success message with photo: %s", e)
+                try:
                     await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=parse_m)
+                    try: await msg_ref.delete()
+                    except: pass
+                except Exception as e2:
+                    logging.exception("Failed to send fallback success message: %s", e2)
+                    raise e2
         except Exception as e:
             logging.exception("Purchase execution failed: %s", e)
             try:
