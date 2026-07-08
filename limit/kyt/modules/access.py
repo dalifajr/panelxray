@@ -187,7 +187,8 @@ async def callback_permission_guard(event):
             customer_allowed_prefixes = (
                 "shop-", "buy-", "confirm-", "my-", "wallet-", "voucher-", "start", 
                 "request-", "menu", "backer", "main_menu",
-                "list-", "show-", "topup-", "claim-", "check-", "cancel-", "ip-", "pay-", "ignore"
+                "list-", "show-", "topup-", "claim-", "check-", "cancel-", "ip-", "pay-", "ignore",
+                "tx-", "del-"
             )
             is_allowed = False
             for prefix in customer_allowed_prefixes:

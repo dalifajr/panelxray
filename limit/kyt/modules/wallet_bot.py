@@ -13,7 +13,7 @@ async def wallet_bot(event):
             "Silakan hubungkan Telegram Anda terlebih dahulu di website panel:\n"
             "**Profil Pengguna** → **Hubungkan Telegram**"
         )
-        buttons = [[Button.inline("⬅️ Main Menu", "menu")]]
+        buttons = [[Button.inline("🏠 Menu Utama", "start")]]
         await event.edit(msg, buttons=buttons)
         return
 
@@ -30,7 +30,7 @@ async def wallet_bot(event):
     inline = [
         [Button.inline("💳 Top Up Saldo", "topup-info"), Button.inline("🎫 Klaim Voucher", "claim-voucher")],
         [Button.inline("📜 Riwayat Transaksi", "tx-history")],
-        [Button.inline("⬅️ Main Menu", "menu")]
+        [Button.inline("🏠 Menu Utama", "start")]
     ]
 
     await event.edit(msg, buttons=inline)
@@ -187,7 +187,7 @@ async def topup_info(event):
 
     buttons = [
         [Button.inline("🔄 Cek Status", f"check-topup:{ref}"), Button.inline("❌ Batalkan", f"cancel-topup:{ref}")],
-        [Button.inline("🏠 Main Menu", "menu")]
+        [Button.inline("🏠 Menu Utama", "start")]
     ]
 
     # Send the QR Code image directly using the URL!
@@ -216,7 +216,7 @@ async def topup_info(event):
                         f"Referensi: `{ref}`"
                     )
                     try:
-                        await sent_msg.edit(success_text, buttons=[[Button.inline("⬅️ Kembali ke Dompet", "wallet-bot"), Button.inline("🏠 Main Menu", "menu")]])
+                        await sent_msg.edit(success_text, buttons=[[Button.inline("⬅️ Kembali ke Dompet", "wallet-bot"), Button.inline("🏠 Menu Utama", "start")]])
                     except:
                         pass
                     return

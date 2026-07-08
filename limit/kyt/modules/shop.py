@@ -27,7 +27,7 @@ async def shop_menu(event):
             "3. Klik tombol **Hubungkan Telegram**.\n\n"
             "Setelah terhubung, saldo website Anda otomatis sinkron dengan bot ini."
         )
-        buttons = [[Button.inline("⬅️ Kembali ke Menu", "menu")]]
+        buttons = [[Button.inline("🏠 Menu Utama", "start")]]
         await event.edit(msg, buttons=buttons)
         return
 
@@ -58,7 +58,7 @@ async def shop_menu(event):
 
 
 
-    inline.append([Button.inline("⬅️ Kembali ke Menu", "menu")])
+    inline.append([Button.inline("🏠 Menu Utama", "start")])
 
     msg = (
         f"{manager_banner('Shop Menu', 'Beli VPN Self-Service')}\n\n"
@@ -299,7 +299,7 @@ async def confirm_buy(event):
                 "Detail akun koneksi:\n"
                 f"```\n{out}\n```"
             )
-            await msg_ref.edit(success_msg, buttons=[[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Main Menu", "menu")]])
+            await msg_ref.edit(success_msg, buttons=[[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]])
         except Exception as e:
             logging.exception("Purchase execution failed: %s", e)
             await msg_ref.edit(f"❌ Terjadi kesalahan internal: {e}")
@@ -338,7 +338,7 @@ async def confirm_buy(event):
 
         buttons = [
             [Button.inline("🔄 Cek Status", f"check-topup:{ref}"), Button.inline("❌ Batalkan", f"cancel-topup:{ref}")],
-            [Button.inline("🏠 Main Menu", "menu")]
+            [Button.inline("🏠 Menu Utama", "start")]
         ]
         try:
             sent_msg = await bot.send_file(chat, qr_url, caption=payment_instructions, buttons=buttons)
@@ -357,7 +357,7 @@ async def confirm_buy(event):
                     elif status_res.get("status") == "cancelled":
                         return
             api_call("POST", "/transaction/cancel", {"reference": ref})
-            try: await sent_msg.edit(f"❌ Waktu pembayaran habis untuk transaksi `{ref}`.", buttons=[[Button.inline("🏠 Main Menu", "menu")]])
+            try: await sent_msg.edit(f"❌ Waktu pembayaran habis untuk transaksi `{ref}`.", buttons=[[Button.inline("🏠 Menu Utama", "start")]])
             except: pass
 
         bot.loop.create_task(poll_purchase_transaction())

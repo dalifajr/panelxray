@@ -15,7 +15,7 @@ async def my_accounts(event):
             "⚠️ Anda belum memiliki akun VPN aktif yang dibuat dari bot ini.\n"
             "Gunakan menu **Beli VPN** untuk membuat akun pertama Anda!"
         )
-        buttons = [[Button.inline("🛒 Beli VPN", "shop-menu")], [Button.inline("⬅️ Main Menu", "menu")]]
+        buttons = [[Button.inline("🛒 Beli VPN", "shop-menu")], [Button.inline("🏠 Menu Utama", "start")]]
         await event.edit(msg, buttons=buttons)
         return
 
@@ -31,7 +31,7 @@ async def my_accounts(event):
         text_list.append(f"{idx+1}. **{username}** [{service}] — Exp: `{expiry}`")
         inline.append([Button.inline(f"🗑️ Hapus {username} ({service})", f"del-acc:{acc.get('id')}:{username}:{acc.get('service')}")])
 
-    inline.append([Button.inline("⬅️ Main Menu", "menu")])
+    inline.append([Button.inline("🏠 Menu Utama", "start")])
 
     msg = (
         f"{manager_banner('Akun Saya', 'VPN Aktif Anda')}\n\n"
@@ -99,7 +99,7 @@ async def confirm_delete_my_account(event):
         })
 
         await event.edit(f"✅ **Akun {username} ({service.upper()}) berhasil dihapus!**", 
-                         buttons=[[Button.inline("⬅️ Akun Saya", "my-accounts"), Button.inline("🏠 Main Menu", "menu")]])
+                         buttons=[[Button.inline("⬅️ Akun Saya", "my-accounts"), Button.inline("🏠 Menu Utama", "start")]])
 
     except Exception as e:
         logging.exception("Delete account execution failed: %s", e)
