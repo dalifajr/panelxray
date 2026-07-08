@@ -57,10 +57,15 @@ class TelegramBotController extends Controller
                 'tg_full_name' => $req->tg_full_name ?? '',
                 'role' => 'user',
                 'status' => 'approved',
+                'ssh_limit' => \App\Models\Setting::where('key', 'bot_default_ssh_limit')->value('value') ?? 0,
+                'xray_limit' => \App\Models\Setting::where('key', 'bot_default_xray_limit')->value('value') ?? 0,
             ]
         );
 
         $botUser->status = 'approved';
+        // Ensure limits are updated even if the user record already existed
+        $botUser->ssh_limit = \App\Models\Setting::where('key', 'bot_default_ssh_limit')->value('value') ?? 0;
+        $botUser->xray_limit = \App\Models\Setting::where('key', 'bot_default_xray_limit')->value('value') ?? 0;
         $botUser->save();
 
         // Auto-create and sync web user account

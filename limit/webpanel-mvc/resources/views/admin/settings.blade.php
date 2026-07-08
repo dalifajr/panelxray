@@ -125,6 +125,18 @@
                                 <span class="input-group-text bg-light border">Hari</span>
                             </div>
                         </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Default Limit SSH Baru</label>
+                                <input type="number" class="form-control border" name="bot_default_ssh_limit" value="{{ $settings['bot_default_ssh_limit'] ?? 0 }}" min="0" required>
+                                <small class="text-muted">Untuk customer yang baru di-acc.</small>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Default Limit Xray Baru</label>
+                                <input type="number" class="form-control border" name="bot_default_xray_limit" value="{{ $settings['bot_default_xray_limit'] ?? 0 }}" min="0" required>
+                                <small class="text-muted">Untuk customer yang baru di-acc.</small>
+                            </div>
+                        </div>
                         <button type="submit" class="btn btn-primary w-100">Simpan Pengaturan Bot</button>
                     </form>
                 </div>

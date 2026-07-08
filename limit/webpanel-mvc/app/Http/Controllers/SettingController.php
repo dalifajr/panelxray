@@ -81,6 +81,8 @@ class SettingController extends Controller
             'bot_mode' => 'required|in:admin_only,sales',
             'bot_trial_enabled' => 'nullable|string',
             'bot_trial_days' => 'required|integer|min:1',
+            'bot_default_ssh_limit' => 'required|integer|min:0',
+            'bot_default_xray_limit' => 'required|integer|min:0',
         ]);
 
         Setting::updateOrCreate(['key' => 'bot_mode'], ['value' => $request->bot_mode]);
@@ -89,6 +91,8 @@ class SettingController extends Controller
             ['value' => $request->has('bot_trial_enabled') ? 'true' : 'false']
         );
         Setting::updateOrCreate(['key' => 'bot_trial_days'], ['value' => $request->bot_trial_days]);
+        Setting::updateOrCreate(['key' => 'bot_default_ssh_limit'], ['value' => $request->bot_default_ssh_limit]);
+        Setting::updateOrCreate(['key' => 'bot_default_xray_limit'], ['value' => $request->bot_default_xray_limit]);
 
         // Sync to .env
         $this->setEnvValue('BOT_MODE', $request->bot_mode);
