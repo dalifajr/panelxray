@@ -473,7 +473,8 @@ def touch_user(tg_id, username: str = "", full_name: str = ""):
 	api_call("POST", "/bot/user/touch", {
 		"tg_id": uid,
 		"tg_username": str(username or "").strip(),
-		"tg_full_name": str(full_name or "").strip()
+		"tg_full_name": str(full_name or "").strip(),
+		"bot_mode": BOT_MODE
 	})
 
 def get_user_record(tg_id) -> Optional[Dict]:

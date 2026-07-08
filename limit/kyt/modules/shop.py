@@ -258,17 +258,18 @@ async def confirm_buy(event):
                     await msg_ref.edit("⏳ **Pembayaran Berhasil! Memproses pembuatan akun VPN Anda...**\nMohon tunggu beberapa detik.")
                 except: pass
 
+            import asyncio
             domain = globals().get("DOMAIN", "localhost")
             is_trial = (proto == "trial")
             real_proto = proto if proto != "trial" else "ssh"
             
             if real_proto == "ssh":
                 password = "".join(random.choices("0123456789", k=6))
-                code, out = run_command("addssh", [user, password, str(days)])
+                code, out = await asyncio.to_thread(run_command, "addssh", [user, password, str(days)])
             else:
                 script_map = {"vmess": "addws", "vless": "addvless", "trojan": "addtr", "shadowsocks": "addss"}
                 cmd = script_map.get(real_proto, "addws")
-                code, out = run_command(cmd, [domain, user, str(days), "100", str(iplimit)])
+                code, out = await asyncio.to_thread(run_command, cmd, [domain, user, str(days), "100", str(iplimit)])
 
             if code != 0:
                 if price > 0:
@@ -304,13 +305,13 @@ async def confirm_buy(event):
             try:
                 # If msg_ref is a media message (QR code), editing caption will fail if text > 1024 chars
                 if getattr(msg_ref, 'media', None):
-                    await bot.send_message(chat, success_msg, buttons=buttons)
+                    await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=None)
                     await msg_ref.delete()
                 else:
-                    await msg_ref.edit(success_msg, buttons=buttons)
+                    await msg_ref.edit(success_msg, buttons=buttons, parse_mode=None)
             except Exception as e:
                 logging.exception("Failed to edit success message: %s", e)
-                await bot.send_message(chat, success_msg, buttons=buttons)
+                await bot.send_message(chat, success_msg, buttons=buttons, parse_mode=None)
         except Exception as e:
             logging.exception("Purchase execution failed: %s", e)
             try:
