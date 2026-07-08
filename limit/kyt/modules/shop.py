@@ -286,19 +286,20 @@ async def confirm_buy(event):
                 return
 
             import datetime
+            import re
+            
             expiry_date = (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
             register_account_creation(str(sender.id), real_proto, user, expiry_date, is_trial=is_trial)
 
-            success_msg = (
-                "✅ **Pembelian Berhasil!**\n\n"
-                f"Akun VPN Anda telah sukses dibuat.\n"
-                f"Username: `{user}`\n"
-                f"Masa Aktif: `{days} Hari`\n"
-                f"Limit IP: `{iplimit} IP`\n"
-                f"Kedaluwarsa: `{expiry_date}`\n\n"
-                "Detail akun koneksi:\n"
-                f"```\n{out}\n```"
-            )
+            # Strip ANSI escape codes
+            clean_out = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', out).strip()
+            
+            success_msg = f"{clean_out}\n\n🏠 Ketik /menu untuk kembali ke menu utama."
+            
+            # Ensure it fits within Telegram limits safely
+            if len(success_msg) > 4000:
+                success_msg = success_msg[:4000] + "\n... (Terpotong)"
+
             buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
             try:
                 # If msg_ref is a media message (QR code), editing caption will fail if text > 1024 chars
