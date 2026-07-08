@@ -295,7 +295,7 @@ async def confirm_buy(event):
             else:
                 script_map = {"vmess": "addws", "vless": "addvless", "trojan": "addtr", "shadowsocks": "addss"}
                 cmd = script_map.get(real_proto, "addws")
-                code, out = await asyncio.to_thread(run_command, cmd, [sni_profile, user, str(days), "100", str(iplimit)])
+                code, out = await asyncio.to_thread(run_command, cmd, [sni_profile, user, str(days), "0", str(iplimit)])
 
             if code != 0:
                 if price > 0:
@@ -322,7 +322,7 @@ async def confirm_buy(event):
             clean_out = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', out).strip()
             
             if real_proto == "ssh":
-                success_msg = f"✅ **SSH Account Created**\n\n`{clean_out}`\n\n🏠 Ketik /menu untuk kembali ke menu utama."
+                success_msg = f"✅ **SSH Account Created**\n\n`{clean_out}`\n\n🏠 Ketik /start untuk kembali ke menu utama."
                 parse_m = None
             else:
                 import html
@@ -335,8 +335,12 @@ async def confirm_buy(event):
                 if remarks == "-": remarks = user
                 domain_vpn = extract_val("Domain")
                 quota = extract_val("User Quota")
+                if quota == "0 GB" or quota == "0" or quota == "0GB":
+                    quota = "Unlimited"
                 iplim_val = extract_val("User Ip")
+                if iplim_val == "-": iplim_val = extract_val("Limit IP")
                 uuid_val = extract_val("id")
+                if uuid_val == "-": uuid_val = extract_val("Password")
                 exp_date = extract_val("Berakhir Pada")
                 
                 link_tls = extract_val(r"Link TLS|Link WS TLS")
@@ -375,16 +379,31 @@ async def confirm_buy(event):
                 photo = None
                 if link_tls != "-":
                     try:
-                        from kyt.modules.ui import fetch_qr_photo, get_qr_url
-                        photo = await asyncio.to_thread(fetch_qr_photo, link_tls, 512)
-                        if photo:
-                            photo.name = "qr-code.png"
-                        else:
-                            photo = get_qr_url(link_tls, 512)
-                    except Exception:
-                        try:
-                            photo = get_qr_url(link_tls, 512)
-                        except: pass
+                        import subprocess
+                        import os
+                        import io
+                        qr_path = f"/tmp/qr-{user}.png"
+                        os.makedirs("/tmp", exist_ok=True)
+                        proc = subprocess.run(["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
+                        if proc.returncode != 0:
+                            if os.path.exists("/usr/bin/apt-get"):
+                                subprocess.run("apt-get update && apt-get install -y qrencode", shell=True, capture_output=True, timeout=30)
+                            elif os.path.exists("/usr/bin/yum"):
+                                subprocess.run("yum install -y qrencode", shell=True, capture_output=True, timeout=30)
+                            proc = subprocess.run(["qrencode", "-o", qr_path, link_tls], capture_output=True, timeout=5)
+                        if proc.returncode == 0 and os.path.exists(qr_path):
+                            with open(qr_path, "rb") as f:
+                                photo = io.BytesIO(f.read())
+                                photo.name = "qr-code.png"
+                            os.remove(qr_path)
+                    except Exception as e:
+                        logging.exception("Failed to generate local QR code: %s", e)
+
+                if not photo and link_tls != "-":
+                    try:
+                        from kyt.modules.ui import get_qr_url
+                        photo = get_qr_url(link_tls, 512)
+                    except Exception: pass
 
             buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
             try:

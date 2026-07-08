@@ -17,7 +17,7 @@
                     <form action="{{ route('admin.settings.prices') }}" method="POST">
                         @csrf
                         @php
-                            $protocols = ['vmess', 'vless', 'trojan', 'ssh'];
+                            $protocols = ['vmess', 'vless', 'trojan', 'shadowsocks', 'ssh'];
                         @endphp
                         
                         @foreach($protocols as $proto)
