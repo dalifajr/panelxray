@@ -183,10 +183,7 @@ async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, ip
         [Button.inline("❌ Batal", "shop-menu")]
     ]
     
-    if isinstance(event, events.CallbackQuery):
-        await upsert_message(event, msg, buttons=inline)
-    else:
-        await bot.send_message(chat, msg, buttons=inline)
+    await upsert_message(event, msg, buttons=inline)
 
 @bot.on(events.CallbackQuery(data=re.compile(b'ip-lim:(.*?):(.*?):(.*?):(.*?):(.*)')))
 async def handle_ip_lim(event):
@@ -319,7 +316,13 @@ async def confirm_buy(event):
 
     elif method == "qris":
         await event.edit("⏳ **Menyiapkan QRIS Pembelian Anda...**")
-        res = api_call("POST", "/wallet/vpn_qris", {"tg_id": str(sender.id), "amount": price})
+        res = api_call("POST", "/wallet/vpn_qris", {
+            "tg_id": str(sender.id), 
+            "amount": price,
+            "protocol": proto,
+            "days": days,
+            "ip_limit": iplimit
+        })
         if "error" in res:
             await event.edit(f"❌ **Gagal menyiapkan QRIS:**\n`{res['error']}`", buttons=[[Button.inline("⬅️ Kembali", "shop-menu")]])
             return

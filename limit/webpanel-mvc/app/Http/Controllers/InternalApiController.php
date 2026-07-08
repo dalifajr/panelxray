@@ -802,8 +802,6 @@ class InternalApiController extends Controller
             'protocol' => 'required|string',
             'days' => 'required|integer',
             'ip_limit' => 'required|integer',
-            'add_ip_price' => 'required|integer',
-            'base_price' => 'required|integer',
         ]);
 
         $tgId = $request->input('tg_id');
@@ -850,8 +848,6 @@ class InternalApiController extends Controller
                 'protocol' => $request->protocol,
                 'days' => $request->days,
                 'ip_limit' => $request->ip_limit,
-                'add_ip_price' => $request->add_ip_price,
-                'base_price' => $request->base_price
             ],
         ]);
         

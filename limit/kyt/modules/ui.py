@@ -150,11 +150,11 @@ async def delete_messages(chat_id: int, msg_ids: list):
 async def upsert_message(event, text: str, buttons=None, file=None, force_document: bool = False):
     """Edit current callback message when possible; fallback to new message."""
     try:
-        if file is None:
-            return await event.edit(text, buttons=buttons)
-
-        if not force_document:
-            return await event.edit(text, file=file, buttons=buttons)
+        if hasattr(event, 'data') and event.data is not None:
+            if file is None:
+                return await event.edit(text, buttons=buttons)
+            if not force_document:
+                return await event.edit(text, file=file, buttons=buttons)
     except Exception:
         pass
 
@@ -173,7 +173,7 @@ async def upsert_message(event, text: str, buttons=None, file=None, force_docume
 async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_to_delete: list = None) -> tuple:
     """Ask for text input and return (value, messages_to_delete)"""
     msgs_to_del = msg_to_delete or []
-    async with bot.conversation(chat_id, timeout=180) as conv:
+    async with bot.conversation(chat_id, timeout=180, exclusive=False) as conv:
         await upsert_message(event, prompt)
         try:
             reply = await conv.wait_event(
@@ -189,7 +189,7 @@ async def ask_text_clean(event, chat_id: int, sender_id: int, prompt: str, msg_t
 
 
 async def ask_text(event, chat_id: int, sender_id: int, prompt: str) -> str:
-    async with bot.conversation(chat_id, timeout=180) as conv:
+    async with bot.conversation(chat_id, timeout=180, exclusive=False) as conv:
         await upsert_message(event, prompt)
         try:
             reply = await conv.wait_event(
@@ -207,7 +207,7 @@ async def ask_text(event, chat_id: int, sender_id: int, prompt: str) -> str:
 async def ask_choice(event, chat_id: int, sender_id: int, prompt: str, options):
     options = [str(x).strip() for x in options]
     option_label = ", ".join(options)
-    async with bot.conversation(chat_id, timeout=180) as conv:
+    async with bot.conversation(chat_id, timeout=180, exclusive=False) as conv:
         await upsert_message(event, f"{prompt}\nKetik salah satu: {option_label}")
         try:
             reply = await conv.wait_event(
