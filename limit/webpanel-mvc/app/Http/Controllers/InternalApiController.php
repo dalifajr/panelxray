@@ -118,6 +118,8 @@ class InternalApiController extends Controller
                     $user->status = 'approved';
                     $user->save();
                     $user->syncWebUser();
+                } elseif (empty($user->user_id) && $user->status === 'approved') {
+                    $user->syncWebUser();
                 }
 
                 // Update username/full_name if provided
@@ -535,6 +537,10 @@ class InternalApiController extends Controller
         ]);
 
         $botUser = TelegramBotUser::where('tg_id', $request->input('tg_id'))->first();
+        if ($botUser && empty($botUser->user_id) && $botUser->status === 'approved') {
+            $botUser->syncWebUser();
+            $botUser->refresh();
+        }
         $userId = $botUser ? $botUser->user_id : null;
 
         if (!$userId) {
@@ -703,8 +709,11 @@ class InternalApiController extends Controller
 
         // Record transaction
         Transaction::create([
+            'reference' => 'BOT-' . strtoupper(\Illuminate\Support\Str::random(10)),
             'user_id' => $webUser->id,
             'type' => 'purchase',
+            'amount' => $amount,
+            'unique_code' => 0,
             'total_amount' => $amount,
             'description' => $request->input('description', 'Pembelian via Bot Telegram'),
             'status' => 'success',
