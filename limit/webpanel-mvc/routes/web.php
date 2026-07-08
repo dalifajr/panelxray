@@ -152,6 +152,7 @@ Route::prefix('api/internal')->group(function () {
     Route::get('/wallet/balance/{tgId}', [\App\Http\Controllers\InternalApiController::class, 'getBalance']);
     Route::post('/wallet/debit', [\App\Http\Controllers\InternalApiController::class, 'debitBalance']);
     Route::post('/wallet/topup', [\App\Http\Controllers\InternalApiController::class, 'topup']);
+    Route::post('/wallet/vpn_qris', [\App\Http\Controllers\InternalApiController::class, 'vpnPurchaseQris']);
     Route::post('/wallet/voucher/redeem', [\App\Http\Controllers\InternalApiController::class, 'redeemVoucher']);
 
     // Transactions

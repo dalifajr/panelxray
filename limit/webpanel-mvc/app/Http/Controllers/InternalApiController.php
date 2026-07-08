@@ -789,6 +789,84 @@ class InternalApiController extends Controller
     }
 
     /**
+     * POST /api/internal/wallet/vpn_qris
+     * Create a pending QRIS transaction for direct VPN order.
+     */
+    public function vpnPurchaseQris(Request $request): JsonResponse
+    {
+        if (!$this->authorize($request)) return $this->unauthorized();
+
+        $request->validate([
+            'tg_id' => 'required|string',
+            'amount' => 'required|integer',
+            'protocol' => 'required|string',
+            'days' => 'required|integer',
+            'ip_limit' => 'required|integer',
+            'add_ip_price' => 'required|integer',
+            'base_price' => 'required|integer',
+        ]);
+
+        $tgId = $request->input('tg_id');
+        $amount = (int)$request->input('amount');
+        
+        $botUser = TelegramBotUser::where('tg_id', $tgId)->first();
+        if (!$botUser || !$botUser->user_id) {
+            return response()->json(['error' => 'Akun Telegram belum terhubung ke web panel.'], 400);
+        }
+        
+        $webUser = User::find($botUser->user_id);
+        if (!$webUser) {
+            return response()->json(['error' => 'Akun web panel tidak ditemukan.'], 404);
+        }
+        
+        $qrisPayload = Setting::where('key', 'qris_payload')->value('value');
+        if (!$qrisPayload) {
+            return response()->json(['error' => 'Metode pembayaran QRIS belum dikonfigurasi admin.'], 400);
+        }
+        
+        // Cancel previous pending vpn_purchase_qris for this user
+        Transaction::where('user_id', $webUser->id)
+            ->where('status', 'pending')
+            ->where('type', 'vpn_purchase_qris')
+            ->update(['status' => 'cancelled']);
+            
+        $uniqueCode = rand(1, 100);
+        $totalAmount = $amount + $uniqueCode;
+        
+        $dynamicQris = \App\Helpers\QrisHelper::generateDynamic($qrisPayload, $totalAmount);
+        
+        $transaction = Transaction::create([
+            'reference' => 'VPN-QRIS-' . strtoupper(\Illuminate\Support\Str::random(8)),
+            'user_id' => $webUser->id,
+            'type' => 'vpn_purchase_qris',
+            'amount' => $amount,
+            'unique_code' => $uniqueCode,
+            'total_amount' => $totalAmount,
+            'status' => 'pending',
+            'description' => 'Beli VPN via QRIS - ' . strtoupper($request->protocol),
+            'metadata' => [
+                'source' => 'telegram_bot',
+                'tg_id' => $tgId,
+                'protocol' => $request->protocol,
+                'days' => $request->days,
+                'ip_limit' => $request->ip_limit,
+                'add_ip_price' => $request->add_ip_price,
+                'base_price' => $request->base_price
+            ],
+        ]);
+        
+        return response()->json([
+            'status' => 'ok',
+            'reference' => $transaction->reference,
+            'amount' => $amount,
+            'unique_code' => $uniqueCode,
+            'total_amount' => $totalAmount,
+            'dynamic_qris' => $dynamicQris,
+            'qr_code_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($dynamicQris),
+        ]);
+    }
+
+    /**
      * POST /api/internal/wallet/voucher/redeem
      * Redeem a voucher code for a Telegram user.
      */

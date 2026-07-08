@@ -141,10 +141,10 @@ async def start_purchase_flow(event, proto, days, price):
 
     if proto in ["ssh", "trial"]:
         # No IP limit for SSH
-        await _show_payment_methods(event, chat, proto, days, price, user, 2, price)
+        await _show_payment_methods(None, chat, proto, days, price, user, 2, price)
     else:
         # Show IP Limit Selector
-        await _show_ip_limit_selector(event, chat, proto, days, price, user, 2)
+        await _show_ip_limit_selector(None, chat, proto, days, price, user, 2)
 
 
 async def _show_ip_limit_selector(event, chat, proto, days, base_price, user, iplimit):
