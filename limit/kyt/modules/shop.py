@@ -322,13 +322,36 @@ async def confirm_buy(event):
             clean_out = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', out).strip()
             
             if real_proto == "ssh":
-                success_msg = f"✅ **SSH Account Created**\n\n`{clean_out}`\n\n🏠 Ketik /start untuk kembali ke menu utama."
-                parse_m = None
+                import html
+                def esc(text): return html.escape(str(text))
+                def extract_ssh_val(key_regex):
+                    m = re.search(fr"\b(?:{key_regex})\b\s*:\s*(.+)", clean_out, re.IGNORECASE)
+                    return m.group(1).strip() if m else "-"
+
+                ssh_user = extract_ssh_val("Username")
+                if ssh_user == "-": ssh_user = user
+                ssh_pass = extract_ssh_val("Password")
+                ssh_domain = extract_ssh_val("Host")
+                ssh_ip = extract_ssh_val("Limit Ip").replace(" User", "").strip()
+                ssh_exp = extract_ssh_val("Berakhir Pada")
+
+                success_msg = (
+                    f"✅ <b>SSH Account Created</b>\n\n"
+                    f"▸ <b>Username:</b> <code>{esc(ssh_user)}</code>\n"
+                    f"▸ <b>Password:</b> <code>{esc(ssh_pass)}</code>\n"
+                    f"▸ <b>Domain:</b> <code>{esc(ssh_domain)}</code>\n"
+                    f"▸ <b>port:</b> 80,443\n"
+                    f"▸ <b>Quota:</b> unlimited\n"
+                    f"▸ <b>Limit IP:</b> {esc(ssh_ip)}\n"
+                    f"▸ <b>Aktif sampai dengan:</b> {esc(ssh_exp)}\n\n"
+                    f"🏠 Ketik /start untuk kembali ke menu utama."
+                )
+                parse_m = 'html'
             else:
                 import html
                 def esc(text): return html.escape(str(text))
                 def extract_val(key_regex):
-                    m = re.search(fr"(?:{key_regex})\s*:\s*(.+)", clean_out, re.IGNORECASE)
+                    m = re.search(fr"\b(?:{key_regex})\b\s*:\s*(.+)", clean_out, re.IGNORECASE)
                     return m.group(1).strip() if m else "-"
 
                 remarks = extract_val("Remarks")
