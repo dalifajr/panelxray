@@ -139,6 +139,28 @@ async def start_purchase_flow(event, proto, days, price):
         await event.reply("❌ Username hanya boleh mengandung huruf dan angka (tanpa simbol/spasi).")
         return
 
+    import subprocess
+    # Check if user exists in SSH
+    try:
+        uid_str = subprocess.check_output(["id", "-u", user], stderr=subprocess.DEVNULL).decode().strip()
+        if int(uid_str) >= 1000:
+            await delete_messages(chat, msgs_to_del)
+            await event.reply(f"❌ Username '{user}' sudah digunakan (SSH). Silakan gunakan username lain.")
+            return
+    except Exception:
+        pass
+        
+    # Check if user exists in Xray
+    try:
+        with open("/etc/xray/config.json", "r") as f:
+            config_content = f.read()
+            if f"### {user} " in config_content or f"#& {user} " in config_content or f"#! {user} " in config_content or f"#!# {user} " in config_content:
+                await delete_messages(chat, msgs_to_del)
+                await event.reply(f"❌ Username '{user}' sudah digunakan (Xray). Silakan gunakan username lain.")
+                return
+    except Exception:
+        pass
+
     if proto in ["ssh", "trial"]:
         # No IP limit for SSH
         await _show_payment_methods(event, chat, proto, days, price, user, 1, price)
@@ -256,7 +278,11 @@ async def _show_payment_methods(event, chat, proto, days, base_price, user, ipli
     inline.append([Button.inline("❌ Batal", "shop-menu")])
 
     if isinstance(event, events.CallbackQuery):
-        await upsert_message(event, confirm_msg, buttons=inline)
+        try:
+            await event.edit(confirm_msg, buttons=inline)
+        except Exception as e:
+            logging.error("Failed to edit message in _show_payment_methods: %s", e)
+            await upsert_message(event, confirm_msg, buttons=inline)
     else:
         await bot.send_message(chat, confirm_msg, buttons=inline)
 
@@ -304,7 +330,12 @@ async def confirm_buy(event):
                         "amount": -price,
                         "description": f"Refund: Gagal pembuatan akun {real_proto.upper()} {user}"
                     })
-                err_msg = f"❌ **Gagal membuat akun VPN.**\nSystem log:\n`{out[:200]}`"
+                
+                clean_err = out.replace("TERM environment variable not set.", "").strip()
+                import re
+                clean_err = re.sub(r'\n\s*\n', '\n', clean_err)
+
+                err_msg = f"❌ **Gagal membuat akun VPN.**\nSystem log:\n`{clean_err[:200]}`"
                 if price > 0: err_msg += "\n\nSaldo Anda telah dikembalikan."
                 try:
                     await msg_ref.edit(err_msg)
@@ -436,7 +467,7 @@ async def confirm_buy(event):
                 success_msg += "🏠 Ketik /start untuk kembali ke menu utama."
                 parse_m = 'html'
 
-            buttons = [[Button.inline("⬅️ Beli Lagi", "shop-menu"), Button.inline("🏠 Menu Utama", "start")]]
+            buttons = None
             try:
                 if photo:
                     await bot.send_message(chat, success_msg, file=photo, buttons=buttons, parse_mode=parse_m)
