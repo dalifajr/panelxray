@@ -597,6 +597,14 @@ class InternalApiController extends Controller
             ->where('service', $service)
             ->delete();
 
+        try {
+            $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=0 WHERE LOWER(service)=LOWER('{$service}') AND LOWER(username)=LOWER('{$username}')\"); c.commit(); print('DB_OK')";
+            $vpnService = resolve(VpnService::class);
+            $vpnService->runPython($dbScript);
+        } catch (\Exception $e) {
+            Log::error("Failed to update SQLite on deactivateAccount: " . $e->getMessage());
+        }
+
         return response()->json(['status' => 'ok', 'deactivated' => $count]);
     }
 

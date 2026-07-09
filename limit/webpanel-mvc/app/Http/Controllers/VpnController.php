@@ -662,7 +662,7 @@ PYTHON;
         }
 
         // Always clean from SQLite DB regardless
-        $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE service='{$protocol}' AND username='{$user}'\"); c.commit(); print('DB_OK')";
+        $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE LOWER(service)=LOWER('{$protocol}') AND LOWER(username)=LOWER('{$user}')\"); c.commit(); print('DB_OK')";
         $dbRes = $this->runPython($dbScript);
         Log::info("DELETE DB result: " . $dbRes['output']);
         

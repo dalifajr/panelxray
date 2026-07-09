@@ -107,7 +107,25 @@ class AdminController extends Controller
             return back()->with('sweet_error', 'Anda tidak dapat menghapus akun Anda sendiri.');
         }
 
+        // Get telegram ID of user if synced
+        $tgId = null;
+        $botUser = \App\Models\TelegramBotUser::where('user_id', $user->id)->first();
+        if ($botUser) {
+            $tgId = $botUser->tg_id;
+        }
+
         $user->delete();
+
+        // If telegram ID exists, clean up their account registry in SQLite
+        if ($tgId) {
+            try {
+                $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"DELETE FROM account_registry WHERE tg_id='{$tgId}'\"); c.commit(); print('DB_OK')";
+                $vpnService = resolve(\App\Services\VpnService::class);
+                $vpnService->runPython($dbScript);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error("Failed to clean SQLite for deleted user {$tgId}: " . $e->getMessage());
+            }
+        }
 
         return back()->with('sweet_success', 'User berhasil dihapus.');
     }
