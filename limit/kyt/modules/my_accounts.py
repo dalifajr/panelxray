@@ -7,7 +7,22 @@ async def my_accounts(event):
     
     # Call Laravel API to list accounts
     res = api_call("GET", f"/bot/accounts/{sender.id}")
-    accounts = res.get("accounts", [])
+    raw_accounts = res.get("accounts", [])
+
+    # Filter out accounts that have been deleted via VPS or Website
+    accounts = []
+    for acc in raw_accounts:
+        service = acc.get("service")
+        username = acc.get("username")
+        if _account_exists_in_system(service, username):
+            accounts.append(acc)
+        else:
+            # Sync back to Laravel API to mark as inactive
+            api_call("POST", "/bot/account/deactivate", {
+                "tg_id": str(sender.id),
+                "service": service,
+                "username": username
+            })
 
     if not accounts:
         msg = (
@@ -80,16 +95,10 @@ async def confirm_delete_my_account(event):
     try:
         # Call termination script
         if service == "ssh":
-            code, out = run_command("userdel", ["-f", username])
+            code, out = run_command(f'printf "%s\\n" "{username}" | delssh')
         else:
-            script_map = {
-                "vmess": "delws",
-                "vless": "delvless",
-                "trojan": "deltr",
-                "shadowsocks": "delss"
-            }
-            cmd = script_map.get(service, "delws")
-            code, out = run_command(cmd, ["--user", username])
+            from kyt import delete_xray_account
+            delete_xray_account(service, username)
 
         # Mark inactive in Laravel registry via API
         deact_res = api_call("POST", "/bot/account/deactivate", {
