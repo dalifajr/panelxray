@@ -1,4 +1,5 @@
 from kyt import *
+from kyt import _account_exists_in_system
 from kyt.modules.ui import manager_banner, delete_messages, upsert_message, run_command
 
 @bot.on(events.CallbackQuery(data=b'my-accounts'))
