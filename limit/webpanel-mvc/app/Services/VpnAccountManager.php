@@ -1077,15 +1077,26 @@ def add_bytes(user, field, val):
     entry[field] = max(entry[field], int(val))
 
 # 1. Xray StatsService (127.0.0.1:10000) — fast read-only gRPC statsquery
-xray_bin = shutil.which("xray") or ("/usr/local/bin/xray" if os.path.isfile("/usr/local/bin/xray") else None)
+xray_bin = shutil.which("xray")
+if not xray_bin:
+    for cand in ("/usr/local/bin/xray", "/usr/bin/xray", "/sbin/xray"):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            xray_bin = cand
+            break
 xray_ok = False
 if xray_bin:
-    try:
-        out = subprocess.check_output(
-            [xray_bin, "api", "statsquery", "--server=127.0.0.1:10000", "--pattern", "user>>>"],
-            text=True, stderr=subprocess.DEVNULL, timeout=5
-        )
-        xray_ok = True
+    out = ""
+    for args in (
+        [xray_bin, "api", "statsquery", "--server=127.0.0.1:10000", "--pattern", "user>>>"],
+        [xray_bin, "api", "statsquery", "-s", "127.0.0.1:10000", "-pattern", "user>>>"],
+    ):
+        try:
+            out = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL, timeout=5)
+            xray_ok = True
+            break
+        except Exception:
+            continue
+    if xray_ok and out:
         try:
             parsed = json.loads(out)
             for item in parsed.get("stat", []) or []:
@@ -1106,8 +1117,6 @@ if xray_bin:
                     if m_val:
                         add_bytes(cur_name[0], cur_name[1], int(m_val.group(1)))
                         cur_name = None
-    except Exception:
-        pass
 
 # 2. SSH Kernel Accounting (non-blocking iptables mangle VPN_SSH_UP / VPN_SSH_DOWN)
 ssh_sync = "/usr/local/sbin/vpn-ssh-traffic-sync"
@@ -1220,14 +1229,16 @@ if os.path.isfile(state_file):
 
 devices = {}
 
-def record_device(ip_str, source, ts_val, is_online_flag=False):
+loopback_devices = {}
+
+def record_into(bucket, ip_str, source, ts_val, is_online_flag=False):
     ip_str = (ip_str or "").strip().strip("[]()")
     if not ip_str:
         return
-    entry = devices.get(ip_str)
+    entry = bucket.get(ip_str)
     ts_fmt = datetime.datetime.fromtimestamp(ts_val).strftime("%Y-%m-%d %H:%M:%S") if ts_val else "-"
     if not entry:
-        devices[ip_str] = {
+        bucket[ip_str] = {
             "ip": ip_str,
             "source": source,
             "is_online": bool(is_online_flag or (ts_val and ts_val >= online_cutoff)),
@@ -1249,6 +1260,9 @@ def record_device(ip_str, source, ts_val, is_online_flag=False):
                 entry["_last_ts"] = ts_val
                 entry["last_seen"] = ts_fmt
 
+def record_device(ip_str, source, ts_val, is_online_flag=False):
+    record_into(devices, ip_str, source, ts_val, is_online_flag)
+
 if proto != "ssh":
     log_path = "/var/log/xray/access.log"
     if os.path.isfile(log_path):
@@ -1257,21 +1271,25 @@ if proto != "ssh":
             r"(?:from\s+)?(?:(?:tcp|udp):)?(\[[0-9a-fA-F:]+\]|[0-9.]+)(?::\d+)?\s+"
         )
         email_re = re.compile(r"(?:^|\s)email:\s*([^\s,;]+)")
+        word_re = re.compile(r"(?:^|[\s:\[])" + re.escape(target) + r"(?:$|[\s,;\]])")
         ts_cache = {}
         try:
             with open(log_path, "rb") as f:
                 f.seek(0, os.SEEK_END)
                 size = f.tell()
-                start = max(0, size - 5 * 1024 * 1024)
+                start = max(0, size - 8 * 1024 * 1024)
                 f.seek(start)
                 if start > 0:
                     f.readline()
                 raw = f.read().decode("utf-8", errors="ignore")
             for line in raw.splitlines():
-                if "email:" not in line or target not in line:
+                if target not in line:
                     continue
                 em = email_re.search(line)
-                if not em or em.group(1).strip() != target:
+                if em:
+                    if em.group(1).strip() != target:
+                        continue
+                elif not word_re.search(line):
                     continue
                 m = line_re.match(line)
                 if not m:
@@ -1291,7 +1309,10 @@ if proto != "ssh":
                     ip_obj = ipaddress.ip_address(raw_ip)
                 except ValueError:
                     continue
-                if ip_obj.is_loopback or ip_obj.is_unspecified:
+                if ip_obj.is_unspecified:
+                    continue
+                if ip_obj.is_loopback:
+                    record_into(loopback_devices, f"{ip_obj} (Proxy Lokal)", "xray-local", ts_val)
                     continue
                 record_device(str(ip_obj), "xray", ts_val)
         except OSError:
@@ -1390,6 +1411,11 @@ if os.path.isfile(vlog):
     except OSError:
         pass
 
+loopback_only = False
+if not devices and loopback_devices:
+    devices = loopback_devices
+    loopback_only = True
+
 sorted_devices = sorted(
     devices.values(),
     key=lambda d: (0 if d["is_online"] else 1, -d["_last_ts"], -d["hits"]),
@@ -1408,6 +1434,7 @@ print(json.dumps({
     "active_device_count": active_count,
     "recent_device_count": len(sorted_devices),
     "current_strikes": current_strikes,
+    "loopback_only": loopback_only,
     "devices": sorted_devices[:50],
     "violations": violations,
 }))

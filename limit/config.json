@@ -243,7 +243,7 @@
         "inboundTag": [
           "api"
         ],
-        "outboundTag": "direct",
+        "outboundTag": "api",
         "type": "field"
       },
       {

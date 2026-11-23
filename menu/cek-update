@@ -573,14 +573,46 @@ sync_runtime_configs() {
     sed -i 's/target_port: 22/target_port: 143/g' /usr/bin/tun.conf 2>/dev/null || true
   fi
 
-  # Normalize xray routing tags to avoid outboundTag mismatch runtime drops.
+  # Normalize xray routing tags safely (keep api -> api intact so StatsService traffic stats work!).
   if [ -f /etc/xray/config.json ]; then
+    local xray_cfg_bak="/tmp/xray-config.json.bak.$$"
+    cp -a /etc/xray/config.json "$xray_cfg_bak" 2>/dev/null || true
     sed -i '0,/"protocol"\s*:\s*"freedom"\s*,/s//"protocol": "freedom",\n      "tag": "direct",/' /etc/xray/config.json 2>/dev/null || true
     sed -i 's/"outboundTag"\s*:\s*"dnsOut"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
-    sed -i 's/"outboundTag"\s*:\s*"api"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
     sed -i 's/"outboundTag"\s*:\s*"proxy"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
     sed -i 's/"outboundTag"\s*:\s*"reject"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
     sed -i 's/"outboundTag"\s*:\s*"block"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
+
+    # Restore outboundTag="api" ONLY for inboundTag=["api"] (required for xray api statsquery!)
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - <<'PYEOF' >>"$UPDATE_LOG" 2>&1 || true
+import re
+p = "/etc/xray/config.json"
+raw = open(p, "r", encoding="utf-8", errors="ignore").read()
+# Match routing rule block containing "inboundTag": [ "api" ] and fix its outboundTag back to "api"
+updated = re.sub(
+    r'("inboundTag"\s*:\s*\[\s*"api"\s*\]\s*,\s*"outboundTag"\s*:\s*)"direct"',
+    r'\1"api"',
+    raw
+)
+if updated != raw:
+    open(p, "w", encoding="utf-8").write(updated)
+    print("Restored Xray API routing outboundTag -> api for StatsService.")
+PYEOF
+    fi
+
+    # Validate Xray config syntax before restarting; auto-rollback if invalid
+    local xray_bin_test=""
+    for xb in /usr/local/bin/xray /usr/bin/xray; do
+      [ -x "$xb" ] && xray_bin_test="$xb" && break
+    done
+    if [ -n "$xray_bin_test" ]; then
+      if ! "$xray_bin_test" run -test -config /etc/xray/config.json >>"$UPDATE_LOG" 2>&1; then
+        cp -af "$xray_cfg_bak" /etc/xray/config.json 2>/dev/null || true
+        log_warn "Validasi xray config gagal — otomatis di-rollback ke backup sebelumnya agar koneksi VPN tetap aman."
+      fi
+    fi
+    rm -f "$xray_cfg_bak" 2>/dev/null || true
   fi
 
   systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
