@@ -41,8 +41,8 @@ fi
 
 cd $WEB_DIR
 
-echo -e "[\e[32mINFO\e[0m] Menjalankan Composer Install..."
-composer install --no-dev --optimize-autoloader
+echo -e "[\e[32mINFO\e[0m] Menjalankan Composer Install (non-interaktif)..."
+COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_MEMORY_LIMIT=-1 COMPOSER_PROCESS_TIMEOUT=300 timeout 300 composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress </dev/null
 
 # Ensure storage directories exist and have proper ownership before running any php artisan commands
 mkdir -p storage/framework/views storage/framework/cache storage/framework/sessions logs
@@ -219,10 +219,9 @@ systemctl restart nginx
 systemctl restart php8.4-fpm || true
 
 # Purge OPcache for any other active php-fpm
-local php_fpm_service
-php_fpm_service=$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1)
-if [ -n "$php_fpm_service" ]; then
-    systemctl restart "$php_fpm_service" >/dev/null 2>&1 || true
+PHP_FPM_SERVICE=$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1 || true)
+if [ -n "$PHP_FPM_SERVICE" ]; then
+    systemctl restart "$PHP_FPM_SERVICE" >/dev/null 2>&1 || true
 fi
 
 # Setup Cron Job for Laravel Scheduler

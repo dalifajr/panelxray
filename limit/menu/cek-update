@@ -7,34 +7,125 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-set -euo pipefail
+set -Eeuo pipefail
 
 REPO_URL="https://github.com/dalifajr/panelxray.git"
 REPO_API="https://api.github.com/repos/dalifajr/panelxray"
 TARGET_SBIN="/usr/local/sbin"
 STATE_FILE="/etc/kyt/panelxray-revision"
 TMP_DIR="/tmp/panelxray-menu-update.$$"
+WEBPANEL_PRESERVE_DIR="/tmp/panelxray-webpanel-preserve.$$"
 BRANCH="${PANELXRAY_BRANCH:-}"
 MECLI_ASSET_DIR="/usr/local/share/vpnxray/me-cli-sunset-main"
 MECLI_INSTALL_DIR="/opt/vpnxray-me-cli-sunset"
 MECLI_UPSTREAM_REPO_URL="https://github.com/dalifajr/xl-cli.git"
+UPDATE_LOG="/var/log/panelxray-update.log"
+START_TS="$(date +%s)"
+
 KYT_ASSETS_CHANGED=0
 KYT_REQUIREMENTS_CHANGED=0
 MECLI_ASSETS_CHANGED=0
 KYT_RESTARTED=0
 MECLI_BOT_RESTARTED=0
 MECLI_CLI_RESTARTED=0
+WEBPANEL_UPDATED=0
+COMPOSER_STATUS="skipped"
+MIGRATE_STATUS="skipped"
 
 green='\e[0;32m'
 red='\e[1;31m'
 yellow='\e[1;33m'
 cyan='\e[1;36m'
+dim='\e[0;90m'
 NC='\e[0m'
 
-cleanup() {
-  rm -rf "$TMP_DIR"
+# Setup persistent update log file with simple 5MB rotation
+if ! touch "$UPDATE_LOG" 2>/dev/null; then
+  UPDATE_LOG="/tmp/panelxray-update.log"
+  touch "$UPDATE_LOG" 2>/dev/null || true
+fi
+if [[ -f "$UPDATE_LOG" ]]; then
+  log_size="$(wc -c < "$UPDATE_LOG" 2>/dev/null || echo 0)"
+  if [[ "$log_size" -gt 5242880 ]]; then
+    mv -f "$UPDATE_LOG" "${UPDATE_LOG}.old" 2>/dev/null || true
+    : > "$UPDATE_LOG" 2>/dev/null || true
+  fi
+fi
+
+ts_now() {
+  date '+%H:%M:%S'
 }
+
+log_raw() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$UPDATE_LOG" 2>/dev/null || true
+}
+
+log_step() {
+  local ts
+  ts="$(ts_now)"
+  echo -e "${cyan}[update][${ts}]${NC} $*"
+  log_raw "[STEP] $*"
+}
+
+log_info() {
+  local ts
+  ts="$(ts_now)"
+  echo -e "${dim}[update][${ts}]${NC} $*"
+  log_raw "[INFO] $*"
+}
+
+log_ok() {
+  local ts
+  ts="$(ts_now)"
+  echo -e "${green}[update][${ts}][OK]${NC} $*"
+  log_raw "[OK] $*"
+}
+
+log_warn() {
+  local ts
+  ts="$(ts_now)"
+  echo -e "${yellow}[update][${ts}][WARN]${NC} $*"
+  log_raw "[WARN] $*"
+}
+
+log_err() {
+  local ts
+  ts="$(ts_now)"
+  echo -e "${red}[update][${ts}][ERROR]${NC} $*" >&2
+  log_raw "[ERROR] $*"
+}
+
+run_logged() {
+  local desc="$1"
+  shift
+  local rc=0
+  log_info "Menjalankan: ${desc}"
+  log_raw "CMD: $*"
+  set +e
+  "$@" 2>&1 | while IFS= read -r line; do
+    printf '  %s\n' "$line"
+    printf '  %s\n' "$line" >> "$UPDATE_LOG" 2>/dev/null || true
+  done
+  rc=${PIPESTATUS[0]}
+  set -e
+  return "$rc"
+}
+
+cleanup() {
+  rm -rf "$TMP_DIR" "$WEBPANEL_PRESERVE_DIR" 2>/dev/null || true
+}
+
+on_error() {
+  local exit_code="$?"
+  local line_no="${BASH_LINENO[0]:-unknown}"
+  local cmd="${BASH_COMMAND:-unknown}"
+  log_err "Update gagal pada baris ${line_no} (exit=${exit_code}): ${cmd}"
+  log_warn "Lihat log lengkap di: ${UPDATE_LOG}"
+  exit "${exit_code}"
+}
+
 trap cleanup EXIT
+trap on_error ERR
 
 back_to_menu() {
   if [ -t 0 ] && [ -x /usr/local/sbin/menu ]; then
@@ -52,30 +143,44 @@ safe_clear() {
 }
 
 safe_clear
+log_raw "==================== START UPDATE (cek-update) ===================="
 echo -e "${cyan}==========================================================${NC}"
 echo -e "${yellow}                 UPDATE PROGRAM (GITHUB)                  ${NC}"
 echo -e "${cyan}==========================================================${NC}"
 
+log_step "[1/10] Memeriksa prasyarat sistem, branch target, dan ruang disk..."
+
 if ! command -v git >/dev/null 2>&1; then
-  echo -e "${red}Git tidak ditemukan. Install git terlebih dahulu.${NC}"
+  log_err "Git tidak ditemukan. Install git terlebih dahulu."
   back_to_menu
   exit 1
 fi
 
 if [ -z "$BRANCH" ]; then
-  BRANCH="$(curl -fsSL "$REPO_API" 2>/dev/null | awk -F '"' '/"default_branch"/ {print $4; exit}')"
+  BRANCH="$(curl -fsSL --max-time 10 "$REPO_API" 2>/dev/null | awk -F '"' '/"default_branch"/ {print $4; exit}' || true)"
   [ -n "$BRANCH" ] || BRANCH="main"
 fi
 
-echo -e "${green}Target Branch:${NC} $BRANCH"
+free_root_mb="$(df -Pm / 2>/dev/null | awk 'NR==2 {print $4}' || echo "?")"
+log_info "Target Branch : ${BRANCH}"
+log_info "Log File      : ${UPDATE_LOG}"
+log_info "Sisa Disk (/) : ${free_root_mb} MB"
+
+if [[ "$free_root_mb" =~ ^[0-9]+$ ]] && [[ "$free_root_mb" -lt 250 ]]; then
+  log_warn "Ruang disk menipis (${free_root_mb} MB tersisa). Pertimbangkan membersihkan log/backup lama."
+fi
 
 fetch_repo() {
-  if git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1; then
+  log_info "Mencoba git clone shallow (--depth 1) branch '${BRANCH}'..."
+  if run_logged "git clone --depth 1" git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR"; then
+    log_ok "Clone repository berhasil (shallow)."
     return 0
   fi
 
   rm -rf "$TMP_DIR"
-  if git clone --branch "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1; then
+  log_warn "Shallow clone gagal, mencoba full clone..."
+  if run_logged "git clone full" git clone --branch "$BRANCH" "$REPO_URL" "$TMP_DIR"; then
+    log_ok "Clone repository berhasil (full)."
     return 0
   fi
 
@@ -84,12 +189,14 @@ fetch_repo() {
   if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
     local archive_url extracted_dir
     archive_url="https://codeload.github.com/dalifajr/panelxray/tar.gz/refs/heads/$BRANCH"
-    if curl -fsSL "$archive_url" -o "$TMP_DIR/repo.tgz" >/dev/null 2>&1 && \
-       tar -xzf "$TMP_DIR/repo.tgz" -C "$TMP_DIR/src" >/dev/null 2>&1; then
+    log_warn "Git clone gagal, mencoba fallback download tarball GitHub..."
+    if curl -fsSL --max-time 60 "$archive_url" -o "$TMP_DIR/repo.tgz" 2>>"$UPDATE_LOG" && \
+       tar -xzf "$TMP_DIR/repo.tgz" -C "$TMP_DIR/src" 2>>"$UPDATE_LOG"; then
       extracted_dir="$(find "$TMP_DIR/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
       if [ -n "$extracted_dir" ]; then
         cp -a "$extracted_dir"/. "$TMP_DIR"/
         rm -rf "$TMP_DIR/src" "$TMP_DIR/repo.tgz"
+        log_ok "Download tarball repository berhasil."
         return 0
       fi
     fi
@@ -98,14 +205,15 @@ fetch_repo() {
   return 1
 }
 
+log_step "[2/10] Mengunduh pembaruan terbaru dari GitHub (${REPO_URL})..."
 if ! fetch_repo; then
-  echo -e "${red}Gagal clone/download branch $BRANCH dari repository.${NC}"
+  log_err "Gagal clone/download branch ${BRANCH} dari repository."
   back_to_menu
   exit 1
 fi
 
 if [ ! -d "$TMP_DIR/limit/menu" ]; then
-  echo -e "${red}Struktur repository tidak valid: limit/menu tidak ditemukan.${NC}"
+  log_err "Struktur repository tidak valid: limit/menu tidak ditemukan."
   back_to_menu
   exit 1
 fi
@@ -121,42 +229,48 @@ ensure_dropbear_legacy_runtime() {
   url="https://matt.ucc.asn.au/dropbear/releases/${src_pkg}.tar.bz2"
 
   if command -v /usr/sbin/dropbear >/dev/null 2>&1; then
-    cur_ver="$(/usr/sbin/dropbear -V 2>&1 | sed -n 's/^Dropbear v\([0-9.]*\).*/\1/p' | head -n 1)"
+    cur_ver="$(/usr/sbin/dropbear -V 2>&1 | sed -n 's/^Dropbear v\([0-9.]*\).*/\1/p' | head -n 1 || true)"
   fi
 
   if [ "$cur_ver" != "$target_ver" ]; then
-    apt-get install -y build-essential zlib1g-dev >/dev/null 2>&1 || apt install -y build-essential zlib1g-dev >/dev/null 2>&1 || true
+    log_info "Dropbear versi '${cur_ver:-none}' != '${target_ver}', mengompilasi Dropbear ${target_ver}..."
+    apt-get install -y build-essential zlib1g-dev >>"$UPDATE_LOG" 2>&1 || apt install -y build-essential zlib1g-dev >>"$UPDATE_LOG" 2>&1 || true
     mkdir -p "$src_root"
     rm -rf "$src_dir"
 
     if command -v curl >/dev/null 2>&1; then
-      curl -fsSL "$url" -o "$tarball" >/dev/null 2>&1 || true
+      curl -fsSL --max-time 60 "$url" -o "$tarball" >>"$UPDATE_LOG" 2>&1 || true
     else
-      wget -qO "$tarball" "$url" >/dev/null 2>&1 || true
+      wget -qO "$tarball" "$url" >>"$UPDATE_LOG" 2>&1 || true
     fi
 
     if [ -s "$tarball" ]; then
-      tar -xjf "$tarball" -C "$src_root" >/dev/null 2>&1 || true
+      tar -xjf "$tarball" -C "$src_root" >>"$UPDATE_LOG" 2>&1 || true
       if [ -d "$src_dir" ]; then
         (
           cd "$src_dir" || exit 0
-          ./configure --prefix=/usr --sysconfdir=/etc/dropbear >/dev/null 2>&1 || exit 0
-          make PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp" >/dev/null 2>&1 || exit 0
-          install -m 0755 dropbear /usr/sbin/dropbear >/dev/null 2>&1 || true
-          install -m 0755 dropbearkey /usr/bin/dropbearkey >/dev/null 2>&1 || true
-          install -m 0755 dbclient /usr/bin/dbclient >/dev/null 2>&1 || true
-          install -m 0755 scp /usr/bin/scp >/dev/null 2>&1 || true
+          ./configure --prefix=/usr --sysconfdir=/etc/dropbear >>"$UPDATE_LOG" 2>&1 || exit 0
+          make PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp" >>"$UPDATE_LOG" 2>&1 || exit 0
+          install -m 0755 dropbear /usr/sbin/dropbear >>"$UPDATE_LOG" 2>&1 || true
+          install -m 0755 dropbearkey /usr/bin/dropbearkey >>"$UPDATE_LOG" 2>&1 || true
+          install -m 0755 dbclient /usr/bin/dbclient >>"$UPDATE_LOG" 2>&1 || true
+          install -m 0755 scp /usr/bin/scp >>"$UPDATE_LOG" 2>&1 || true
         )
+        log_ok "Dropbear ${target_ver} berhasil dibangun & dipasang."
       fi
+    else
+      log_warn "Gagal mengunduh tarball Dropbear ${target_ver}, mempertahankan versi saat ini."
     fi
+  else
+    log_info "Dropbear sudah versi ${target_ver} (skip kompilasi)."
   fi
 
   mkdir -p /etc/dropbear
   if [ ! -s /etc/dropbear/dropbear_rsa_host_key ]; then
     if command -v /usr/bin/dropbearkey >/dev/null 2>&1; then
-      /usr/bin/dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key >/dev/null 2>&1 || true
+      /usr/bin/dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key >>"$UPDATE_LOG" 2>&1 || true
     fi
-    chmod 600 /etc/dropbear/dropbear_rsa_host_key >/dev/null 2>&1 || true
+    chmod 600 /etc/dropbear/dropbear_rsa_host_key 2>/dev/null || true
   fi
 }
 
@@ -168,14 +282,14 @@ disable_legacy_daily_reboot() {
     backup_file="${cron_file}.disabled.$(date +%Y%m%d%H%M%S)"
     cp -f "$cron_file" "$backup_file" 2>/dev/null || true
     rm -f "$cron_file"
-    echo -e "${yellow}Legacy auto reboot dimatikan untuk mencegah lockout SSH. Backup: $backup_file${NC}"
+    log_warn "Legacy auto reboot dimatikan untuk mencegah lockout SSH. Backup: $backup_file"
   fi
 
   if [ -f /etc/cron.d/reboot_otomatis ]; then
     backup_file="/etc/cron.d/reboot_otomatis.disabled.$(date +%Y%m%d%H%M%S)"
     cp -f /etc/cron.d/reboot_otomatis "$backup_file" 2>/dev/null || true
     rm -f /etc/cron.d/reboot_otomatis
-    echo -e "${yellow}Legacy reboot_otomatis dimatikan untuk mencegah reboot tak terduga. Backup: $backup_file${NC}"
+    log_warn "Legacy reboot_otomatis dimatikan untuk mencegah reboot tak terduga. Backup: $backup_file"
   fi
 
   mkdir -p /home
@@ -211,10 +325,10 @@ ensure_ssh_ports_in_iptables_rules() {
   done
 
   if [ "$changed" -eq 1 ]; then
-    echo -e "${yellow}Menambahkan rule ACCEPT untuk port SSH management di $rules_file${NC}"
+    log_info "Menambahkan rule ACCEPT untuk port SSH management di $rules_file"
     if command -v netfilter-persistent >/dev/null 2>&1; then
-      netfilter-persistent save >/dev/null 2>&1 || true
-      netfilter-persistent reload >/dev/null 2>&1 || true
+      netfilter-persistent save >>"$UPDATE_LOG" 2>&1 || true
+      netfilter-persistent reload >>"$UPDATE_LOG" 2>&1 || true
     elif command -v iptables-save >/dev/null 2>&1; then
       iptables-save >"$rules_file" 2>/dev/null || true
     fi
@@ -275,8 +389,8 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-  systemctl daemon-reload >/dev/null 2>&1 || true
-  systemctl enable --now panelxray-boot-guard >/dev/null 2>&1 || true
+  systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
+  systemctl enable --now panelxray-boot-guard >>"$UPDATE_LOG" 2>&1 || true
 }
 
 ensure_ws_epro_service() {
@@ -303,42 +417,53 @@ ensure_ws_epro_service() {
   fi
 
   if ! command -v /usr/bin/python3 >/dev/null 2>&1; then
-    apt-get install -y python3 >/dev/null 2>&1 || apt install -y python3 >/dev/null 2>&1 || true
+    apt-get install -y python3 >>"$UPDATE_LOG" 2>&1 || apt install -y python3 >>"$UPDATE_LOG" 2>&1 || true
   fi
 
   if ! systemctl list-unit-files 2>/dev/null | grep -q '^ws\.service'; then
     return 0
   fi
 
-  systemctl daemon-reload >/dev/null 2>&1 || true
-  systemctl unmask ws >/dev/null 2>&1 || true
-  systemctl reset-failed ws >/dev/null 2>&1 || true
-  systemctl enable ws >/dev/null 2>&1 || true
-  systemctl restart ws >/dev/null 2>&1 || systemctl start ws >/dev/null 2>&1 || true
+  systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
+  systemctl unmask ws >>"$UPDATE_LOG" 2>&1 || true
+  systemctl reset-failed ws >>"$UPDATE_LOG" 2>&1 || true
+  systemctl enable ws >>"$UPDATE_LOG" 2>&1 || true
+  systemctl restart ws >>"$UPDATE_LOG" 2>&1 || systemctl start ws >>"$UPDATE_LOG" 2>&1 || true
 
   if ! systemctl is-active --quiet ws; then
     if command -v pkill >/dev/null 2>&1; then
       pkill -f '/etc/whoiamluna/ws.py' >/dev/null 2>&1 || true
     fi
     sleep 1
-    systemctl reset-failed ws >/dev/null 2>&1 || true
-    systemctl start ws >/dev/null 2>&1 || true
+    systemctl reset-failed ws >>"$UPDATE_LOG" 2>&1 || true
+    systemctl start ws >>"$UPDATE_LOG" 2>&1 || true
   fi
 
   if ! systemctl is-active --quiet ws; then
-    echo -e "${yellow}Service ws belum aktif setelah update. Jalankan: journalctl -u ws -n 40 --no-pager${NC}"
+    log_warn "Service ws belum aktif setelah update. Jalankan: journalctl -u ws -n 40 --no-pager"
+  fi
+}
+
+report_service_status() {
+  local svc="$1"
+  if systemctl is-active --quiet "$svc" 2>/dev/null; then
+    log_ok "Service ${svc}: active"
+  elif systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
+    log_warn "Service ${svc}: tidak aktif ($(systemctl is-active "$svc" 2>/dev/null || echo inactive))"
   fi
 }
 
 sync_runtime_configs() {
   local domain
   domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+  log_info "Domain runtime terdeteksi: ${domain}"
 
   mkdir -p /etc/nginx/conf.d /etc/haproxy /etc/systemd/system /usr/bin
 
   if [ -f "$TMP_DIR/limit/xray.conf" ]; then
     cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+    log_info "Konfigurasi Nginx xray.conf disinkronkan."
   fi
 
   if [ -f "$TMP_DIR/limit/haproxy.cfg" ]; then
@@ -348,6 +473,7 @@ sync_runtime_configs() {
     sed -i -E 's/[[:space:]]+tfo([[:space:]]|$)/ /g' /etc/haproxy/haproxy.cfg 2>/dev/null || true
     sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:109([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
     sed -i -E '/^[[:space:]]*bind[[:space:]]+\*:143([[:space:]]|$)/d' /etc/haproxy/haproxy.cfg 2>/dev/null || true
+    log_info "Konfigurasi HAProxy disinkronkan."
   fi
 
   if [ -f "$TMP_DIR/limit/tun.conf" ]; then
@@ -422,7 +548,7 @@ sync_runtime_configs() {
       'ListenStream=0.0.0.0:22' \
       'ListenStream=[::]:22' \
       >/etc/systemd/system/ssh.socket.d/override.conf
-    systemctl restart ssh.socket >/dev/null 2>&1 || true
+    systemctl restart ssh.socket >>"$UPDATE_LOG" 2>&1 || true
   fi
 
   # Keep SSH-WS route aligned to dropbear main port to avoid drift.
@@ -449,43 +575,46 @@ sync_runtime_configs() {
     sed -i 's/"outboundTag"\s*:\s*"block"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
   fi
 
-  systemctl daemon-reload >/dev/null 2>&1 || true
-  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-    systemctl enable ssh.socket >/dev/null 2>&1 || true
+  systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
+  for unit in ssh.socket ssh sshd dropbear ws xray kyt; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}"; then
+      systemctl enable "$unit" >>"$UPDATE_LOG" 2>&1 || true
+    fi
+  done
+
+  if command -v nginx >/dev/null 2>&1; then
+    if nginx -t >>"$UPDATE_LOG" 2>&1; then
+      systemctl restart nginx >>"$UPDATE_LOG" 2>&1 || true
+      report_service_status nginx
+    else
+      log_warn "Validasi nginx -t gagal! Cek detail di ${UPDATE_LOG}."
+    fi
   fi
-  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.service'; then
-    systemctl enable ssh >/dev/null 2>&1 || true
-  elif systemctl list-unit-files 2>/dev/null | grep -q '^sshd\.service'; then
-    systemctl enable sshd >/dev/null 2>&1 || true
+
+  if command -v haproxy >/dev/null 2>&1; then
+    if haproxy -c -f /etc/haproxy/haproxy.cfg >>"$UPDATE_LOG" 2>&1; then
+      systemctl restart haproxy >>"$UPDATE_LOG" 2>&1 || true
+      report_service_status haproxy
+    else
+      log_warn "Validasi haproxy.cfg gagal! Cek detail di ${UPDATE_LOG}."
+    fi
   fi
-  if systemctl list-unit-files 2>/dev/null | grep -q '^dropbear\.service'; then
-    systemctl enable dropbear >/dev/null 2>&1 || true
-  fi
-  if systemctl list-unit-files 2>/dev/null | grep -q '^ws\.service'; then
-    systemctl enable ws >/dev/null 2>&1 || true
-  fi
-  if systemctl list-unit-files 2>/dev/null | grep -q '^xray\.service'; then
-    systemctl enable xray >/dev/null 2>&1 || true
-  fi
-  if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
-    systemctl enable kyt >/dev/null 2>&1 || true
-  fi
-  if nginx -t >/dev/null 2>&1; then
-    systemctl restart nginx >/dev/null 2>&1 || true
-  fi
-  if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
-    systemctl restart haproxy >/dev/null 2>&1 || true
-  fi
-  systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
-  systemctl restart dropbear >/dev/null 2>&1 || true
+
+  systemctl restart ssh >>"$UPDATE_LOG" 2>&1 || systemctl restart sshd >>"$UPDATE_LOG" 2>&1 || true
+  systemctl restart dropbear >>"$UPDATE_LOG" 2>&1 || true
   ensure_ws_epro_service
-  systemctl restart xray >/dev/null 2>&1 || true
+  systemctl restart xray >>"$UPDATE_LOG" 2>&1 || true
+
+  report_service_status dropbear
+  report_service_status ws
+  report_service_status xray
 }
 
 sync_kyt_bot_assets() {
   local kyt_dir venv_pip
 
   if [[ "${KYT_ASSETS_CHANGED:-0}" != "1" ]]; then
+    log_info "Aset bot KYT tidak berubah (dilewati)."
     return 0
   fi
 
@@ -495,22 +624,29 @@ sync_kyt_bot_assets() {
   if [ -d "$TMP_DIR/limit/bot" ]; then
     cp -rf "$TMP_DIR/limit/bot/." /usr/bin/ 2>/dev/null || true
     chmod +x /usr/bin/bot-* 2>/dev/null || true
+    log_info "Script helper /usr/bin/bot-* disinkronkan."
   fi
 
   if [ -d "$TMP_DIR/limit/kyt" ]; then
     mkdir -p "$kyt_dir"
     cp -rf "$TMP_DIR/limit/kyt/." "$kyt_dir/"
+    log_info "Direktori ${kyt_dir} disinkronkan."
   fi
 
   if [[ "${KYT_REQUIREMENTS_CHANGED:-0}" == "1" ]] && [ -x "$venv_pip" ] && [ -f "${kyt_dir}/requirements.txt" ]; then
-    "$venv_pip" install -r "${kyt_dir}/requirements.txt" >/dev/null 2>&1 || true
+    if run_logged "pip install requirements KYT" timeout 180 "$venv_pip" install --no-input -r "${kyt_dir}/requirements.txt"; then
+      log_ok "Dependensi Python KYT berhasil diperbarui."
+    else
+      log_warn "pip install requirements KYT mengembalikan error/timeout, melanjutkan update."
+    fi
   fi
 
   if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
-    systemctl daemon-reload >/dev/null 2>&1 || true
-    systemctl enable kyt >/dev/null 2>&1 || true
-    systemctl restart kyt >/dev/null 2>&1 || true
+    systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
+    systemctl enable kyt >>"$UPDATE_LOG" 2>&1 || true
+    systemctl restart kyt >>"$UPDATE_LOG" 2>&1 || true
     KYT_RESTARTED=1
+    report_service_status kyt
   fi
 }
 
@@ -569,6 +705,7 @@ sync_me_cli_assets() {
   local src_dir resolved_src upstream_dir
 
   if [[ "${MECLI_ASSETS_CHANGED:-0}" != "1" ]]; then
+    log_info "Aset me-cli tidak berubah (dilewati)."
     return 0
   fi
 
@@ -578,13 +715,14 @@ sync_me_cli_assets() {
   if [ -z "$resolved_src" ]; then
     upstream_dir="$TMP_DIR/mecli-upstream"
     rm -rf "$upstream_dir"
-    if git clone --depth 1 "$MECLI_UPSTREAM_REPO_URL" "$upstream_dir" >/dev/null 2>&1; then
+    log_info "Mencoba clone upstream me-cli (${MECLI_UPSTREAM_REPO_URL})..."
+    if git clone --depth 1 "$MECLI_UPSTREAM_REPO_URL" "$upstream_dir" >>"$UPDATE_LOG" 2>&1; then
       resolved_src="$(resolve_me_cli_source_dir "$upstream_dir" || true)"
     fi
   fi
 
   if [ -z "$resolved_src" ]; then
-    echo -e "${red}Asset me-cli valid tidak ditemukan (source update/upstream), sinkronisasi dilewati.${NC}"
+    log_warn "Asset me-cli valid tidak ditemukan (source update/upstream), sinkronisasi dilewati."
     return 0
   fi
 
@@ -596,6 +734,7 @@ sync_me_cli_assets() {
   find "$MECLI_ASSET_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
   find "$MECLI_ASSET_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
   rm -f "$MECLI_ASSET_DIR/.env"
+  log_ok "Asset me-cli disinkronkan ke ${MECLI_ASSET_DIR}."
 }
 
 auto_refresh_me_cli_runtime() {
@@ -609,19 +748,21 @@ auto_refresh_me_cli_runtime() {
   sync_log="/tmp/panelxray-me-cli-sync.log"
 
   if [ ! -d "$MECLI_INSTALL_DIR" ]; then
+    log_info "me-cli tidak terpasang di ${MECLI_INSTALL_DIR} (dilewati)."
     return 0
   fi
 
   if [ ! -x "$installer" ]; then
-    echo -e "${red}Sinkronisasi runtime me-cli dilewati: installer ${installer} tidak ditemukan.${NC}"
+    log_warn "Sinkronisasi runtime me-cli dilewati: installer ${installer} tidak ditemukan."
     return 0
   fi
 
-  echo -e "${yellow}me-cli terpasang, menjalankan sinkronisasi runtime...${NC}"
-  if "$installer" --sync-only --non-interactive >"$sync_log" 2>&1; then
-    echo -e "${green}Sinkronisasi runtime me-cli berhasil.${NC}"
+  log_info "me-cli terpasang, menjalankan sinkronisasi runtime..."
+  if timeout 180 "$installer" --sync-only --non-interactive >"$sync_log" 2>&1 </dev/null; then
+    log_ok "Sinkronisasi runtime me-cli berhasil."
   else
-    echo -e "${red}Sinkronisasi runtime me-cli gagal. Lihat log: ${sync_log}${NC}"
+    log_warn "Sinkronisasi runtime me-cli gagal. Ringkasan log (${sync_log}):"
+    tail -n 10 "$sync_log" 2>/dev/null | sed 's/^/  /' || true
   fi
 }
 
@@ -654,7 +795,7 @@ restart_me_cli_runtime_if_running() {
       fi
     fi
   fi
-  (cd "$app_dir" && nohup "$venv_py" telegram_main.py >> "${app_dir}/logs/telegram_bot.log" 2>&1 & echo $! > "$bot_pid_file")
+  (cd "$app_dir" && nohup "$venv_py" telegram_main.py >> "${app_dir}/logs/telegram_bot.log" 2>&1 </dev/null & echo $! > "$bot_pid_file")
   MECLI_BOT_RESTARTED=1
 
   # CLI Daemon
@@ -668,8 +809,9 @@ restart_me_cli_runtime_if_running() {
       fi
     fi
   fi
-  (cd "$app_dir" && nohup "$venv_py" main.py >> "${app_dir}/logs/cli.log" 2>&1 & echo $! > "$cli_pid_file")
+  (cd "$app_dir" && nohup "$venv_py" main.py >> "${app_dir}/logs/cli.log" 2>&1 </dev/null & echo $! > "$cli_pid_file")
   MECLI_CLI_RESTARTED=1
+  log_ok "Daemon me-cli (telegram_bot + cli) di-restart."
 }
 
 detect_bot_asset_changes() {
@@ -707,117 +849,250 @@ detect_bot_asset_changes() {
 
 sync_laravel_webpanel() {
   local web_dir="/var/www/webpanel-mvc"
-  
+  local src_web="$TMP_DIR/limit/webpanel-mvc"
+  local old_lock_hash="" new_lock_hash="" has_vendor_cache=0
+
   # Hindari error "chdir: error retrieving current directory" jika user mengeksekusi update dari dalam folder web_dir
   cd /tmp || true
 
-  if [ -d "$TMP_DIR/limit/webpanel-mvc" ]; then
-    mkdir -p /var/www
-    
-    # Backup .env and database
-    local env_backup=""
-    local db_backup=""
-    if [ -f "$web_dir/.env" ]; then
-        env_backup=$(cat "$web_dir/.env")
-    fi
-    if [ -f "$web_dir/database/database.sqlite" ]; then
-        cp "$web_dir/database/database.sqlite" "/tmp/database.sqlite.backup"
-        db_backup="1"
-    fi
-
-    rm -rf "$web_dir"
-    cp -rf "$TMP_DIR/limit/webpanel-mvc" /var/www/
-    
-    # Restore .env and database
-    if [ -n "$env_backup" ]; then
-        echo "$env_backup" > "$web_dir/.env"
-    fi
-    mkdir -p "$web_dir/database"
-    if [ "$db_backup" == "1" ]; then
-        cp "/tmp/database.sqlite.backup" "$web_dir/database/database.sqlite"
-        rm -f "/tmp/database.sqlite.backup"
-    else
-        touch "$web_dir/database/database.sqlite"
-    fi
-
-    if command -v composer >/dev/null 2>&1; then
-      echo -e "${yellow}Menjalankan composer install untuk Laravel Web Panel...${NC}"
-      (cd "$web_dir" && composer install --no-dev --optimize-autoloader >/dev/null 2>&1 || true)
-    fi
-
-    # Ensure storage directories exist and have proper ownership before running php artisan commands
-    mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
-    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
-    chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
-
-    if command -v php >/dev/null 2>&1; then
-      echo -e "${yellow}Menjalankan migrasi database dan pembersihan cache...${NC}"
-      (cd "$web_dir" && php artisan migrate --force >/dev/null 2>&1 || true)
-      (cd "$web_dir" && php artisan optimize:clear >/dev/null 2>&1 || true)
-      (cd "$web_dir" && php artisan view:clear >/dev/null 2>&1 || true)
-    fi
-
-    # Fix Permissions again to make sure any files touched by artisan are owned by www-data
-    chown -R www-data:www-data "$web_dir" 2>/dev/null || true
-    chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
-    if [ -f "$web_dir/database/database.sqlite" ]; then
-      chmod 664 "$web_dir/database/database.sqlite" 2>/dev/null || true
-    fi
-
-    # Restart PHP-FPM dynamically to purge OPcache instantly
-    local php_fpm_service
-    php_fpm_service=$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1)
-    if [ -n "$php_fpm_service" ]; then
-        echo -e "${yellow}Me-restart layanan active PHP-FPM: $php_fpm_service...${NC}"
-        systemctl restart "$php_fpm_service" >/dev/null 2>&1 || true
-    else
-        # fallback, restart all installed php-fpm services
-        for fpm in $(systemctl list-unit-files 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service'); do
-            echo -e "${yellow}Me-restart layanan PHP-FPM: $fpm...${NC}"
-            systemctl restart "$fpm" >/dev/null 2>&1 || true
-        done
-    fi
-
-    # Setup Cron Job for Laravel Scheduler
-    echo -e "${yellow}Mengkonfigurasi Cron Job untuk Web Panel...${NC}"
-    local cron_file="/etc/cron.d/vpnxray-webpanel"
-    echo "* * * * * root cd $web_dir && php artisan schedule:run >> /dev/null 2>&1" > "$cron_file"
-    chmod 644 "$cron_file"
-    systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null || true
+  if [ ! -d "$src_web" ]; then
+    log_warn "Folder source webpanel-mvc tidak ditemukan di repository, dilewati."
+    return 0
   fi
+
+  log_step "[7/10] Sinkronisasi kode Laravel Web Panel (${web_dir})..."
+  mkdir -p /var/www "$WEBPANEL_PRESERVE_DIR"
+
+  # Preserve .env, SQLite DB, storage/app, composer.lock, and vendor/ safely
+  if [ -f "$web_dir/.env" ]; then
+    cp -a "$web_dir/.env" "$WEBPANEL_PRESERVE_DIR/.env"
+    log_info "Backup .env tersimpan."
+  fi
+  if [ -f "$web_dir/database/database.sqlite" ]; then
+    cp -a "$web_dir/database/database.sqlite" "$WEBPANEL_PRESERVE_DIR/database.sqlite"
+    log_info "Backup database.sqlite tersimpan."
+  fi
+  if [ -d "$web_dir/storage/app" ]; then
+    cp -a "$web_dir/storage/app" "$WEBPANEL_PRESERVE_DIR/storage_app" 2>/dev/null || true
+  fi
+  if [ -f "$web_dir/composer.lock" ]; then
+    old_lock_hash="$(sha256sum "$web_dir/composer.lock" 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  if [ -d "$web_dir/vendor" ] && [ -f "$web_dir/vendor/autoload.php" ]; then
+    mv "$web_dir/vendor" "$WEBPANEL_PRESERVE_DIR/vendor"
+    has_vendor_cache=1
+    log_info "Cache folder vendor/ lama diamankan sementara."
+  fi
+
+  rm -rf "$web_dir"
+  cp -a "$src_web" "$web_dir"
+
+  # Restore runtime files
+  if [ -f "$WEBPANEL_PRESERVE_DIR/.env" ]; then
+    cp -a "$WEBPANEL_PRESERVE_DIR/.env" "$web_dir/.env"
+    log_info "Restore .env selesai."
+  fi
+  mkdir -p "$web_dir/database"
+  if [ -f "$WEBPANEL_PRESERVE_DIR/database.sqlite" ]; then
+    cp -a "$WEBPANEL_PRESERVE_DIR/database.sqlite" "$web_dir/database/database.sqlite"
+    log_info "Restore database.sqlite selesai."
+  else
+    touch "$web_dir/database/database.sqlite"
+  fi
+  if [ -d "$WEBPANEL_PRESERVE_DIR/storage_app" ]; then
+    mkdir -p "$web_dir/storage"
+    cp -a "$WEBPANEL_PRESERVE_DIR/storage_app/." "$web_dir/storage/app/" 2>/dev/null || true
+  fi
+
+  if [ -f "$web_dir/composer.lock" ]; then
+    new_lock_hash="$(sha256sum "$web_dir/composer.lock" 2>/dev/null | awk '{print $1}' || true)"
+  fi
+
+  # Restore cached vendor/ as warm base (avoids downloading everything from scratch!)
+  if [[ "$has_vendor_cache" -eq 1 && -d "$WEBPANEL_PRESERVE_DIR/vendor" ]]; then
+    rm -rf "$web_dir/vendor"
+    mv "$WEBPANEL_PRESERVE_DIR/vendor" "$web_dir/vendor"
+  fi
+  log_ok "Kode Laravel Web Panel berhasil disinkronkan."
+
+  # Step 8: Smart Non-Interactive Composer (Anti-Hang!)
+  log_step "[8/10] Memperbarui dependensi Composer Laravel Web Panel..."
+  if command -v composer >/dev/null 2>&1; then
+    local composer_rc=0
+    if [[ "$has_vendor_cache" -eq 1 && -n "$old_lock_hash" && "$old_lock_hash" == "$new_lock_hash" && -f "$web_dir/vendor/autoload.php" ]]; then
+      log_info "composer.lock tidak berubah (${new_lock_hash:0:12}) — menggunakan vendor/ cache & menjalankan dump-autoload..."
+      set +e
+      (
+        cd "$web_dir" && \
+        COMPOSER_ALLOW_SUPERUSER=1 \
+        COMPOSER_MEMORY_LIMIT=-1 \
+        timeout 120 composer dump-autoload --optimize --no-dev --no-interaction </dev/null
+      ) 2>&1 | while IFS= read -r line; do
+        printf '  %s\n' "$line"
+        printf '  %s\n' "$line" >> "$UPDATE_LOG" 2>/dev/null || true
+      done
+      composer_rc=${PIPESTATUS[0]}
+      set -e
+      if [[ "$composer_rc" -eq 0 ]]; then
+        COMPOSER_STATUS="cached (dump-autoload ok)"
+        log_ok "Composer autoload selesai dengan cepat (tanpa download ulang)."
+      else
+        COMPOSER_STATUS="dump-autoload warn (rc=${composer_rc})"
+        log_warn "composer dump-autoload selesai dengan kode ${composer_rc}."
+      fi
+    else
+      log_info "Dependensi berubah atau vendor/ baru — menjalankan composer install (non-interaktif, timeout 300s)..."
+      set +e
+      (
+        cd "$web_dir" && \
+        COMPOSER_ALLOW_SUPERUSER=1 \
+        COMPOSER_MEMORY_LIMIT=-1 \
+        COMPOSER_PROCESS_TIMEOUT=300 \
+        timeout 300 composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress </dev/null
+      ) 2>&1 | while IFS= read -r line; do
+        printf '  %s\n' "$line"
+        printf '  %s\n' "$line" >> "$UPDATE_LOG" 2>/dev/null || true
+      done
+      composer_rc=${PIPESTATUS[0]}
+      set -e
+      if [[ "$composer_rc" -eq 0 ]]; then
+        COMPOSER_STATUS="installed ok"
+        log_ok "Composer install selesai."
+      elif [[ "$composer_rc" -eq 124 ]]; then
+        COMPOSER_STATUS="timeout (300s)"
+        log_warn "Composer install melewati batas waktu 300 detik! Periksa koneksi internet / RAM VPS. Melanjutkan tahap berikutnya..."
+      else
+        COMPOSER_STATUS="failed (rc=${composer_rc})"
+        log_warn "Composer install gagal (exit=${composer_rc}). Lihat detail di ${UPDATE_LOG}. Melanjutkan tahap berikutnya..."
+      fi
+    fi
+  else
+    COMPOSER_STATUS="composer not installed"
+    log_warn "Binary composer tidak ditemukan di PATH, melewati tahap composer install."
+  fi
+
+  # Step 9: Permissions, Artisan Migrations & Cache Clear
+  log_step "[9/10] Menjalankan migrasi database, pembersihan cache, & perbaikan izin file..."
+  mkdir -p "$web_dir/storage/framework/views" "$web_dir/storage/framework/cache" "$web_dir/storage/framework/sessions" "$web_dir/storage/logs"
+  chown -R www-data:www-data "$web_dir" 2>/dev/null || true
+  chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
+
+  if command -v php >/dev/null 2>&1; then
+    local art_rc=0
+    set +e
+    (cd "$web_dir" && php artisan migrate --force </dev/null) 2>&1 | while IFS= read -r line; do
+      printf '  %s\n' "$line"
+      printf '  %s\n' "$line" >> "$UPDATE_LOG" 2>/dev/null || true
+    done
+    art_rc=${PIPESTATUS[0]}
+    set -e
+    if [[ "$art_rc" -eq 0 ]]; then
+      MIGRATE_STATUS="ok"
+      log_ok "Migrasi database Laravel berhasil."
+    else
+      MIGRATE_STATUS="warn (rc=${art_rc})"
+      log_warn "Migrasi database Laravel gagal (exit=${art_rc}). Lihat log di ${UPDATE_LOG}."
+    fi
+
+    run_logged "php artisan optimize:clear" bash -c "cd '$web_dir' && php artisan optimize:clear </dev/null" || true
+    run_logged "php artisan view:clear" bash -c "cd '$web_dir' && php artisan view:clear </dev/null" || true
+  else
+    MIGRATE_STATUS="php not found"
+    log_warn "Binary php tidak ditemukan, melewati artisan migrate & cache clear."
+  fi
+
+  # Fix Permissions again to make sure any files touched by artisan are owned by www-data
+  chown -R www-data:www-data "$web_dir" 2>/dev/null || true
+  chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
+  if [ -f "$web_dir/database/database.sqlite" ]; then
+    chmod 664 "$web_dir/database/database.sqlite" 2>/dev/null || true
+  fi
+
+  # Restart vpn-bridge if installed
+  if systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+    systemctl restart vpn-bridge >>"$UPDATE_LOG" 2>&1 || true
+    report_service_status vpn-bridge
+  fi
+
+  # Step 10: Restart PHP-FPM & Cron Scheduler
+  log_step "[10/10] Me-restart PHP-FPM & menyinkronkan Cron Job Laravel..."
+  local php_fpm_service
+  php_fpm_service="$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1 || true)"
+  if [ -n "$php_fpm_service" ]; then
+    log_info "Me-restart layanan aktif PHP-FPM: ${php_fpm_service}..."
+    systemctl restart "$php_fpm_service" >>"$UPDATE_LOG" 2>&1 || true
+    report_service_status "${php_fpm_service%.service}"
+  else
+    local fpm_units fpm
+    fpm_units="$(systemctl list-unit-files 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' || true)"
+    for fpm in $fpm_units; do
+      log_info "Me-restart layanan PHP-FPM: ${fpm}..."
+      systemctl restart "$fpm" >>"$UPDATE_LOG" 2>&1 || true
+      report_service_status "${fpm%.service}"
+    done
+  fi
+
+  local cron_file="/etc/cron.d/vpnxray-webpanel"
+  echo "* * * * * root cd $web_dir && php artisan schedule:run >> /dev/null 2>&1" > "$cron_file"
+  chmod 644 "$cron_file"
+  systemctl restart cron >>"$UPDATE_LOG" 2>&1 || systemctl restart crond >>"$UPDATE_LOG" 2>&1 || true
+  log_ok "Cron job scheduler Laravel aktif (${cron_file})."
+  WEBPANEL_UPDATED=1
 }
 
 old_sha="unknown"
 [ -f "$STATE_FILE" ] && old_sha="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
 new_sha="$(git -C "$TMP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+log_info "Revisi lokal  : ${old_sha}"
+log_info "Revisi remote : ${new_sha}"
 detect_bot_asset_changes
 
+log_step "[3/10] Menyalin script menu ke ${TARGET_SBIN}..."
 mkdir -p "$TARGET_SBIN" /etc/kyt
 cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
+log_ok "Menu binary di ${TARGET_SBIN} diperbarui."
+
+log_step "[4/10] Sinkronisasi konfigurasi runtime (Nginx, HAProxy, WS, Dropbear, SSH, Xray)..."
 sync_runtime_configs
+
+log_step "[5/10] Sinkronisasi aset & layanan Bot Telegram KYT..."
 sync_kyt_bot_assets
+
+log_step "[6/10] Sinkronisasi aset & runtime me-cli..."
 sync_me_cli_assets
 auto_refresh_me_cli_runtime
 restart_me_cli_runtime_if_running
+
 sync_laravel_webpanel
 echo "$new_sha" > "$STATE_FILE"
 
-echo -e "${green}Update selesai.${NC}"
-echo -e "${green}Old revision:${NC} $old_sha"
-echo -e "${green}New revision:${NC} $new_sha"
-echo -e "${green}Target path :${NC} $TARGET_SBIN"
-echo -e "${green}Runtime cfg :${NC} nginx/haproxy/ws synced"
+ELAPSED_SEC=$(( $(date +%s) - START_TS ))
+log_raw "==================== FINISH UPDATE (${old_sha} -> ${new_sha}, ${ELAPSED_SEC}s) ===================="
+
+echo ""
+echo -e "${cyan}==========================================================${NC}"
+echo -e "${green}                  UPDATE SELESAI (${ELAPSED_SEC} detik)                 ${NC}"
+echo -e "${cyan}==========================================================${NC}"
+echo -e "${green}Old revision :${NC} $old_sha"
+echo -e "${green}New revision :${NC} $new_sha"
+echo -e "${green}Target path  :${NC} $TARGET_SBIN"
+echo -e "${green}Runtime cfg  :${NC} nginx / haproxy / ws / dropbear / xray synced"
+if [[ "$WEBPANEL_UPDATED" == "1" ]]; then
+  echo -e "${green}Web Panel    :${NC} /var/www/webpanel-mvc (composer: ${COMPOSER_STATUS}, migrate: ${MIGRATE_STATUS})"
+fi
 if [[ "$KYT_ASSETS_CHANGED" == "1" ]]; then
-  echo -e "${green}KYT sync    :${NC} /usr/bin/kyt + bot scripts disinkronkan"
+  echo -e "${green}KYT sync     :${NC} /usr/bin/kyt + bot scripts disinkronkan"
   if [[ "$KYT_RESTARTED" == "1" ]]; then
-    echo -e "${green}KYT restart :${NC} kyt.service di-restart"
+    echo -e "${green}KYT restart  :${NC} kyt.service di-restart"
   fi
 fi
 if [[ "$MECLI_ASSETS_CHANGED" == "1" ]]; then
-  echo -e "${green}ME-CLI sync :${NC} asset me-cli disinkronkan"
+  echo -e "${green}ME-CLI sync  :${NC} asset me-cli disinkronkan"
   if [[ "$MECLI_BOT_RESTARTED" == "1" || "$MECLI_CLI_RESTARTED" == "1" ]]; then
-    echo -e "${green}ME-CLI restart:${NC} proses aktif me-cli di-restart"
+    echo -e "${green}ME-CLI daemon:${NC} proses aktif me-cli di-restart"
   fi
 fi
+echo -e "${green}Log file     :${NC} $UPDATE_LOG"
+echo -e "${cyan}==========================================================${NC}"
 back_to_menu
