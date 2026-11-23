@@ -3,7 +3,7 @@ from kyt.modules.ui import *
 import os
 import subprocess
 
-@bot.on(events.CallbackQuery(pattern=b"^un_(.+)_(.+)$"))
+@bot.on(events.CallbackQuery(pattern=b"^un_(vmess|vless|trojan|shadowsocks|ssh)_(.+)$"))
 async def handle_unsuspend_auto(event):
     if not await require_admin(event):
         return
@@ -29,7 +29,7 @@ async def handle_unsuspend_auto(event):
             
     await upsert_message(event, f"✅ Akun `{user}` (Service: {service.upper()}) telah berhasil di-unsuspend.", buttons=None)
 
-@bot.on(events.CallbackQuery(pattern=b"^up_(.+)_(.+)$"))
+@bot.on(events.CallbackQuery(pattern=b"^up_(vmess|vless|trojan|shadowsocks|ssh)_(.+)$"))
 async def handle_increase_limit_auto(event):
     if not await require_admin(event):
         return
@@ -55,7 +55,7 @@ async def handle_increase_limit_auto(event):
     except Exception as e:
         await upsert_message(event, f"❌ Gagal memperbarui limit IP: {e}", buttons=None)
 
-@bot.on(events.CallbackQuery(pattern=b"^del_(.+)_(.+)$"))
+@bot.on(events.CallbackQuery(pattern=b"^del_(vmess|vless|trojan|shadowsocks|ssh)_(.+)$"))
 async def handle_delete_account_auto(event):
     if not await require_admin(event):
         return

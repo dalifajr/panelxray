@@ -67,4 +67,72 @@ fi
 passwd -l "$user" >/dev/null 2>&1 || { echo "Failed to suspend user"; exit 1; }
 printf '%s %s %s\n' "$exp" "locked" "$reason" > "$STATE_DIR/$user"
 
+# Terminate active sessions ONLY for this non-system VPN user (safe for root/www-data/web services)
+if [[ "$user" != "root" && "$user" != "www-data" && "$user" != "nobody" && "$uid_num" -ge 1000 ]]; then
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -TERM -u "$uid_num" >/dev/null 2>&1 || true
+  fi
+
+  # Also terminate active Dropbear child sessions authenticated as this user (never kills Dropbear listener)
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$user" <<'PYEOF' >/dev/null 2>&1 || true
+import os, re, signal, subprocess, sys
+
+target = sys.argv[1]
+try:
+    out = subprocess.check_output(["ps", "-eo", "pid=,ppid=,comm="], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+
+# Only Dropbear child worker processes (ppid != 1)
+db_children = set()
+for line in out.splitlines():
+    parts = line.split()
+    if len(parts) >= 3 and parts[2].lower() == "dropbear":
+        try:
+            pid, ppid = int(parts[0]), int(parts[1])
+            if ppid > 1:
+                db_children.add(pid)
+        except ValueError:
+            pass
+
+if not db_children:
+    sys.exit(0)
+
+log_lines = []
+for log_path in ("/var/log/auth.log", "/var/log/secure"):
+    if os.path.isfile(log_path):
+        try:
+            with open(log_path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - 2 * 1024 * 1024))
+                log_lines.extend(f.read().decode("utf-8", errors="ignore").splitlines())
+        except Exception:
+            pass
+
+if not log_lines:
+    try:
+        jout = subprocess.check_output(
+            ["journalctl", "-u", "dropbear", "--since", "24 hours ago", "--no-pager"],
+            text=True, stderr=subprocess.DEVNULL
+        )
+        log_lines.extend(jout.splitlines())
+    except Exception:
+        pass
+
+pat = re.compile(r"dropbear\[(\d+)\].*Password auth succeeded for ['\"]?([^'\"\s]+)['\"]?\s+from", re.IGNORECASE)
+for line in log_lines:
+    m = pat.search(line)
+    if m and m.group(2) == target:
+        pid = int(m.group(1))
+        if pid in db_children:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+PYEOF
+  fi
+fi
+
 echo "SSH account suspended: $user"

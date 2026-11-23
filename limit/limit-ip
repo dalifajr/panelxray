@@ -3,19 +3,20 @@
 set -u
 shopt -s nullglob
 
-LIMIT_ROOT="/etc/kyt/limit"
-SUSPEND_ROOT="/etc/kyt/suspended"
+LIMIT_ROOT="${LIMIT_ROOT:-/etc/kyt/limit}"
+SUSPEND_ROOT="${SUSPEND_ROOT:-/etc/kyt/suspended}"
 STATE_ROOT="${LIMIT_ROOT}/.state"
-ACCESS_LOG="/var/log/xray/access.log"
-KYT_DB="/usr/bin/kyt/database.db"
-KYT_VAR="/usr/bin/kyt/var.txt"
-LEGACY_BOT_DB="/etc/bot/.bot.db"
-VIOLATION_LOG="/root/log-limit.txt"
+ACCESS_LOG="${LIMIT_ACCESS_LOG:-/var/log/xray/access.log}"
+KYT_DB="${LIMIT_KYT_DB:-/usr/bin/kyt/database.db}"
+KYT_VAR="${LIMIT_KYT_VAR:-/usr/bin/kyt/var.txt}"
+LEGACY_BOT_DB="${LIMIT_LEGACY_BOT_DB:-/etc/bot/.bot.db}"
+VIOLATION_LOG="${LIMIT_VIOLATION_LOG:-/root/log-limit.txt}"
 
 CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-120}"
 LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-300}"
 REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-5}"
 MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-1}"
+LOG_TAIL_BYTES="${LIMIT_LOG_TAIL_BYTES:-5242880}"
 
 mkdir -p "$STATE_ROOT"
 touch "$VIOLATION_LOG" 2>/dev/null || true
@@ -81,7 +82,6 @@ send_bot_message() {
 collect_admin_chat_ids() {
     local kyt_admin
     local legacy_chat
-    local escaped
 
     kyt_admin="$(trim "$(read_kyt_var ADMIN)")"
     legacy_chat="$(trim "$(read_legacy_bot_field 3)")"
@@ -136,14 +136,8 @@ notify_auto_suspend() {
     [[ -z "$token" ]] && token="$legacy_token"
     [[ -n "$token" ]] || return 0
 
-    message="[AUTO SUSPEND LIMIT IP]\n"
-    message+="Service: ${service^^}\n"
-    message+="Username: ${user}\n"
-    message+="Limit IP: ${iplimit}\n"
-    message+="IP terdeteksi: ${ipcount}\n"
-    message+="Daftar IP: ${ips}\n\n"
-    message+="Akun disuspend otomatis untuk mencegah abuse.\n"
-    message+="Lanjutkan dengan unsuspend atau renew + limit IP baru."
+    printf -v message '[AUTO SUSPEND LIMIT IP]\nService: %s\nUsername: %s\nLimit IP: %s\nIP terdeteksi: %s\nDaftar IP: %s\n\nAkun disuspend otomatis untuk mencegah abuse.\nLanjutkan dengan unsuspend atau renew + limit IP baru.' \
+        "${service^^}" "$user" "$iplimit" "$ipcount" "$ips"
 
     local inline_keyboard="{\"inline_keyboard\":[[{\"text\":\"✅ Unsuspend\",\"callback_data\":\"un_${service}_${user}\"},{\"text\":\"⬆️ Naikkan Limit\",\"callback_data\":\"up_${service}_${user}\"}],[{\"text\":\"🗑 Hapus Akun\",\"callback_data\":\"del_${service}_${user}\"}]]}"
 
@@ -154,7 +148,7 @@ notify_auto_suspend() {
         send_bot_message "$token" "$chat_id" "$message" "$inline_keyboard"
     done
 
-    if [[ -n "$legacy_token" ]]; then
+    if [[ -n "$legacy_token" && "$legacy_token" != "$token" ]]; then
         local legacy_chat
         legacy_chat="$(trim "$(read_legacy_bot_field 3)")"
         send_bot_message "$legacy_token" "$legacy_chat" "$message" "$inline_keyboard"
@@ -235,6 +229,8 @@ suspend_account() {
     local reason="$3"
     local script_name=""
     local script_path=""
+    local out=""
+    local rc=0
 
     case "$service" in
         vmess) script_name="suspws" ;;
@@ -245,62 +241,283 @@ suspend_account() {
         *) return 1 ;;
     esac
 
-    script_path="$(resolve_cmd "$script_name")" || return 1
-    "$script_path" --user "$user" --reason "$reason" >/dev/null 2>&1 || true
+    script_path="$(resolve_cmd "$script_name")" || {
+        printf '%s | ERROR | %s | %s | script %s tidak ditemukan\n' \
+            "$(date '+%Y-%m-%d %H:%M:%S')" "$service" "$user" "$script_name" >> "$VIOLATION_LOG"
+        return 1
+    }
 
-    is_suspended "$service" "$user"
+    out="$("$script_path" --user "$user" --reason "$reason" 2>&1)" || rc=$?
+    if ! is_suspended "$service" "$user"; then
+        printf '%s | ERROR | %s | %s | suspend gagal (rc=%s): %s\n' \
+            "$(date '+%Y-%m-%d %H:%M:%S')" "$service" "$user" "$rc" "$(printf '%s' "$out" | tr '\r\n' ' ' | cut -c1-200)" >> "$VIOLATION_LOG"
+        return 1
+    fi
+
+    return 0
 }
 
-collect_xray_ip_stats() {
-    local user="$1"
-    local cutoff
-    cutoff="$(date -d "@$(( $(date +%s) - LOOKBACK_SECONDS ))" '+%Y/%m/%d %H:%M:%S' 2>/dev/null || date '+%Y/%m/%d %H:%M:%S')"
-
+# Single-pass Xray access.log parser (reads tail once per cycle, supports legacy & modern Xray v1.8+/v24+ logs)
+# Outputs lines: username<TAB>ip<TAB>hits
+collect_xray_ip_stats_batch() {
     [[ -f "$ACCESS_LOG" ]] || return 0
 
-    awk -v user="$user" -v cutoff="$cutoff" -v min_hits="$MIN_HITS_PER_IP" '
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$ACCESS_LOG" "$LOOKBACK_SECONDS" "$MIN_HITS_PER_IP" "$LOG_TAIL_BYTES" <<'PYEOF' 2>/dev/null
+import collections
+import datetime
+import ipaddress
+import os
+import re
+import sys
+import time
+
+log_path = sys.argv[1]
+lookback = int(sys.argv[2])
+min_hits = int(sys.argv[3])
+tail_bytes = int(sys.argv[4])
+
+now_ts = time.time()
+cutoff_ts = now_ts - max(1, lookback)
+
+# Matches:
+#   2026/11/23 16:20:05.123456 from 1.2.3.4:54321 accepted ... email: iann
+#   2026/11/23 16:20:05 from tcp:1.2.3.4:54321 accepted ... email: iann
+#   2026/11/23 16:20:05 1.2.3.4:54321 accepted ... email: iann
+#   2026/11/23 16:20:05.123 from [2001:db8::1]:54321 accepted ... email: iann
+line_re = re.compile(
+    r"^(\d{4}/\d{2}/\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\.\d+)?\s+"
+    r"(?:from\s+)?(?:(?:tcp|udp):)?(\[[0-9a-fA-F:]+\]|[0-9.]+)(?::\d+)?\s+"
+)
+email_re = re.compile(r"(?:^|\s)email:\s*([^\s,;]+)")
+
+hits = collections.defaultdict(int)
+ts_cache = {}
+
+try:
+    with open(log_path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        start = max(0, size - tail_bytes)
+        f.seek(start)
+        if start > 0:
+            f.readline()  # discard partial first line
+        raw = f.read().decode("utf-8", errors="ignore")
+except OSError:
+    sys.exit(0)
+
+for line in raw.splitlines():
+    if "email:" not in line:
+        continue
+    m = line_re.match(line)
+    if not m:
+        continue
+    em = email_re.search(line)
+    if not em:
+        continue
+
+    ts_key = m.group(1) + " " + m.group(2)
+    ts_val = ts_cache.get(ts_key)
+    if ts_val is None:
+        try:
+            dt = datetime.datetime.strptime(ts_key, "%Y/%m/%d %H:%M:%S")
+            ts_val = dt.timestamp()
+        except ValueError:
+            continue
+        ts_cache[ts_key] = ts_val
+
+    if ts_val < cutoff_ts:
+        continue
+
+    raw_ip = m.group(3).strip("[]")
+    try:
+        ip_obj = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        continue
+    if ip_obj.is_loopback or ip_obj.is_unspecified:
+        continue
+
+    user = em.group(1).strip()
+    if user:
+        hits[(user, str(ip_obj))] += 1
+
+for (user, ip), count in sorted(hits.items()):
+    if count >= min_hits:
+        sys.stdout.write(f"{user}\t{ip}\t{count}\n")
+PYEOF
+        return 0
+    fi
+
+    # POSIX-safe awk fallback (no \b word boundary)
+    local cutoff
+    cutoff="$(date -d "@$(( $(date +%s) - LOOKBACK_SECONDS ))" '+%Y/%m/%d %H:%M:%S' 2>/dev/null || date '+%Y/%m/%d %H:%M:%S')"
+    tail -c "$LOG_TAIL_BYTES" "$ACCESS_LOG" 2>/dev/null | awk -v cutoff="$cutoff" -v min_hits="$MIN_HITS_PER_IP" '
         function clean_ip(raw, ip) {
             ip = raw
             sub(/^(tcp|udp):/, "", ip)
             sub(/:[0-9]+$/, "", ip)
+            gsub(/[\[\]]/, "", ip)
             return ip
         }
-        {
-            if ($0 !~ "\\b" user "\\b") {
-                next
+        /email:/ {
+            t = $2
+            sub(/\.[0-9]+$/, "", t)
+            if ($1 ~ /^[0-9]{4}\/[0-9]{2}\/[0-9]{2}$/ && t ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+                if (($1 " " t) < cutoff) next
             }
-
-            if ($1 ~ /^[0-9]{4}\/[0-9]{2}\/[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                ts = $1 " " $2
-                if (ts < cutoff) {
-                    next
+            raw_ip = ($3 == "from") ? $4 : $3
+            ip = clean_ip(raw_ip)
+            if (ip == "" || ip ~ /^127\./ || ip == "::1" || ip == "0.0.0.0") next
+            user = ""
+            for (i = 1; i <= NF; i++) {
+                if ($i == "email:" && (i + 1) <= NF) {
+                    user = $(i + 1)
+                    break
+                } else if (index($i, "email:") == 1 && length($i) > 6) {
+                    user = substr($i, 7)
+                    break
                 }
             }
-
-            ip = clean_ip($3)
-            if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
-                hits[ip]++
+            if (user != "") {
+                key = user "\t" ip
+                hits[key]++
             }
         }
         END {
-            for (ip in hits) {
-                if (hits[ip] >= min_hits) {
-                    printf "%s %d\n", ip, hits[ip]
+            for (k in hits) {
+                if (hits[k] >= min_hits) {
+                    printf "%s\t%d\n", k, hits[k]
                 }
             }
         }
-    ' "$ACCESS_LOG" 2>/dev/null | sort -k1,1
+    ' 2>/dev/null | sort
 }
 
 collect_ssh_ip_stats() {
     local user="$1"
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$user" <<'PYEOF' 2>/dev/null
+import collections
+import ipaddress
+import os
+import re
+import subprocess
+import sys
+
+target = sys.argv[1]
+hits = collections.defaultdict(int)
+
+def record_ip(raw_ip, pid_tag=None):
+    raw_ip = (raw_ip or "").strip().strip("()[]")
+    if ":" in raw_ip and raw_ip.count(":") == 1:
+        raw_ip = raw_ip.split(":", 1)[0]
+    try:
+        ip_obj = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        return
+    if ip_obj.is_loopback or ip_obj.is_unspecified:
+        if pid_tag:
+            hits[f"ws-pid-{pid_tag}"] += 1
+        return
+    hits[str(ip_obj)] += 1
+
+# 1. Active Dropbear & OpenSSH PIDs matched against auth logs
+db_pids = set()
+sshd_pids = set()
+try:
+    ps_out = subprocess.check_output(["ps", "-eo", "pid=,ppid=,comm="], text=True, stderr=subprocess.DEVNULL)
+    for line in ps_out.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        try:
+            pid, ppid = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        comm = parts[2].lower()
+        if comm == "dropbear" and ppid > 1:
+            db_pids.add(pid)
+        elif comm == "sshd" and ppid > 1:
+            sshd_pids.add(pid)
+except Exception:
+    pass
+
+if db_pids or sshd_pids:
+    log_lines = []
+    for log_path in ("/var/log/auth.log", "/var/log/secure"):
+        if os.path.isfile(log_path):
+            try:
+                with open(log_path, "rb") as f:
+                    f.seek(0, os.SEEK_END)
+                    size = f.tell()
+                    f.seek(max(0, size - 4 * 1024 * 1024))
+                    log_lines.extend(f.read().decode("utf-8", errors="ignore").splitlines())
+            except OSError:
+                pass
+    if not log_lines:
+        try:
+            jout = subprocess.check_output(
+                ["journalctl", "-u", "dropbear", "-u", "ssh", "-u", "sshd", "--since", "24 hours ago", "--no-pager"],
+                text=True, stderr=subprocess.DEVNULL
+            )
+            log_lines.extend(jout.splitlines())
+        except Exception:
+            pass
+
+    db_re = re.compile(r"dropbear\[(\d+)\].*Password auth succeeded for ['\"]?([^'\"\s]+)['\"]?\s+from\s+([^\s]+)", re.IGNORECASE)
+    ssh_re = re.compile(r"sshd\[(\d+)\].*Accepted\s+\S+\s+for\s+([^\s]+)\s+from\s+([^\s]+)", re.IGNORECASE)
+    seen_pids = set()
+    for line in reversed(log_lines):
+        m = db_re.search(line)
+        if m:
+            pid = int(m.group(1))
+            if pid in db_pids and pid not in seen_pids and m.group(2) == target:
+                seen_pids.add(pid)
+                record_ip(m.group(3), pid_tag=pid)
+            continue
+        m2 = ssh_re.search(line)
+        if m2:
+            pid = int(m2.group(1))
+            if pid in sshd_pids and pid not in seen_pids and m2.group(2) == target:
+                seen_pids.add(pid)
+                record_ip(m2.group(3), pid_tag=pid)
+
+# 2. Active TTY sessions via `who`
+try:
+    who_out = subprocess.check_output(["who"], text=True, stderr=subprocess.DEVNULL)
+    for line in who_out.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0] == target:
+            record_ip(parts[4])
+except Exception:
+    pass
+
+# 3. OpenVPN status logs
+for ovpn_log in ("/etc/openvpn/server/openvpn-tcp.log", "/etc/openvpn/server/openvpn-udp.log"):
+    if os.path.isfile(ovpn_log):
+        try:
+            with open(ovpn_log, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("CLIENT_LIST,"):
+                        cols = line.strip().split(",")
+                        if len(cols) >= 3 and cols[1] == target:
+                            record_ip(cols[2])
+        except OSError:
+            pass
+
+for ip, count in sorted(hits.items()):
+    sys.stdout.write(f"{ip} {count}\n")
+PYEOF
+        return 0
+    fi
 
     {
         who 2>/dev/null | awk -v u="$user" '
             $1 == u {
                 ip = $5
                 gsub(/[()]/, "", ip)
-                if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+                if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && ip !~ /^127\./) {
                     print ip
                 }
             }
@@ -347,6 +564,7 @@ process_limit_entry() {
     local detector="$2"
     local user="$3"
     local iplimit="$4"
+    local batch_file="${5:-}"
     local stats=""
     local ipcount=0
     local ips="-"
@@ -362,7 +580,9 @@ process_limit_entry() {
     fi
 
     if [[ "$detector" == "xray" ]]; then
-        stats="$(collect_xray_ip_stats "$user")"
+        if [[ -n "$batch_file" && -f "$batch_file" ]]; then
+            stats="$(awk -F'\t' -v u="$user" '$1 == u {print $2 " " $3}' "$batch_file")"
+        fi
     else
         stats="$(collect_ssh_ip_stats "$user")"
     fi
@@ -390,46 +610,63 @@ monitor_service() {
     local service="$1"
     local detector="$2"
     local dir="$3"
+    local run_once="${4:-0}"
     local file
     local user
     local iplimit
+    local batch_file=""
 
     while true; do
         if [[ -d "$dir" ]]; then
+            batch_file=""
+            if [[ "$detector" == "xray" ]]; then
+                batch_file="/tmp/limit-ip-${service}.$$.tsv"
+                collect_xray_ip_stats_batch > "$batch_file"
+            fi
+
             for file in "$dir"/*; do
                 [[ -f "$file" ]] || continue
                 user="$(basename "$file")"
                 iplimit="$(cat "$file" 2>/dev/null | tr -d '\r')"
-                process_limit_entry "$service" "$detector" "$user" "$iplimit"
+                process_limit_entry "$service" "$detector" "$user" "$iplimit" "$batch_file"
             done
+
+            if [[ -n "$batch_file" ]]; then
+                rm -f "$batch_file" 2>/dev/null || true
+            fi
+        fi
+
+        if [[ "$run_once" == "1" ]]; then
+            break
         fi
         sleep "$CHECK_INTERVAL"
     done
 }
 
 MODE="$(trim "${1:-}")"
+RUN_ONCE=0
+if [[ "${2:-}" == "--once" ]]; then
+    RUN_ONCE=1
+fi
+
 case "$MODE" in
     vmip)
-        monitor_service "vmess" "xray" "${LIMIT_ROOT}/vmess/ip"
+        monitor_service "vmess" "xray" "${LIMIT_ROOT}/vmess/ip" "$RUN_ONCE"
         ;;
     vlip)
-        monitor_service "vless" "xray" "${LIMIT_ROOT}/vless/ip"
+        monitor_service "vless" "xray" "${LIMIT_ROOT}/vless/ip" "$RUN_ONCE"
         ;;
     trip)
-        monitor_service "trojan" "xray" "${LIMIT_ROOT}/trojan/ip"
+        monitor_service "trojan" "xray" "${LIMIT_ROOT}/trojan/ip" "$RUN_ONCE"
         ;;
     ssip)
-        monitor_service "shadowsocks" "xray" "${LIMIT_ROOT}/shadowsocks/ip"
+        monitor_service "shadowsocks" "xray" "${LIMIT_ROOT}/shadowsocks/ip" "$RUN_ONCE"
         ;;
     sship)
-        monitor_service "ssh" "ssh" "${LIMIT_ROOT}/ssh/ip"
+        monitor_service "ssh" "ssh" "${LIMIT_ROOT}/ssh/ip" "$RUN_ONCE"
         ;;
     *)
-        echo "Usage: $0 {vmip|vlip|trip|ssip|sship}"
+        echo "Usage: $0 {vmip|vlip|trip|ssip|sship} [--once]"
         exit 1
         ;;
 esac
-
-
-
-

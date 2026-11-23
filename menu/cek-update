@@ -360,7 +360,7 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
   systemctl restart ssh.socket >/dev/null 2>&1 || true
 fi
 
-for unit in ssh sshd dropbear ws xray cron kyt; do
+for unit in ssh sshd dropbear ws xray cron kyt vmip vlip trip ssip sship; do
   if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
     systemctl reset-failed "$unit" >/dev/null 2>&1 || true
     systemctl enable "$unit" >/dev/null 2>&1 || true
@@ -454,16 +454,21 @@ report_service_status() {
 }
 
 sync_runtime_configs() {
-  local domain
+  local domain xray_conf_backup=""
   domain="$(cat /etc/xray/domain 2>/dev/null || hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
   log_info "Domain runtime terdeteksi: ${domain}"
 
   mkdir -p /etc/nginx/conf.d /etc/haproxy /etc/systemd/system /usr/bin
 
   if [ -f "$TMP_DIR/limit/xray.conf" ]; then
+    if [ -f /etc/nginx/conf.d/xray.conf ]; then
+      xray_conf_backup="/tmp/xray.conf.bak.$$"
+      cp -a /etc/nginx/conf.d/xray.conf "$xray_conf_backup" 2>/dev/null || true
+    fi
     cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
+    sed -i 's/\r$//' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
-    log_info "Konfigurasi Nginx xray.conf disinkronkan."
+    log_info "Konfigurasi Nginx xray.conf disinkronkan (backup disiapkan)."
   fi
 
   if [ -f "$TMP_DIR/limit/haproxy.cfg" ]; then
@@ -584,10 +589,17 @@ sync_runtime_configs() {
 
   if command -v nginx >/dev/null 2>&1; then
     if nginx -t >>"$UPDATE_LOG" 2>&1; then
-      systemctl restart nginx >>"$UPDATE_LOG" 2>&1 || true
+      systemctl reload nginx >>"$UPDATE_LOG" 2>&1 || systemctl restart nginx >>"$UPDATE_LOG" 2>&1 || true
+      rm -f "$xray_conf_backup" 2>/dev/null || true
       report_service_status nginx
     else
-      log_warn "Validasi nginx -t gagal! Cek detail di ${UPDATE_LOG}."
+      if [ -n "$xray_conf_backup" ] && [ -f "$xray_conf_backup" ]; then
+        cp -af "$xray_conf_backup" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        rm -f "$xray_conf_backup" 2>/dev/null || true
+        log_warn "Validasi nginx -t gagal! Konfigurasi xray.conf otomatis di-rollback ke versi sebelumnya agar website & VPN tetap aman."
+      else
+        log_warn "Validasi nginx -t gagal! Cek detail di ${UPDATE_LOG}."
+      fi
     fi
   fi
 
@@ -608,6 +620,69 @@ sync_runtime_configs() {
   report_service_status dropbear
   report_service_status ws
   report_service_status xray
+
+  # Sync limit-ip daemon & systemd units (low CPU priority Nice=15 so co-hosted web store is never impacted)
+  ensure_limit_ip_services
+}
+
+ensure_limit_ip_services() {
+  local svc mode desc unit_path legacy
+
+  if [ -f "$TMP_DIR/limit/limit-ip" ]; then
+    cp -f "$TMP_DIR/limit/limit-ip" /usr/bin/limit-ip
+    sed -i 's/\r$//' /usr/bin/limit-ip 2>/dev/null || true
+    chmod 755 /usr/bin/limit-ip
+    log_ok "Daemon /usr/bin/limit-ip disinkronkan."
+  fi
+
+  if [ -f "$TMP_DIR/limit-ip-ssh" ]; then
+    cp -f "$TMP_DIR/limit-ip-ssh" /usr/bin/limit-ip-ssh
+    sed -i 's/\r$//' /usr/bin/limit-ip-ssh 2>/dev/null || true
+    chmod 755 /usr/bin/limit-ip-ssh
+  fi
+
+  # Disable conflicting legacy /etc/xray/limit.* daemons if present
+  for legacy in limitvmess limitvless limittrojan limitshadowsocks; do
+    if [ -f "/etc/systemd/system/${legacy}.service" ] && grep -q '/etc/xray/limit\.' "/etc/systemd/system/${legacy}.service" 2>/dev/null; then
+      systemctl disable --now "$legacy" >>"$UPDATE_LOG" 2>&1 || true
+    fi
+  done
+
+  if [ ! -x /usr/bin/limit-ip ]; then
+    log_warn "/usr/bin/limit-ip tidak tersedia, melewati instalasi service limiter IP."
+    return 0
+  fi
+
+  for pair in "vmip:VMESS" "vlip:VLESS" "trip:TROJAN" "ssip:SHADOWSOCKS" "sship:SSH"; do
+    svc="${pair%%:*}"
+    desc="${pair#*:}"
+    unit_path="/etc/systemd/system/${svc}.service"
+    cat >"$unit_path" <<EOF
+[Unit]
+Description=VPN IP Limit Monitor (${desc})
+After=network-online.target xray.service
+
+[Service]
+Type=simple
+User=root
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/bin/limit-ip ${svc}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    chmod 644 "$unit_path"
+  done
+
+  systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
+  for svc in vmip vlip trip ssip sship; do
+    systemctl enable "$svc" >>"$UPDATE_LOG" 2>&1 || true
+    systemctl restart "$svc" >>"$UPDATE_LOG" 2>&1 || true
+    report_service_status "$svc"
+  done
 }
 
 sync_kyt_bot_assets() {
@@ -1050,6 +1125,9 @@ detect_bot_asset_changes
 log_step "[3/10] Menyalin script menu ke ${TARGET_SBIN}..."
 mkdir -p "$TARGET_SBIN" /etc/kyt
 cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
+for f in "$TARGET_SBIN"/*; do
+  [ -f "$f" ] && sed -i 's/\r$//' "$f" 2>/dev/null || true
+done
 chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
 log_ok "Menu binary di ${TARGET_SBIN} diperbarui."
 
