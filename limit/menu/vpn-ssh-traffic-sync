@@ -1,0 +1,72 @@
+#!/bin/bash
+# Non-blocking kernel accounting for SSH VPN users via iptables mangle CONNMARK.
+# Safe for co-hosted servers: NEVER adds DROP/REJECT rules, NEVER touches root/www-data.
+
+set -u
+
+command -v iptables >/dev/null 2>&1 || exit 0
+
+# Verify mangle table & owner/connmark modules are available before touching anything
+iptables -t mangle -L OUTPUT -n >/dev/null 2>&1 || exit 0
+
+ensure_chain() {
+    local chain="$1"
+    iptables -t mangle -N "$chain" >/dev/null 2>&1 || true
+}
+
+ensure_jump() {
+    local parent="$1"
+    local chain="$2"
+    iptables -t mangle -C "$parent" -j "$chain" >/dev/null 2>&1 || iptables -t mangle -A "$parent" -j "$chain" >/dev/null 2>&1 || true
+}
+
+ensure_chain VPN_SSH_OUT
+ensure_chain VPN_SSH_UP
+ensure_chain VPN_SSH_DOWN
+
+ensure_jump OUTPUT VPN_SSH_OUT
+ensure_jump POSTROUTING VPN_SSH_UP
+ensure_jump PREROUTING VPN_SSH_DOWN
+
+# Collect SSH VPN usernames from /etc/kyt/limit/ssh/ip/* and /etc/ssh/.ssh.db
+collect_ssh_users() {
+    {
+        if [[ -d /etc/kyt/limit/ssh/ip ]]; then
+            for f in /etc/kyt/limit/ssh/ip/*; do
+                [[ -f "$f" ]] && basename "$f"
+            done
+        fi
+        if [[ -f /etc/ssh/.ssh.db ]]; then
+            awk '$1 == "#ssh#" && NF >= 2 {print $2}' /etc/ssh/.ssh.db 2>/dev/null
+        fi
+    } | awk 'NF && !seen[$0]++'
+}
+
+while IFS= read -r user; do
+    [[ -n "$user" ]] || continue
+    [[ "$user" == "root" || "$user" == "www-data" || "$user" == "nobody" ]] && continue
+    uid="$(id -u "$user" 2>/dev/null || true)"
+    [[ "$uid" =~ ^[0-9]+$ ]] || continue
+    (( uid >= 1000 )) || continue
+
+    mark=$((65536 + uid))
+    mark_hex="$(printf '0x%x' "$mark")"
+
+    # 1. Mark connections initiated by this SSH user's UID (outbound tunnel connections)
+    if ! iptables -t mangle -C VPN_SSH_OUT -m owner --uid-owner "$uid" -j CONNMARK --set-mark "$mark_hex" >/dev/null 2>&1; then
+        iptables -t mangle -A VPN_SSH_OUT -m owner --uid-owner "$uid" -j CONNMARK --set-mark "$mark_hex" >/dev/null 2>&1 || continue
+    fi
+
+    # 2. Count Upload bytes (POSTROUTING non-loopback)
+    if ! iptables -t mangle -C VPN_SSH_UP ! -o lo -m connmark --mark "$mark_hex" -m comment --comment "vpn_ssh_up:${user}" -j RETURN >/dev/null 2>&1; then
+        iptables -t mangle -A VPN_SSH_UP ! -o lo -m connmark --mark "$mark_hex" -m comment --comment "vpn_ssh_up:${user}" -j RETURN >/dev/null 2>&1 || true
+    fi
+
+    # 3. Count Download bytes (PREROUTING non-loopback)
+    if ! iptables -t mangle -C VPN_SSH_DOWN ! -i lo -m connmark --mark "$mark_hex" -m comment --comment "vpn_ssh_down:${user}" -j RETURN >/dev/null 2>&1; then
+        iptables -t mangle -A VPN_SSH_DOWN ! -i lo -m connmark --mark "$mark_hex" -m comment --comment "vpn_ssh_down:${user}" -j RETURN >/dev/null 2>&1 || true
+    fi
+done < <(collect_ssh_users)
+
+exit 0
+

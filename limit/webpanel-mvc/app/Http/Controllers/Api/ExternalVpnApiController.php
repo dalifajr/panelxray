@@ -243,6 +243,34 @@ class ExternalVpnApiController extends Controller
         ]);
     }
 
+    public function traffic(): JsonResponse
+    {
+        $stats = $this->manager->getTrafficStats();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Traffic statistics retrieved successfully.',
+            'data' => $stats,
+        ]);
+    }
+
+    public function devices(Request $request, string $protocol, string $username): JsonResponse
+    {
+        $windowMinutes = max(5, min(1440, (int) $request->query('window_minutes', 60)));
+
+        try {
+            $data = $this->manager->getAccountDevices($protocol, $username, $windowMinutes);
+        } catch (InvalidArgumentException $e) {
+            return $this->error($e->getMessage(), 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Device activity log retrieved successfully.',
+            'data' => $data,
+        ]);
+    }
+
     private function extractIdempotencyKey(Request $request, string $scope): ?string
     {
         $raw = trim((string) $request->header('Idempotency-Key', ''));

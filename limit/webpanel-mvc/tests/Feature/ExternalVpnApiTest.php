@@ -325,4 +325,76 @@ class ExternalVpnApiTest extends TestCase
         $this->assertStringContainsString('###', $capturedPyScript);
         $this->assertStringContainsString('#!', $capturedPyScript);
     }
+
+    public function test_traffic_and_device_monitoring_endpoints_return_structured_data(): void
+    {
+        $mock = Mockery::mock(VpnService::class);
+        $mock->shouldReceive('runPython')->twice()->andReturnUsing(function (string $script) {
+            if (str_contains($script, 'statsquery')) {
+                return [
+                    'success' => true,
+                    'output' => json_encode([
+                        'xray_stats_ok' => true,
+                        'ssh_stats_ok' => true,
+                        'accounts' => [
+                            'iann' => ['uplink_bytes' => 104857600, 'downlink_bytes' => 524288000],
+                            'ssh_01' => ['uplink_bytes' => 20971520, 'downlink_bytes' => 83886080],
+                        ],
+                    ]),
+                    'error' => '',
+                ];
+            }
+
+            return [
+                'success' => true,
+                'output' => json_encode([
+                    'protocol' => 'vmess',
+                    'username' => 'iann',
+                    'window_minutes' => 60,
+                    'ip_limit' => 2,
+                    'active_device_count' => 1,
+                    'recent_device_count' => 2,
+                    'current_strikes' => 1,
+                    'devices' => [
+                        [
+                            'ip' => '103.10.10.1',
+                            'source' => 'xray',
+                            'is_online' => true,
+                            'hits' => 25,
+                            'first_seen' => '2026-11-23 20:10:00',
+                            'last_seen' => '2026-11-23 20:40:00',
+                        ],
+                    ],
+                    'violations' => [
+                        '2026-11-23 20:35:00 | vmess | iann | ip=3/2 | strikes=1 | 103.10.10.1(5)',
+                    ],
+                ]),
+                'error' => '',
+            ];
+        });
+
+        $this->app->instance(VpnService::class, $mock);
+
+        // 1. Traffic endpoint returns both Xray & SSH accounts
+        $trafficUri = '/api/v1/vpn/traffic';
+        $this->withHeaders($this->signedHeaders('GET', $trafficUri))
+            ->get($trafficUri)
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.xray_stats_ok', true)
+            ->assertJsonPath('data.ssh_stats_ok', true)
+            ->assertJsonPath('data.accounts.iann.uplink_bytes', 104857600)
+            ->assertJsonPath('data.accounts.ssh_01.downlink_bytes', 83886080);
+
+        // 2. Device monitoring endpoint returns active IPs, strike count & violation log
+        $devUri = '/api/v1/vpn/accounts/vmess/iann/devices?window_minutes=60';
+        $this->withHeaders($this->signedHeaders('GET', $devUri))
+            ->get($devUri)
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.active_device_count', 1)
+            ->assertJsonPath('data.current_strikes', 1)
+            ->assertJsonPath('data.devices.0.ip', '103.10.10.1')
+            ->assertJsonCount(1, 'data.violations');
+    }
 }

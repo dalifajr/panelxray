@@ -1053,4 +1053,383 @@ PYTHON;
 
         return implode("\n", $lines);
     }
+
+    /**
+     * Collect live Upload (uplink_bytes) & Download (downlink_bytes) per username
+     * from BOTH Xray StatsService (127.0.0.1:10000) and SSH iptables mangle CONNMARK accounting.
+     */
+    public function getTrafficStats(): array
+    {
+        $py = <<<'PYTHON'
+import json
+import os
+import re
+import shutil
+import subprocess
+
+traffic = {}
+
+def add_bytes(user, field, val):
+    user = (user or "").strip()
+    if not user or val < 0:
+        return
+    entry = traffic.setdefault(user, {"uplink_bytes": 0, "downlink_bytes": 0})
+    entry[field] = max(entry[field], int(val))
+
+# 1. Xray StatsService (127.0.0.1:10000) — fast read-only gRPC statsquery
+xray_bin = shutil.which("xray") or ("/usr/local/bin/xray" if os.path.isfile("/usr/local/bin/xray") else None)
+xray_ok = False
+if xray_bin:
+    try:
+        out = subprocess.check_output(
+            [xray_bin, "api", "statsquery", "--server=127.0.0.1:10000", "--pattern", "user>>>"],
+            text=True, stderr=subprocess.DEVNULL, timeout=5
+        )
+        xray_ok = True
+        try:
+            parsed = json.loads(out)
+            for item in parsed.get("stat", []) or []:
+                name = str(item.get("name", ""))
+                val = int(item.get("value", 0) or 0)
+                m = re.match(r"^user>>>([^>]+)>>>traffic>>>(uplink|downlink)$", name)
+                if m:
+                    add_bytes(m.group(1), m.group(2) + "_bytes", val)
+        except Exception:
+            cur_name = None
+            for line in out.splitlines():
+                m_name = re.search(r'"?name"?\s*[:=]\s*"?user>>>([^">]+)>>>traffic>>>(uplink|downlink)"?', line)
+                if m_name:
+                    cur_name = (m_name.group(1), m_name.group(2) + "_bytes")
+                    continue
+                if cur_name:
+                    m_val = re.search(r'"?value"?\s*[:=]\s*"?(\d+)"?', line)
+                    if m_val:
+                        add_bytes(cur_name[0], cur_name[1], int(m_val.group(1)))
+                        cur_name = None
+    except Exception:
+        pass
+
+# 2. SSH Kernel Accounting (non-blocking iptables mangle VPN_SSH_UP / VPN_SSH_DOWN)
+ssh_sync = "/usr/local/sbin/vpn-ssh-traffic-sync"
+if os.path.isfile(ssh_sync) and os.access(ssh_sync, os.X_OK):
+    try:
+        subprocess.run([ssh_sync], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+    except Exception:
+        pass
+
+ssh_ok = False
+iptables_bin = shutil.which("iptables")
+if iptables_bin:
+    for chain, field, prefix in (
+        ("VPN_SSH_UP", "uplink_bytes", "vpn_ssh_up:"),
+        ("VPN_SSH_DOWN", "downlink_bytes", "vpn_ssh_down:"),
+    ):
+        try:
+            out = subprocess.check_output(
+                [iptables_bin, "-t", "mangle", "-L", chain, "-v", "-x", "-n"],
+                text=True, stderr=subprocess.DEVNULL, timeout=5
+            )
+            ssh_ok = True
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) < 3 or not parts[1].isdigit():
+                    continue
+                m_cmt = re.search(r"/\*\s*" + re.escape(prefix) + r"([^\s*]+)\s*\*/", line)
+                if m_cmt:
+                    add_bytes(m_cmt.group(1), field, int(parts[1]))
+        except Exception:
+            pass
+
+print(json.dumps({
+    "xray_stats_ok": xray_ok,
+    "ssh_stats_ok": ssh_ok,
+    "accounts": traffic,
+}))
+PYTHON;
+
+        $res = $this->vpn->runPython($py);
+        $parsed = json_decode((string) ($res['output'] ?? ''), true);
+
+        if (!is_array($parsed)) {
+            return [
+                'xray_stats_ok' => false,
+                'ssh_stats_ok' => false,
+                'accounts' => [],
+            ];
+        }
+
+        return [
+            'xray_stats_ok' => (bool) ($parsed['xray_stats_ok'] ?? false),
+            'ssh_stats_ok' => (bool) ($parsed['ssh_stats_ok'] ?? false),
+            'accounts' => is_array($parsed['accounts'] ?? null) ? $parsed['accounts'] : [],
+        ];
+    }
+
+    /**
+     * Collect active/recent device IPs, strike count, and IP limit violation logs for a single account.
+     */
+    public function getAccountDevices(string $protocol, string $username, int $windowMinutes = 60): array
+    {
+        $protocol = $this->assertProtocol($protocol);
+        $username = $this->assertUsername($username);
+        $windowMinutes = max(5, min(1440, $windowMinutes));
+
+        $payloadB64 = base64_encode(json_encode([
+            'protocol' => $protocol,
+            'username' => $username,
+            'window_minutes' => $windowMinutes,
+        ]));
+
+        $py = <<<PYTHON
+import base64
+import datetime
+import ipaddress
+import json
+import os
+import re
+import subprocess
+import time
+
+cfg = json.loads(base64.b64decode("{$payloadB64}").decode("utf-8"))
+proto = cfg["protocol"]
+target = cfg["username"]
+window_sec = int(cfg["window_minutes"]) * 60
+now_ts = time.time()
+cutoff_ts = now_ts - window_sec
+online_cutoff = now_ts - 300
+
+# Read configured IP limit & current strike count
+ip_limit = 1
+limit_file = f"/etc/kyt/limit/{proto}/ip/{target}"
+if os.path.isfile(limit_file):
+    try:
+        v = int(open(limit_file, "r", encoding="utf-8", errors="ignore").read().strip())
+        if v > 0:
+            ip_limit = v
+    except Exception:
+        pass
+
+current_strikes = 0
+state_file = f"/etc/kyt/limit/.state/{proto}/{target}.state"
+if os.path.isfile(state_file):
+    try:
+        first_tok = open(state_file, "r", encoding="utf-8", errors="ignore").read().strip().split()[0]
+        current_strikes = max(0, int(first_tok))
+    except Exception:
+        pass
+
+devices = {}
+
+def record_device(ip_str, source, ts_val, is_online_flag=False):
+    ip_str = (ip_str or "").strip().strip("[]()")
+    if not ip_str:
+        return
+    entry = devices.get(ip_str)
+    ts_fmt = datetime.datetime.fromtimestamp(ts_val).strftime("%Y-%m-%d %H:%M:%S") if ts_val else "-"
+    if not entry:
+        devices[ip_str] = {
+            "ip": ip_str,
+            "source": source,
+            "is_online": bool(is_online_flag or (ts_val and ts_val >= online_cutoff)),
+            "hits": 1,
+            "first_seen": ts_fmt,
+            "last_seen": ts_fmt,
+            "_first_ts": ts_val or 0,
+            "_last_ts": ts_val or 0,
+        }
+    else:
+        entry["hits"] += 1
+        if is_online_flag or (ts_val and ts_val >= online_cutoff):
+            entry["is_online"] = True
+        if ts_val:
+            if not entry["_first_ts"] or ts_val < entry["_first_ts"]:
+                entry["_first_ts"] = ts_val
+                entry["first_seen"] = ts_fmt
+            if ts_val > entry["_last_ts"]:
+                entry["_last_ts"] = ts_val
+                entry["last_seen"] = ts_fmt
+
+if proto != "ssh":
+    log_path = "/var/log/xray/access.log"
+    if os.path.isfile(log_path):
+        line_re = re.compile(
+            r"^(\d{4}/\d{2}/\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\.\d+)?\s+"
+            r"(?:from\s+)?(?:(?:tcp|udp):)?(\[[0-9a-fA-F:]+\]|[0-9.]+)(?::\d+)?\s+"
+        )
+        email_re = re.compile(r"(?:^|\s)email:\s*([^\s,;]+)")
+        ts_cache = {}
+        try:
+            with open(log_path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                start = max(0, size - 5 * 1024 * 1024)
+                f.seek(start)
+                if start > 0:
+                    f.readline()
+                raw = f.read().decode("utf-8", errors="ignore")
+            for line in raw.splitlines():
+                if "email:" not in line or target not in line:
+                    continue
+                em = email_re.search(line)
+                if not em or em.group(1).strip() != target:
+                    continue
+                m = line_re.match(line)
+                if not m:
+                    continue
+                ts_key = m.group(1) + " " + m.group(2)
+                ts_val = ts_cache.get(ts_key)
+                if ts_val is None:
+                    try:
+                        ts_val = datetime.datetime.strptime(ts_key, "%Y/%m/%d %H:%M:%S").timestamp()
+                    except ValueError:
+                        continue
+                    ts_cache[ts_key] = ts_val
+                if ts_val < cutoff_ts:
+                    continue
+                raw_ip = m.group(3).strip("[]")
+                try:
+                    ip_obj = ipaddress.ip_address(raw_ip)
+                except ValueError:
+                    continue
+                if ip_obj.is_loopback or ip_obj.is_unspecified:
+                    continue
+                record_device(str(ip_obj), "xray", ts_val)
+        except OSError:
+            pass
+else:
+    # SSH: Dropbear, OpenSSH, who, OpenVPN
+    db_pids, sshd_pids = set(), set()
+    try:
+        ps_out = subprocess.check_output(["ps", "-eo", "pid=,ppid=,comm="], text=True, stderr=subprocess.DEVNULL)
+        for line in ps_out.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[0].isdigit() and parts[1].isdigit():
+                pid, ppid, comm = int(parts[0]), int(parts[1]), parts[2].lower()
+                if comm == "dropbear" and ppid > 1:
+                    db_pids.add(pid)
+                elif comm == "sshd" and ppid > 1:
+                    sshd_pids.add(pid)
+    except Exception:
+        pass
+
+    log_lines = []
+    for lp in ("/var/log/auth.log", "/var/log/secure"):
+        if os.path.isfile(lp):
+            try:
+                with open(lp, "rb") as f:
+                    f.seek(0, os.SEEK_END)
+                    sz = f.tell()
+                    f.seek(max(0, sz - 4 * 1024 * 1024))
+                    log_lines.extend(f.read().decode("utf-8", errors="ignore").splitlines())
+            except OSError:
+                pass
+    if not log_lines:
+        try:
+            jout = subprocess.check_output(
+                ["journalctl", "-u", "dropbear", "-u", "ssh", "-u", "sshd", "--since", "24 hours ago", "--no-pager"],
+                text=True, stderr=subprocess.DEVNULL
+            )
+            log_lines.extend(jout.splitlines())
+        except Exception:
+            pass
+
+    db_re = re.compile(r"dropbear\[(\d+)\].*Password auth succeeded for ['\"]?([^'\"\s]+)['\"]?\s+from\s+([^\s]+)", re.IGNORECASE)
+    ssh_re = re.compile(r"sshd\[(\d+)\].*Accepted\s+\S+\s+for\s+([^\s]+)\s+from\s+([^\s]+)", re.IGNORECASE)
+    for line in log_lines:
+        m = db_re.search(line)
+        if m and m.group(2) == target:
+            pid = int(m.group(1))
+            raw_ip = m.group(3).split(":")[0]
+            label = f"SSH-WS (PID {pid})" if raw_ip.startswith("127.") else raw_ip
+            record_device(label, "dropbear", now_ts, is_online_flag=(pid in db_pids))
+            continue
+        m2 = ssh_re.search(line)
+        if m2 and m2.group(2) == target:
+            pid = int(m2.group(1))
+            raw_ip = m2.group(3).split(":")[0]
+            label = f"OpenSSH-WS (PID {pid})" if raw_ip.startswith("127.") else raw_ip
+            record_device(label, "openssh", now_ts, is_online_flag=(pid in sshd_pids))
+
+    try:
+        who_out = subprocess.check_output(["who"], text=True, stderr=subprocess.DEVNULL)
+        for line in who_out.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[0] == target:
+                ip = parts[4].strip("()")
+                if ip and not ip.startswith("127."):
+                    record_device(ip, "tty", now_ts, is_online_flag=True)
+    except Exception:
+        pass
+
+    for ovpn_log in ("/etc/openvpn/server/openvpn-tcp.log", "/etc/openvpn/server/openvpn-udp.log"):
+        if os.path.isfile(ovpn_log):
+            try:
+                for line in open(ovpn_log, "r", encoding="utf-8", errors="ignore"):
+                    if line.startswith("CLIENT_LIST,"):
+                        cols = line.strip().split(",")
+                        if len(cols) >= 3 and cols[1] == target:
+                            ip = cols[2].split(":")[0]
+                            if ip:
+                                record_device(ip, "openvpn", now_ts, is_online_flag=True)
+            except OSError:
+                pass
+
+# Read last 10 violation log entries for this user
+violations = []
+vlog = "/root/log-limit.txt"
+if os.path.isfile(vlog):
+    try:
+        with open(vlog, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()[-500:]
+        for line in reversed(lines):
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) >= 4 and parts[1].lower() == proto and parts[2] == target:
+                violations.append(line.strip())
+                if len(violations) >= 10:
+                    break
+    except OSError:
+        pass
+
+sorted_devices = sorted(
+    devices.values(),
+    key=lambda d: (0 if d["is_online"] else 1, -d["_last_ts"], -d["hits"]),
+)
+for d in sorted_devices:
+    d.pop("_first_ts", None)
+    d.pop("_last_ts", None)
+
+active_count = sum(1 for d in sorted_devices if d["is_online"])
+
+print(json.dumps({
+    "protocol": proto,
+    "username": target,
+    "window_minutes": int(cfg["window_minutes"]),
+    "ip_limit": ip_limit,
+    "active_device_count": active_count,
+    "recent_device_count": len(sorted_devices),
+    "current_strikes": current_strikes,
+    "devices": sorted_devices[:50],
+    "violations": violations,
+}))
+PYTHON;
+
+        $res = $this->vpn->runPython($py);
+        $parsed = json_decode((string) ($res['output'] ?? ''), true);
+
+        if (!is_array($parsed)) {
+            return [
+                'protocol' => $protocol,
+                'username' => $username,
+                'window_minutes' => $windowMinutes,
+                'ip_limit' => 1,
+                'active_device_count' => 0,
+                'recent_device_count' => 0,
+                'current_strikes' => 0,
+                'devices' => [],
+                'violations' => [],
+            ];
+        }
+
+        return $parsed;
+    }
 }
