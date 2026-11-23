@@ -1,0 +1,149 @@
+#!/bin/bash
+set -u
+
+WEB_DIR="/var/www/webpanel-mvc"
+DOMAIN="$(cat /etc/xray/domain 2>/dev/null | head -n 1 | tr -d '\r\n')"
+SOCK="/tmp/vpn-bridge.sock"
+
+green='\e[0;32m'
+red='\e[1;31m'
+yellow='\e[1;33m'
+cyan='\e[1;36m'
+NC='\e[0m'
+
+ok()   { echo -e "  [${green}OK${NC}]   $*"; }
+warn() { echo -e "  [${yellow}WARN${NC}] $*"; }
+fail() { echo -e "  [${red}FAIL${NC}] $*"; }
+
+echo -e "${cyan}==========================================================${NC}"
+echo -e "${yellow}      DIAGNOSTIK EXTERNAL REST API PANEL VPNXRAY          ${NC}"
+echo -e "${cyan}==========================================================${NC}"
+echo -e "Domain VPS    : ${DOMAIN:-tidak ditemukan}"
+echo -e "Web Panel Dir : ${WEB_DIR}"
+echo -e "Waktu UTC     : $(date -u '+%Y-%m-%d %H:%M:%S UTC') (Unix: $(date +%s))"
+echo ""
+
+echo -e "${cyan}[1/6] Status Layanan Sistem${NC}"
+for svc in nginx haproxy xray ssh sshd vpn-bridge; do
+  if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      ok "Service ${svc}: active"
+    else
+      fail "Service ${svc}: $(systemctl is-active "$svc" 2>/dev/null || echo inactive)"
+    fi
+  fi
+done
+fpm_svc="$(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE 'php[0-9.]+-fpm\.service' | head -n 1 || true)"
+if [[ -n "$fpm_svc" ]]; then
+  ok "PHP-FPM aktif: ${fpm_svc}"
+else
+  fail "Tidak ada layanan php*-fpm yang aktif!"
+fi
+echo ""
+
+echo -e "${cyan}[2/6] Konfigurasi Nginx (Port 1010 HTTP/1.1 & Port 1013 HTTP/2)${NC}"
+if nginx -t >/dev/null 2>&1; then
+  ok "nginx -t: syntax valid"
+else
+  fail "nginx -t gagal! Jalankan 'nginx -t' untuk melihat error."
+fi
+if [[ -f /etc/nginx/conf.d/xray.conf ]]; then
+  if awk '/listen 1010/,/^}/' /etc/nginx/conf.d/xray.conf | grep -q 'webpanel-mvc/public'; then
+    ok "Port 1010 (HTTP/1.1) sudah memiliki routing Laravel webpanel-mvc"
+  else
+    fail "Port 1010 (HTTP/1.1) BELUM memiliki routing Laravel! Client HTTP/1.1 akan timeout ke ws.py (10015). Jalankan cek-update."
+  fi
+  if grep -q 'HTTP_AUTHORIZATION' /etc/nginx/conf.d/xray.conf; then
+    ok "fastcgi_param HTTP_AUTHORIZATION terpasang di xray.conf"
+  else
+    warn "fastcgi_param HTTP_AUTHORIZATION belum ada di xray.conf (header Bearer mungkin hilang di beberapa setup)"
+  fi
+else
+  fail "/etc/nginx/conf.d/xray.conf tidak ditemukan"
+fi
+if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+  ok "haproxy.cfg: syntax valid"
+else
+  warn "haproxy -c mengembalikan peringatan/error"
+fi
+echo ""
+
+echo -e "${cyan}[3/6] VPN Bridge Socket (${SOCK})${NC}"
+if [[ -S "$SOCK" ]]; then
+  ok "Socket ditemukan: $(ls -l "$SOCK" 2>/dev/null)"
+  bridge_out="$(python3 -c '
+import socket, json, base64
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5)
+    s.connect("/tmp/vpn-bridge.sock")
+    s.sendall(json.dumps({"cmd": base64.b64encode(b"echo BRIDGE_PING_OK").decode(), "mode": "bash", "stdin": ""}).encode())
+    s.shutdown(socket.SHUT_WR)
+    data = s.recv(4096).decode()
+    s.close()
+    res = json.loads(data)
+    print("OK" if res.get("rc") == 0 and "BRIDGE_PING_OK" in res.get("stdout", "") else "ERR:" + data)
+except Exception as e:
+    print("ERR:" + str(e))
+' 2>&1 || echo "ERR:python")"
+  if [[ "$bridge_out" == "OK" ]]; then
+    ok "Ping vpn-bridge.sock berhasil (BRIDGE_PING_OK)"
+  else
+    fail "Ping vpn-bridge.sock gagal: ${bridge_out}"
+  fi
+else
+  fail "Socket ${SOCK} tidak ditemukan! Jalankan: systemctl restart vpn-bridge"
+fi
+echo ""
+
+echo -e "${cyan}[4/6] Status Pengaturan External REST API (Database Laravel)${NC}"
+if [[ -d "$WEB_DIR" ]] && command -v php >/dev/null 2>&1; then
+  php -r '
+    require "'"$WEB_DIR"'/vendor/autoload.php";
+    $app = require "'"$WEB_DIR"'/bootstrap/app.php";
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    $s = App\Models\Setting::whereIn("key", ["external_api_enabled","external_api_token_hash","external_api_token_prefix","external_api_hmac_secret","external_api_ip_allowlist"])->pluck("value","key");
+    echo "enabled=" . ($s["external_api_enabled"] ?? "unset") . "\n";
+    echo "token_hash=" . (!empty($s["external_api_token_hash"]) ? "SET (" . ($s["external_api_token_prefix"] ?? "") . ")" : "EMPTY") . "\n";
+    echo "hmac_secret=" . (!empty($s["external_api_hmac_secret"]) ? "SET" : "EMPTY") . "\n";
+    echo "ip_allowlist=" . (trim((string)($s["external_api_ip_allowlist"] ?? "")) ?: "(semua IP diizinkan)") . "\n";
+  ' 2>/dev/null | while IFS= read -r line; do
+    echo "  - $line"
+  done
+  if (cd "$WEB_DIR" && php artisan route:list --path=api/v1/vpn 2>/dev/null | grep -q 'api/v1/vpn/health'); then
+    ok "Route /api/v1/vpn/health terdaftar di Laravel"
+  else
+    fail "Route /api/v1/vpn/health TIDAK terdaftar! Jalankan cek-update & php artisan route:clear"
+  fi
+else
+  fail "Direktori ${WEB_DIR} atau PHP tidak ditemukan"
+fi
+echo ""
+
+echo -e "${cyan}[5/6] Uji Endpoint HTTPS (HTTP/2 vs HTTP/1.1)${NC}"
+if [[ -n "$DOMAIN" ]] && command -v curl >/dev/null 2>&1; then
+  h2_code="$(curl -sS -o /tmp/diag_h2.out -w '%{http_code}' --http2 --max-time 6 "https://${DOMAIN}/api/v1/vpn/health" 2>/tmp/diag_h2.err || echo 000)"
+  h1_code="$(curl -sS -o /tmp/diag_h1.out -w '%{http_code}' --http1.1 --max-time 6 "https://${DOMAIN}/api/v1/vpn/health" 2>/tmp/diag_h1.err || echo 000)"
+  if [[ "$h2_code" == "401" || "$h2_code" == "200" || "$h2_code" == "403" || "$h2_code" == "503" ]]; then
+    ok "HTTP/2   -> HTTP ${h2_code}: $(head -c 140 /tmp/diag_h2.out 2>/dev/null)"
+  else
+    fail "HTTP/2   -> HTTP ${h2_code} ($(cat /tmp/diag_h2.err 2>/dev/null))"
+  fi
+  if [[ "$h1_code" == "401" || "$h1_code" == "200" || "$h1_code" == "403" || "$h1_code" == "503" ]]; then
+    ok "HTTP/1.1 -> HTTP ${h1_code}: $(head -c 140 /tmp/diag_h1.out 2>/dev/null)"
+  else
+    fail "HTTP/1.1 -> HTTP ${h1_code} ($(cat /tmp/diag_h1.err 2>/dev/null)) — Port 1010 Nginx perlu dipatch!"
+  fi
+  rm -f /tmp/diag_h2.out /tmp/diag_h2.err /tmp/diag_h1.out /tmp/diag_h1.err
+else
+  warn "Domain atau curl tidak tersedia untuk uji HTTPS."
+fi
+echo ""
+
+echo -e "${cyan}[6/6] Cuplikan Error Terakhir laravel.log${NC}"
+if [[ -f "${WEB_DIR}/storage/logs/laravel.log" ]]; then
+  grep -E 'ERROR|CRITICAL|Exception' "${WEB_DIR}/storage/logs/laravel.log" 2>/dev/null | tail -n 8 | sed 's/^/  /' || echo "  (Tidak ada error terbaru)"
+else
+  echo "  (Belum ada file laravel.log)"
+fi
+echo -e "${cyan}==========================================================${NC}"
