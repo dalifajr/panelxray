@@ -676,27 +676,40 @@ while True:
         break
     block = raw[open_idx:close_idx + 1]
     out_parts.append(raw[pos:open_idx])
-    if re.search(r'"network"\s*:\s*"(?:ws|grpc)"', block) and "trustedXForwardedFor" not in block:
-        m_sock = re.search(r'"sockopt"\s*:\s*\{', block)
-        if m_sock:
-            insert_at = m_sock.end()
-            # Check whether sockopt is empty or already has properties
-            rest = block[insert_at:].lstrip()
-            sep = "" if rest.startswith("}") else ","
-            patched = (
-                block[:insert_at]
-                + '\n            "trustedXForwardedFor": ["127.0.0.1", "::1"]'
-                + sep
-                + block[insert_at:]
+    if re.search(r'"network"\s*:\s*"(?:ws|grpc)"', block):
+        if "trustedXForwardedFor" in block:
+            # Migrate older IP-list values (e.g. ["127.0.0.1", "::1"]) to HTTP header names required by Xray 26.6+
+            migrated = re.sub(
+                r'("trustedXForwardedFor"\s*:\s*)\[\s*"(?:127\.0\.0\.1|::1)"(?:\s*,\s*"(?:127\.0\.0\.1|::1)")*\s*\]',
+                r'\1["X-Forwarded-For", "X-Real-IP"]',
+                block,
             )
+            if migrated != block:
+                out_parts.append(migrated)
+                changed += 1
+            else:
+                out_parts.append(block)
         else:
-            inner = block[:-1].rstrip()
-            patched = (
-                inner
-                + ',\n          "sockopt": {\n            "trustedXForwardedFor": ["127.0.0.1", "::1"]\n          }\n        }'
-            )
-        out_parts.append(patched)
-        changed += 1
+            m_sock = re.search(r'"sockopt"\s*:\s*\{', block)
+            if m_sock:
+                insert_at = m_sock.end()
+                # Check whether sockopt is empty or already has properties
+                rest = block[insert_at:].lstrip()
+                sep = "" if rest.startswith("}") else ","
+                patched = (
+                    block[:insert_at]
+                    + '\n            "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]'
+                    + sep
+                    + block[insert_at:]
+                )
+            else:
+                inner = block[:-1].rstrip()
+                patched = (
+                    inner
+                    + ',\n          "sockopt": {\n            "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]\n          }\n        }'
+                )
+            out_parts.append(patched)
+            changed += 1
     else:
         out_parts.append(block)
     pos = close_idx + 1

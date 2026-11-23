@@ -52,7 +52,7 @@
                 "path": "/vless"
           },
           "sockopt": {
-            "trustedXForwardedFor": ["127.0.0.1", "::1"]
+            "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
           }
         }
      },
@@ -75,7 +75,7 @@
                 "path": "/vmess"
            },
            "sockopt": {
-             "trustedXForwardedFor": ["127.0.0.1", "::1"]
+             "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
            }
          }
        },
@@ -99,7 +99,7 @@
                "path": "/trojan-ws"
             },
             "sockopt": {
-              "trustedXForwardedFor": ["127.0.0.1", "::1"]
+              "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
             }
          }
      },
@@ -123,7 +123,7 @@
                "path": "/ss-ws"
            },
            "sockopt": {
-             "trustedXForwardedFor": ["127.0.0.1", "::1"]
+             "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
            }
         }
      },
@@ -146,7 +146,7 @@
                 "serviceName": "vless-grpc"
            },
            "sockopt": {
-             "trustedXForwardedFor": ["127.0.0.1", "::1"]
+             "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
            }
         }
      },
@@ -169,7 +169,7 @@
                 "serviceName": "vmess-grpc"
           },
           "sockopt": {
-            "trustedXForwardedFor": ["127.0.0.1", "::1"]
+            "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
           }
         }
      },
@@ -192,7 +192,7 @@
                "serviceName": "trojan-grpc"
          },
          "sockopt": {
-           "trustedXForwardedFor": ["127.0.0.1", "::1"]
+           "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
          }
       }
    },
@@ -216,7 +216,7 @@
            "serviceName": "ss-grpc"
           },
           "sockopt": {
-            "trustedXForwardedFor": ["127.0.0.1", "::1"]
+            "trustedXForwardedFor": ["X-Forwarded-For", "X-Real-IP"]
           }
        }
     }
