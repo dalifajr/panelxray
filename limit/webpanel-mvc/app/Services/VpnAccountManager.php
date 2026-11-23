@@ -190,7 +190,7 @@ PYTHON;
         ];
     }
 
-    public function listAccounts(?string $protocol = null, ?string $status = null, ?string $search = null): array
+    public function listAccounts(?string $protocol = null, ?string $status = null, ?string $search = null, bool $includeConfig = false): array
     {
         $protoFilter = null;
         if ($protocol !== null && $protocol !== '' && strtolower($protocol) !== 'all') {
@@ -203,6 +203,10 @@ PYTHON;
             ->when($protoFilter, fn ($q) => $q->where('service', $protoFilter))
             ->get()
             ->keyBy(fn ($a) => strtolower($a->service . ':' . $a->vpn_username));
+
+        $bulkConfigs = $includeConfig ? $this->readAllXrayConfigsBulk() : ['domain' => '', 'uuids' => []];
+        $bulkDomain = (string) ($bulkConfigs['domain'] ?? '');
+        $bulkUuids = is_array($bulkConfigs['uuids'] ?? null) ? $bulkConfigs['uuids'] : [];
 
         $items = [];
         $searchLower = $search !== null ? strtolower(trim($search)) : '';
@@ -233,7 +237,10 @@ PYTHON;
             }
 
             $local = $localMap->get(strtolower($svc . ':' . $uname));
-            $items[] = [
+            $quotaGb = (int) ($row['quota'] ?? 0);
+            $ipLimit = max(1, (int) ($row['ip_limit'] ?? 1));
+
+            $entry = [
                 'protocol' => $svc,
                 'username' => $uname,
                 'status' => $computedStatus,
@@ -242,12 +249,104 @@ PYTHON;
                 'is_trial' => (bool) ($local?->is_trial ?? false),
                 'created_at' => (string) ($row['created_at'] ?? ''),
                 'expired_at' => $expiresAt,
-                'quota_gb' => (int) ($row['quota'] ?? 0),
-                'ip_limit' => (int) ($row['ip_limit'] ?? 1),
+                'quota_gb' => $quotaGb,
+                'ip_limit' => $ipLimit,
             ];
+
+            if ($includeConfig) {
+                if ($svc === 'ssh') {
+                    $sshInfo = [
+                        'host' => $bulkDomain,
+                        'username' => $uname,
+                        'password' => null,
+                        'ports' => [
+                            'openssh' => 22,
+                            'ws_tls' => 443,
+                            'ws_ntls' => 80,
+                            'dropbear' => '109, 143',
+                            'udp_custom' => '1-65535',
+                        ],
+                        'ws_payload' => "GET / HTTP/1.1[crlf]Host: {$bulkDomain}[crlf]Upgrade: websocket[crlf][crlf]",
+                    ];
+                    $entry['domain'] = $bulkDomain;
+                    $entry['uuid'] = null;
+                    $entry['ports'] = $sshInfo['ports'];
+                    $entry['links'] = [];
+                    $entry['ssh_info'] = $sshInfo;
+                    $entry['formatted_text'] = $this->formatSshText($sshInfo, $expiresAt, $ipLimit);
+                } else {
+                    $uuid = (string) ($bulkUuids[strtolower($svc . ':' . $uname)] ?? '');
+                    $links = $this->buildXrayLinks($svc, $bulkDomain, $uuid, $uname, '3');
+                    $entry['domain'] = $bulkDomain;
+                    $entry['uuid'] = $uuid !== '' ? $uuid : null;
+                    $entry['ports'] = ['tls' => 443, 'ntls' => 80, 'grpc' => 443];
+                    $entry['links'] = $links;
+                    $entry['ssh_info'] = null;
+                    $entry['formatted_text'] = $this->formatXrayText($svc, $uname, $bulkDomain, $uuid, $quotaGb, $ipLimit, $expiresAt, $links);
+                }
+            }
+
+            $items[] = $entry;
         }
 
         return $items;
+    }
+
+    private function readAllXrayConfigsBulk(): array
+    {
+        $py = <<<'PYTHON'
+import json, os, re, glob
+
+domain = ''
+try:
+    with open('/etc/xray/domain', 'r', encoding='utf-8') as f:
+        domain = f.read().strip()
+except Exception:
+    pass
+
+marker_to_svc = {'###': 'vmess', '#&': 'vless', '#!': 'trojan', '#!#': 'shadowsocks'}
+uuids = {}
+
+try:
+    with open('/etc/xray/config.json', 'r', encoding='utf-8', errors='ignore') as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[0] in marker_to_svc:
+            svc = marker_to_svc[parts[0]]
+            uname = parts[1].lower()
+            key = f"{svc}:{uname}"
+            if key not in uuids and i + 1 < len(lines):
+                m = re.search(r'"(id|password)"\s*:\s*"([^"]+)"', lines[i + 1])
+                if m:
+                    uuids[key] = m.group(2)
+except Exception:
+    pass
+
+for svc in ('vmess', 'vless', 'trojan', 'shadowsocks'):
+    for sp in glob.glob(f'/etc/kyt/suspended/{svc}/*'):
+        uname = os.path.basename(sp).lower()
+        key = f"{svc}:{uname}"
+        if key not in uuids:
+            try:
+                with open(sp, 'r', encoding='utf-8', errors='ignore') as f:
+                    m = re.search(r'"(id|password)"\s*:\s*"([^"]+)"', f.read())
+                    if m:
+                        uuids[key] = m.group(2)
+            except Exception:
+                pass
+
+print(json.dumps({'domain': domain, 'uuids': uuids}))
+PYTHON;
+
+        $res = $this->vpn->runPython($py);
+        if (!empty($res['success'])) {
+            $decoded = json_decode((string) ($res['output'] ?? ''), true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+        return ['domain' => '', 'uuids' => []];
     }
 
     public function getAccountDetail(string $protocol, string $username, string $sniMode = '3', ?string $plainPassword = null): ?array

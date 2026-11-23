@@ -244,4 +244,46 @@ class ExternalVpnApiTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('data.deleted', true);
     }
+
+    public function test_list_accounts_with_include_config_returns_bulk_config_details(): void
+    {
+        $mock = Mockery::mock(VpnService::class);
+        $mock->shouldReceive('getAccounts')->with('vmess')->andReturn([
+            [
+                'service' => 'vmess',
+                'username' => 'bulk_vmess_01',
+                'active' => 1,
+                'created_at' => '2026-11-23',
+                'expires_at' => '2026-12-23',
+                'ip_limit' => 2,
+                'quota' => 100,
+            ],
+        ]);
+        $mock->shouldReceive('runPython')->once()->andReturn([
+            'success' => true,
+            'output' => json_encode([
+                'domain' => 'sg1.vpn.test',
+                'uuids' => [
+                    'vmess:bulk_vmess_01' => '11111111-2222-3333-4444-555555555555',
+                ],
+            ]),
+            'error' => '',
+        ]);
+
+        $this->app->instance(VpnService::class, $mock);
+
+        $uri = '/api/v1/vpn/accounts?protocol=vmess&include_config=1';
+        $headers = $this->signedHeaders('GET', $uri);
+
+        $res = $this->withHeaders($headers)->get($uri);
+        $res->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.count', 1)
+            ->assertJsonPath('data.accounts.0.username', 'bulk_vmess_01')
+            ->assertJsonPath('data.accounts.0.domain', 'sg1.vpn.test')
+            ->assertJsonPath('data.accounts.0.uuid', '11111111-2222-3333-4444-555555555555');
+
+        $this->assertStringStartsWith('vmess://', (string) $res->json('data.accounts.0.links.tls'));
+        $this->assertStringContainsString('bulk_vmess_01', (string) $res->json('data.accounts.0.formatted_text'));
+    }
 }

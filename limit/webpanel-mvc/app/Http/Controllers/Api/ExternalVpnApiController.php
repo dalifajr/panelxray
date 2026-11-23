@@ -50,12 +50,14 @@ class ExternalVpnApiController extends Controller
             'protocol' => ['nullable', 'string', 'in:all,ssh,vmess,vless,trojan,shadowsocks'],
             'status' => ['nullable', 'string', 'in:all,active,suspended,expired'],
             'search' => ['nullable', 'string', 'max:64'],
+            'include_config' => ['nullable'],
         ]);
 
         $accounts = $this->manager->listAccounts(
             $validated['protocol'] ?? null,
             $validated['status'] ?? null,
-            $validated['search'] ?? null
+            $validated['search'] ?? null,
+            $request->boolean('include_config', false)
         );
 
         return response()->json([
