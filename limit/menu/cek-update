@@ -369,6 +369,9 @@ for unit in ssh sshd dropbear ws xray cron kyt vmip vlip trip ssip sship; do
 done
 
 rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis 2>/dev/null || true
+if [ -x /usr/local/sbin/vpn-ssh-traffic-sync ]; then
+  /usr/local/sbin/vpn-ssh-traffic-sync >/dev/null 2>&1 || true
+fi
 exit 0
 EOF
 
@@ -623,6 +626,10 @@ sync_runtime_configs() {
 
   # Sync limit-ip daemon & systemd units (low CPU priority Nice=15 so co-hosted web store is never impacted)
   ensure_limit_ip_services
+
+  if [ -x /usr/local/sbin/vpn-ssh-traffic-sync ]; then
+    /usr/local/sbin/vpn-ssh-traffic-sync >>"$UPDATE_LOG" 2>&1 || true
+  fi
 }
 
 ensure_limit_ip_services() {
