@@ -50,6 +50,9 @@
          "network": "ws",
             "wsSettings": {
                 "path": "/vless"
+          },
+          "sockopt": {
+            "trustedXForwardedFor": ["127.0.0.1", "::1"]
           }
         }
      },
@@ -70,6 +73,9 @@
          "network": "ws",
             "wsSettings": {
                 "path": "/vmess"
+           },
+           "sockopt": {
+             "trustedXForwardedFor": ["127.0.0.1", "::1"]
            }
          }
        },
@@ -91,6 +97,9 @@
            "network": "ws",
            "wsSettings": {
                "path": "/trojan-ws"
+            },
+            "sockopt": {
+              "trustedXForwardedFor": ["127.0.0.1", "::1"]
             }
          }
      },
@@ -112,6 +121,9 @@
           "network": "ws",
              "wsSettings": {
                "path": "/ss-ws"
+           },
+           "sockopt": {
+             "trustedXForwardedFor": ["127.0.0.1", "::1"]
            }
         }
      },
@@ -132,6 +144,9 @@
              "network": "grpc",
              "grpcSettings": {
                 "serviceName": "vless-grpc"
+           },
+           "sockopt": {
+             "trustedXForwardedFor": ["127.0.0.1", "::1"]
            }
         }
      },
@@ -152,6 +167,9 @@
          "network": "grpc",
             "grpcSettings": {
                 "serviceName": "vmess-grpc"
+          },
+          "sockopt": {
+            "trustedXForwardedFor": ["127.0.0.1", "::1"]
           }
         }
      },
@@ -172,6 +190,9 @@
          "network": "grpc",
            "grpcSettings": {
                "serviceName": "trojan-grpc"
+         },
+         "sockopt": {
+           "trustedXForwardedFor": ["127.0.0.1", "::1"]
          }
       }
    },
@@ -193,6 +214,9 @@
      "network": "grpc",
         "grpcSettings": {
            "serviceName": "ss-grpc"
+          },
+          "sockopt": {
+            "trustedXForwardedFor": ["127.0.0.1", "::1"]
           }
        }
     }

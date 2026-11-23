@@ -332,6 +332,8 @@ for line in raw.splitlines():
     raw_ip = m.group(3).strip("[]")
     try:
         ip_obj = ipaddress.ip_address(raw_ip)
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+            ip_obj = ip_obj.ipv4_mapped
     except ValueError:
         continue
     if ip_obj.is_loopback or ip_obj.is_unspecified:

@@ -601,16 +601,126 @@ if updated != raw:
 PYEOF
     fi
 
-    # Validate Xray config syntax before restarting; auto-rollback if invalid
+    # Validate base Xray config syntax first; auto-rollback if invalid
     local xray_bin_test=""
     for xb in /usr/local/bin/xray /usr/bin/xray; do
       [ -x "$xb" ] && xray_bin_test="$xb" && break
     done
+    local base_xray_ok=1
     if [ -n "$xray_bin_test" ]; then
       if ! "$xray_bin_test" run -test -config /etc/xray/config.json >>"$UPDATE_LOG" 2>&1; then
         cp -af "$xray_cfg_bak" /etc/xray/config.json 2>/dev/null || true
+        base_xray_ok=0
         log_warn "Validasi xray config gagal — otomatis di-rollback ke backup sebelumnya agar koneksi VPN tetap aman."
       fi
+    fi
+
+    # Inject sockopt.trustedXForwardedFor into WS/gRPC inbounds (text-preserving: keeps #vmess/#vless markers intact!)
+    if [ "$base_xray_ok" -eq 1 ] && command -v python3 >/dev/null 2>&1; then
+      local xray_cfg_pre_xff="/tmp/xray-config.pre-xff.bak.$$"
+      cp -a /etc/xray/config.json "$xray_cfg_pre_xff" 2>/dev/null || true
+      local xff_changed=0
+      if python3 - <<'PYEOF' >>"$UPDATE_LOG" 2>&1; then
+import re
+import sys
+
+p = "/etc/xray/config.json"
+raw = open(p, "r", encoding="utf-8", errors="ignore").read()
+
+def find_matching_brace(text, open_idx):
+    depth = 0
+    in_str = False
+    esc = False
+    i = open_idx
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == "#":
+                nl = text.find("\n", i)
+                if nl == -1:
+                    return -1
+                i = nl
+            elif ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return i
+        i += 1
+    return -1
+
+pattern = re.compile(r'"streamSettings"\s*:\s*\{')
+out_parts = []
+pos = 0
+changed = 0
+
+while True:
+    m = pattern.search(raw, pos)
+    if not m:
+        out_parts.append(raw[pos:])
+        break
+    open_idx = m.end() - 1
+    close_idx = find_matching_brace(raw, open_idx)
+    if close_idx == -1:
+        out_parts.append(raw[pos:])
+        break
+    block = raw[open_idx:close_idx + 1]
+    out_parts.append(raw[pos:open_idx])
+    if re.search(r'"network"\s*:\s*"(?:ws|grpc)"', block) and "trustedXForwardedFor" not in block:
+        m_sock = re.search(r'"sockopt"\s*:\s*\{', block)
+        if m_sock:
+            insert_at = m_sock.end()
+            # Check whether sockopt is empty or already has properties
+            rest = block[insert_at:].lstrip()
+            sep = "" if rest.startswith("}") else ","
+            patched = (
+                block[:insert_at]
+                + '\n            "trustedXForwardedFor": ["127.0.0.1", "::1"]'
+                + sep
+                + block[insert_at:]
+            )
+        else:
+            inner = block[:-1].rstrip()
+            patched = (
+                inner
+                + ',\n          "sockopt": {\n            "trustedXForwardedFor": ["127.0.0.1", "::1"]\n          }\n        }'
+            )
+        out_parts.append(patched)
+        changed += 1
+    else:
+        out_parts.append(block)
+    pos = close_idx + 1
+
+if changed > 0:
+    open(p, "w", encoding="utf-8").write("".join(out_parts))
+    print(f"Injected sockopt.trustedXForwardedFor into {changed} Xray WS/gRPC inbound(s).")
+    sys.exit(0)
+sys.exit(10)
+PYEOF
+        xff_changed=1
+      else
+        xff_changed=0
+      fi
+
+      if [ "$xff_changed" -eq 1 ] && [ -n "$xray_bin_test" ]; then
+        if "$xray_bin_test" run -test -config /etc/xray/config.json >>"$UPDATE_LOG" 2>&1; then
+          log_ok "Xray trustedXForwardedFor aktif & tervalidasi (IP publik asli klien diteruskan dari Nginx)."
+        else
+          cp -af "$xray_cfg_pre_xff" /etc/xray/config.json 2>/dev/null || true
+          log_warn "Versi Xray belum mendukung trustedXForwardedFor — perubahan XFF otomatis di-rollback agar koneksi VPN tetap aman."
+        fi
+      fi
+      rm -f "$xray_cfg_pre_xff" 2>/dev/null || true
     fi
     rm -f "$xray_cfg_bak" 2>/dev/null || true
   fi

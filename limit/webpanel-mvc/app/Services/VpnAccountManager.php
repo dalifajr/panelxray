@@ -1232,7 +1232,7 @@ devices = {}
 loopback_devices = {}
 
 def record_into(bucket, ip_str, source, ts_val, is_online_flag=False):
-    ip_str = (ip_str or "").strip().strip("[]()")
+    ip_str = (ip_str or "").strip()
     if not ip_str:
         return
     entry = bucket.get(ip_str)
@@ -1307,6 +1307,8 @@ if proto != "ssh":
                 raw_ip = m.group(3).strip("[]")
                 try:
                     ip_obj = ipaddress.ip_address(raw_ip)
+                    if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+                        ip_obj = ip_obj.ipv4_mapped
                 except ValueError:
                     continue
                 if ip_obj.is_unspecified:
