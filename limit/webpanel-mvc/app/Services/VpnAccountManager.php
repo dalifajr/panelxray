@@ -123,9 +123,9 @@ class VpnAccountManager
             $protocol = null;
         }
 
+        // Always enforce global username uniqueness across ALL protocols (SQLite + all Xray markers + Linux SSH)
         $payloadB64 = base64_encode(json_encode([
             'username' => $username,
-            'protocol' => $protocol,
         ]));
 
         $py = <<<PYTHON
@@ -133,36 +133,26 @@ import base64, json, sqlite3
 
 data = json.loads(base64.b64decode("{$payloadB64}").decode("utf-8"))
 username = data["username"]
-protocol = data["protocol"]
 
 in_db = False
 try:
     conn = sqlite3.connect('/usr/bin/kyt/database.db')
-    if protocol:
-        row = conn.execute("SELECT COUNT(*) FROM account_registry WHERE LOWER(username)=LOWER(?) AND LOWER(service)=LOWER(?)", (username, protocol)).fetchone()
-    else:
-        row = conn.execute("SELECT COUNT(*) FROM account_registry WHERE LOWER(username)=LOWER(?)", (username,)).fetchone()
+    row = conn.execute("SELECT COUNT(*) FROM account_registry WHERE LOWER(username)=LOWER(?)", (username,)).fetchone()
     in_db = bool(row and row[0] > 0)
 except Exception:
     in_db = False
 
 in_xray = False
 markers = ['###', '#&', '#!', '#!#']
-if protocol in ('vmess', 'vless', 'trojan', 'shadowsocks'):
-    markers = [{'vmess':'###', 'vless':'#&', 'trojan':'#!', 'shadowsocks':'#!#'}[protocol]]
-elif protocol == 'ssh':
-    markers = []
-
-if markers:
-    try:
-        with open('/etc/xray/config.json', 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 2 and parts[0] in markers and parts[1].lower() == username.lower():
-                    in_xray = True
-                    break
-    except Exception:
-        in_xray = False
+try:
+    with open('/etc/xray/config.json', 'r', encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) >= 2 and parts[0] in markers and parts[1].lower() == username.lower():
+                in_xray = True
+                break
+except Exception:
+    in_xray = False
 
 print(json.dumps({"in_db": in_db, "in_xray": in_xray}))
 PYTHON;
@@ -172,13 +162,10 @@ PYTHON;
         $inDb = (bool) ($parsed['in_db'] ?? false);
         $inXray = (bool) ($parsed['in_xray'] ?? false);
 
-        $inSsh = false;
-        if ($protocol === null || $protocol === 'ssh') {
-            $safeUser = escapeshellarg($username);
-            $sshRes = $this->vpn->executeBash("id -u {$safeUser} >/dev/null 2>&1 && echo 1 || echo 0");
-            $lines = explode("\n", trim((string) ($sshRes['output'] ?? '0')));
-            $inSsh = ((int) end($lines)) === 1;
-        }
+        $safeUser = escapeshellarg($username);
+        $sshRes = $this->vpn->executeBash("id -u {$safeUser} >/dev/null 2>&1 && echo 1 || echo 0");
+        $lines = explode("\n", trim((string) ($sshRes['output'] ?? '0')));
+        $inSsh = ((int) end($lines)) === 1;
 
         $exists = $inDb || $inXray || $inSsh;
 
@@ -464,7 +451,7 @@ PYTHON;
             }
         }
 
-        $check = $this->checkUsername($username, $protocol);
+        $check = $this->checkUsername($username, null);
         if (!empty($check['exists'])) {
             throw new \RuntimeException("Username '{$username}' already exists on this server.", 409);
         }

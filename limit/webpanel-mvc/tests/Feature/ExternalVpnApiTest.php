@@ -287,4 +287,42 @@ class ExternalVpnApiTest extends TestCase
         $this->assertStringStartsWith('vmess://', (string) $res->json('data.accounts.0.links.tls'));
         $this->assertStringContainsString('bulk_vmess_01', (string) $res->json('data.accounts.0.formatted_text'));
     }
+
+    public function test_check_username_enforces_global_cross_protocol_uniqueness(): void
+    {
+        $capturedPyScript = '';
+        $mock = Mockery::mock(VpnService::class);
+        $mock->shouldReceive('runPython')->once()->andReturnUsing(function (string $script) use (&$capturedPyScript) {
+            $capturedPyScript = $script;
+            return [
+                'success' => true,
+                'output' => json_encode(['in_db' => true, 'in_xray' => true]),
+                'error' => '',
+            ];
+        });
+        $mock->shouldReceive('executeBash')->once()->andReturn([
+            'success' => true,
+            'output' => 'NO',
+            'error' => '',
+        ]);
+
+        $this->app->instance(VpnService::class, $mock);
+
+        // Even when protocol=ssh is passed, panel must check globally (all Xray + DB + SSH)
+        $uri = '/api/v1/vpn/check-username?username=iann&protocol=ssh';
+        $headers = $this->signedHeaders('GET', $uri);
+
+        $this->withHeaders($headers)
+            ->get($uri)
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.available', false)
+            ->assertJsonPath('data.exists', true);
+
+        // Confirm Python check did NOT restrict SQLite query to a single service (case-insensitive global check)
+        $this->assertStringContainsString('SELECT COUNT(*) FROM account_registry WHERE LOWER(username)=LOWER(?)', $capturedPyScript);
+        $this->assertStringNotContainsString('AND service', $capturedPyScript);
+        $this->assertStringContainsString('###', $capturedPyScript);
+        $this->assertStringContainsString('#!', $capturedPyScript);
+    }
 }
