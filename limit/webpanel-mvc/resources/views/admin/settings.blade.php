@@ -141,6 +141,60 @@
                     </form>
                 </div>
             </div>
+
+            <!-- External REST API Integration -->
+            <div class="card border-0 shadow-sm lift-hover mt-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-plug me-2 text-primary"></i>External REST API (Website Jualan)</h5>
+                    @if(($settings['external_api_enabled'] ?? 'false') === 'true')
+                        <span class="badge bg-success">Aktif</span>
+                    @else
+                        <span class="badge bg-secondary">Nonaktif</span>
+                    @endif
+                </div>
+                <div class="card-body p-4">
+                    @if(session('generated_external_api_token') || session('generated_external_api_hmac'))
+                        <div class="alert alert-warning border mb-3">
+                            <div class="fw-bold mb-2"><i class="fas fa-key me-1"></i>Kredensial Baru (Tampil Sekali — Segera Salin!)</div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold mb-1">Bearer API Token</label>
+                                <input type="text" class="form-control form-control-sm font-monospace" readonly value="{{ session('generated_external_api_token') }}" onclick="this.select()">
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label small fw-bold mb-1">HMAC-SHA256 Secret</label>
+                                <input type="text" class="form-control form-control-sm font-monospace" readonly value="{{ session('generated_external_api_hmac') }}" onclick="this.select()">
+                            </div>
+                        </div>
+                    @endif
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-secondary mb-1">Base URL Endpoint</label>
+                        <input type="text" class="form-control form-control-sm font-monospace bg-light" readonly value="{{ url('/api/v1/vpn') }}" onclick="this.select()">
+                        <small class="text-muted">Token aktif: <code>{{ $settings['external_api_token_prefix'] ?? 'Belum digenerate' }}</code></small>
+                    </div>
+
+                    <form action="{{ route('admin.settings.external-api') }}" method="POST" class="mb-3">
+                        @csrf
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="externalApiSwitch" name="external_api_enabled" value="true" {{ ($settings['external_api_enabled'] ?? 'false') === 'true' ? 'checked' : '' }}>
+                            <label class="form-check-label fw-bold" for="externalApiSwitch">Aktifkan External REST API v1</label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">IP Allowlist (Opsional)</label>
+                            <textarea class="form-control border font-monospace" name="external_api_ip_allowlist" rows="2" placeholder="103.10.20.30, 10.0.0.0/24 (kosongkan untuk semua IP)">{{ $settings['external_api_ip_allowlist'] ?? '' }}</textarea>
+                            <small class="text-muted">Pisahkan beberapa IP/CIDR dengan koma atau baris baru.</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Simpan Pengaturan API</button>
+                    </form>
+
+                    <form action="{{ route('admin.settings.external-api.regenerate') }}" method="POST" onsubmit="return confirm('Generate ulang API Token & HMAC Secret? Kredensial lama akan langsung tidak berlaku.')">
+                        @csrf
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="fas fa-sync-alt me-1"></i> Generate / Rotate API Token & HMAC Secret
+                        </button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 

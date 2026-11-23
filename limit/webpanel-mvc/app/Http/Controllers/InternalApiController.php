@@ -29,15 +29,19 @@ class InternalApiController extends Controller
         }
         $storedKey = Setting::where('key', 'payment_secret_key')->value('value');
         if (empty($storedKey)) {
-            $ok = ($secret === 'secret123');
+            if (!app()->environment('local', 'testing')) {
+                \Illuminate\Support\Facades\Log::warning('Internal API Auth Failed: payment_secret_key is not configured.');
+                return false;
+            }
+            $ok = hash_equals('secret123', $secret);
             if (!$ok) {
-                \Illuminate\Support\Facades\Log::warning("Internal API Auth Failed: Fallback key mismatch. Received: '{$secret}'");
+                \Illuminate\Support\Facades\Log::warning('Internal API Auth Failed: Fallback key mismatch.');
             }
             return $ok;
         }
         $ok = hash_equals($storedKey, $secret);
         if (!$ok) {
-            \Illuminate\Support\Facades\Log::warning("Internal API Auth Failed: Key mismatch. Stored: '{$storedKey}', Received: '{$secret}'");
+            \Illuminate\Support\Facades\Log::warning('Internal API Auth Failed: Key mismatch.');
         }
         return $ok;
     }

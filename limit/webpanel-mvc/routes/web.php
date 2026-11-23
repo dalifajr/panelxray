@@ -77,6 +77,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/admin/bot/quota/{id}/approve', [\App\Http\Controllers\TelegramBotController::class, 'approveQuota'])->name('admin.bot.quota.approve');
         Route::post('/admin/bot/quota/{id}/reject', [\App\Http\Controllers\TelegramBotController::class, 'rejectQuota'])->name('admin.bot.quota.reject');
         Route::post('/admin/settings/bot', [\App\Http\Controllers\SettingController::class, 'updateBotSettings'])->name('admin.settings.bot');
+        Route::post('/admin/settings/external-api', [\App\Http\Controllers\SettingController::class, 'updateExternalApi'])->name('admin.settings.external-api');
+        Route::post('/admin/settings/external-api/regenerate', [\App\Http\Controllers\SettingController::class, 'regenerateExternalApiCredentials'])->name('admin.settings.external-api.regenerate');
     });
     Route::get('/vpn/{protocol}/config/{user}', [VpnController::class, 'viewConfig'])->name('vpn.config');
 
@@ -161,7 +163,8 @@ Route::prefix('api/internal')->group(function () {
     Route::post('/transaction/cancel', [\App\Http\Controllers\InternalApiController::class, 'transactionCancel']);
 });
 
-// === TEMPORARY DIAGNOSTIC ROUTE — REMOVE AFTER DEBUGGING ===
+// === TEMPORARY DIAGNOSTIC ROUTES — RESTRICTED TO LOCAL ENVIRONMENT ONLY ===
+if (app()->environment('local')) {
 Route::get('/diag', function () {
     $results = [];
 
@@ -294,4 +297,5 @@ Route::get('/test-approve', function() {
         ], 500);
     }
 });
+}
 

@@ -110,6 +110,42 @@ class SettingController extends Controller
         return back()->with('sweet_success', 'Pengaturan bot Telegram berhasil diperbarui!');
     }
 
+    public function updateExternalApi(Request $request)
+    {
+        $request->validate([
+            'external_api_enabled' => 'nullable|string',
+            'external_api_ip_allowlist' => 'nullable|string|max:1000',
+        ]);
+
+        $enabled = $request->has('external_api_enabled') ? 'true' : 'false';
+        Setting::updateOrCreate(['key' => 'external_api_enabled'], ['value' => $enabled]);
+        Setting::updateOrCreate(
+            ['key' => 'external_api_ip_allowlist'],
+            ['value' => trim((string) $request->input('external_api_ip_allowlist', ''))]
+        );
+
+        return back()->with('sweet_success', 'Pengaturan External REST API berhasil disimpan!');
+    }
+
+    public function regenerateExternalApiCredentials(Request $request)
+    {
+        $plainToken = 'vpnx_' . bin2hex(random_bytes(24));
+        $plainHmac = bin2hex(random_bytes(32));
+
+        Setting::updateOrCreate(['key' => 'external_api_token_hash'], ['value' => hash('sha256', $plainToken)]);
+        Setting::updateOrCreate(['key' => 'external_api_token_prefix'], ['value' => substr($plainToken, 0, 12) . '...']);
+        Setting::updateOrCreate(
+            ['key' => 'external_api_hmac_secret'],
+            ['value' => \Illuminate\Support\Facades\Crypt::encryptString($plainHmac)]
+        );
+        Setting::updateOrCreate(['key' => 'external_api_enabled'], ['value' => 'true']);
+
+        return back()
+            ->with('sweet_success', 'Kredensial External REST API baru berhasil dibuat. Salin sekarang karena hanya ditampilkan sekali!')
+            ->with('generated_external_api_token', $plainToken)
+            ->with('generated_external_api_hmac', $plainHmac);
+    }
+
     private function setEnvValue($key, $value)
     {
         $path = base_path('.env');
