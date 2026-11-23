@@ -433,6 +433,7 @@ PYTHON;
             'domain' => $domain,
             'uuid' => $uuid,
             'password' => null,
+            'sni_mode' => $sniMode,
             'status' => $status,
             'quota_gb' => $quotaGb,
             'ip_limit' => $ipLimit,

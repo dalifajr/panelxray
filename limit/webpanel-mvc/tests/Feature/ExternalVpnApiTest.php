@@ -191,7 +191,8 @@ class ExternalVpnApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.username', 'alice_01')
             ->assertJsonPath('data.uuid', '11111111-2222-3333-4444-555555555555')
-            ->assertJsonPath('data.domain', 'sg1.vpn.test');
+            ->assertJsonPath('data.domain', 'sg1.vpn.test')
+            ->assertJsonPath('data.sni_mode', '3');
         $this->assertStringStartsWith('vmess://', (string) $res1->json('data.links.tls'));
 
         // Replay same Idempotency-Key with new nonce -> returns cached 201 without calling addws again
