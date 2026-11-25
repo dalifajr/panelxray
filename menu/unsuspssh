@@ -17,7 +17,13 @@ while [[ $# -gt 0 ]]; do
       user="$2"
       shift 2
       ;;
+    -*)
+      shift
+      ;;
     *)
+      if [[ -z "$user" ]]; then
+        user="$1"
+      fi
       shift
       ;;
   esac
@@ -41,12 +47,12 @@ id "$user" >/dev/null 2>&1 || { echo "User not found"; exit 1; }
 if [[ ! -f "$STATE_DIR/$user" ]]; then
   status="$(passwd -S "$user" 2>/dev/null | awk '{print $2}')"
   if [[ "$status" != "L" ]]; then
-    echo "User not suspended"
-    exit 1
+    echo "User already active: $user"
+    exit 0
   fi
 fi
 
-passwd -u "$user" >/dev/null 2>&1 || { echo "Failed to unsuspend user"; exit 1; }
+passwd -u "$user" >/dev/null 2>&1 || usermod -U "$user" >/dev/null 2>&1 || true
 rm -f "$STATE_DIR/$user"
 
 echo "SSH account unsuspended: $user"

@@ -179,6 +179,51 @@ class ExternalVpnApiController extends Controller
         return response()->json($body);
     }
 
+    public function reduce(Request $request, string $protocol, string $username): JsonResponse
+    {
+        $validated = $request->validate([
+            'days' => ['required', 'integer', 'min:1', 'max:365'],
+            'quota_gb' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'ip_limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $idempotencyKey = $this->extractIdempotencyKey($request, "reduce:{$protocol}:{$username}");
+        if ($idempotencyKey !== null) {
+            $cached = Cache::get($idempotencyKey);
+            if (is_array($cached)) {
+                return response()->json($cached['body'], $cached['status'])
+                    ->header('X-Idempotent-Replay', 'true');
+            }
+        }
+
+        try {
+            $result = $this->manager->reduceAccount(
+                $protocol,
+                $username,
+                (int) $validated['days'],
+                isset($validated['quota_gb']) ? (int) $validated['quota_gb'] : null,
+                isset($validated['ip_limit']) ? (int) $validated['ip_limit'] : null
+            );
+        } catch (InvalidArgumentException $e) {
+            return $this->error($e->getMessage(), 422);
+        } catch (\RuntimeException $e) {
+            $code = in_array($e->getCode(), [404, 409, 422, 502, 503], true) ? $e->getCode() : 500;
+            return $this->error($e->getMessage(), $code);
+        }
+
+        $body = [
+            'success' => true,
+            'message' => 'VPN account duration reduced successfully.',
+            'data' => $result,
+        ];
+
+        if ($idempotencyKey !== null) {
+            Cache::put($idempotencyKey, ['status' => 200, 'body' => $body], self::IDEMPOTENCY_TTL_SECONDS);
+        }
+
+        return response()->json($body);
+    }
+
     public function suspend(Request $request, string $protocol, string $username): JsonResponse
     {
         $validated = $request->validate([

@@ -12,9 +12,9 @@ KYT_VAR="${LIMIT_KYT_VAR:-/usr/bin/kyt/var.txt}"
 LEGACY_BOT_DB="${LIMIT_LEGACY_BOT_DB:-/etc/bot/.bot.db}"
 VIOLATION_LOG="${LIMIT_VIOLATION_LOG:-/root/log-limit.txt}"
 
-CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-120}"
-LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-300}"
-REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-5}"
+CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-60}"
+LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-150}"
+REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-2}"
 MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-1}"
 LOG_TAIL_BYTES="${LIMIT_LOG_TAIL_BYTES:-5242880}"
 
@@ -165,6 +165,38 @@ clear_strike() {
     local service="$1"
     local user="$2"
     rm -f "$(state_file "$service" "$user")"
+}
+
+decay_strike() {
+    local service="$1"
+    local user="$2"
+    local file
+    local strikes=0
+    local last_ts=0
+    local now_ts
+
+    file="$(state_file "$service" "$user")"
+    [[ -f "$file" ]] || return 0
+
+    strikes="$(awk '{print $1}' "$file" 2>/dev/null)"
+    strikes="$(safe_int "$strikes")"
+    last_ts="$(awk '{print $2}' "$file" 2>/dev/null)"
+    last_ts="$(safe_int "$last_ts")"
+    now_ts="$(date +%s)"
+
+    # If already 0 or file is older than 300 seconds, clear completely
+    if (( strikes <= 0 || (now_ts - last_ts) > 300 )); then
+        rm -f "$file"
+        return 0
+    fi
+
+    # Decay strike by 1 after a compliant cycle
+    strikes=$((strikes - 1))
+    if (( strikes <= 0 )); then
+        rm -f "$file"
+    else
+        printf '%s %s\n' "$strikes" "$now_ts" > "$file"
+    fi
 }
 
 next_strike() {
@@ -604,7 +636,7 @@ process_limit_entry() {
             clear_strike "$service" "$user"
         fi
     else
-        clear_strike "$service" "$user"
+        decay_strike "$service" "$user"
     fi
 }
 

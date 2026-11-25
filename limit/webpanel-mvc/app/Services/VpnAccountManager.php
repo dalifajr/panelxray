@@ -559,6 +559,46 @@ PYTHON;
         ];
     }
 
+    public function reduceAccount(string $protocol, string $username, int $days, ?int $quotaGb = null, ?int $ipLimit = null): array
+    {
+        $protocol = $this->assertProtocol($protocol);
+        $username = $this->assertUsername($username);
+        $days = max(1, min(365, $days));
+
+        $existing = $this->getAccountDetail($protocol, $username);
+        if (!$existing) {
+            throw new \RuntimeException("Account {$protocol}/{$username} not found.", 404);
+        }
+
+        $resolvedQuota = $quotaGb !== null ? max(0, min(10000, $quotaGb)) : (int) ($existing['quota_gb'] ?? 0);
+        $resolvedIp = $ipLimit !== null ? max(1, min(50, $ipLimit)) : max(1, (int) ($existing['ip_limit'] ?? 1));
+
+        if ($protocol === 'ssh') {
+            $res = $this->vpn->reduceSshAccount($username, $days, $resolvedIp);
+        } else {
+            $res = $this->vpn->reduceXrayAccount($protocol, $username, $days, $resolvedQuota, $resolvedIp);
+        }
+
+        if (empty($res['success'])) {
+            throw new \RuntimeException('Failed to reduce account duration: ' . ($res['error'] ?? 'Unknown error'), 502);
+        }
+
+        $newExpiry = (string) ($res['expires_at'] ?? date('Y-m-d'));
+        $this->updateSqliteStatusAndExpiry($protocol, $username, 1, $newExpiry);
+
+        $updated = $this->getAccountDetail($protocol, $username);
+
+        return [
+            'protocol' => $protocol,
+            'username' => $username,
+            'status' => 'active',
+            'expired_at' => $newExpiry,
+            'quota_gb' => $resolvedQuota,
+            'ip_limit' => $resolvedIp,
+            'detail' => $updated,
+        ];
+    }
+
     public function suspendAccount(string $protocol, string $username, ?string $reason = null, bool $adminSuspended = true): array
     {
         $protocol = $this->assertProtocol($protocol);
