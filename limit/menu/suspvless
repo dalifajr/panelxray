@@ -24,7 +24,15 @@ while [[ $# -gt 0 ]]; do
       reason="$2"
       shift 2
       ;;
+    -*)
+      shift
+      ;;
     *)
+      if [[ -z "$user" ]]; then
+        user="$1"
+      elif [[ -z "$reason" || "$reason" == "manual" ]]; then
+        reason="$1"
+      fi
       shift
       ;;
   esac
@@ -45,8 +53,8 @@ user="$(echo "$user" | tr -d '\r' | xargs)"
 [[ -z "$user" ]] && exit 0
 mkdir -p "$STATE_DIR"
 if [[ -f "$STATE_DIR/$user" ]]; then
-  echo "User already suspended"
-  exit 1
+  echo "User already suspended: $user"
+  exit 0
 fi
 
 exp=$(awk -v u="$user" '$1=="#&" && $2==u {print $3; exit}' "$CONFIG")
@@ -66,12 +74,26 @@ if [[ -z "$uuid" ]]; then
   ' "$CONFIG")
 fi
 
-if [[ -z "$exp" || -z "$uuid" ]]; then
+if [[ -z "$exp" ]]; then
+  exp=$(awk -v u="$user" '$1=="###" && $2==u {print $3; exit}' "$DB_FILE")
+fi
+if [[ -z "$exp" && -f /usr/bin/kyt/database.db ]]; then
+  exp=$(sqlite3 /usr/bin/kyt/database.db "SELECT exp_date FROM account_registry WHERE service='vless' AND username='$user' LIMIT 1" 2>/dev/null)
+fi
+if [[ -z "$exp" ]]; then
+  exp="never"
+fi
+
+if [[ -z "$uuid" && -f /usr/bin/kyt/database.db ]]; then
+  uuid=$(sqlite3 /usr/bin/kyt/database.db "SELECT uuid FROM account_registry WHERE service='vless' AND username='$user' LIMIT 1" 2>/dev/null)
+fi
+
+if [[ -z "$uuid" ]]; then
   echo "User not found"
   exit 1
 fi
 
-sed -i "/^#& $user $exp/,/^},{/d" "$CONFIG"
+sed -i "/^#& $user /,/^},{/d" "$CONFIG"
 printf '%s %s %s\n' "$exp" "$uuid" "$reason" > "$STATE_DIR/$user"
 systemctl restart xray >/dev/null 2>&1
 

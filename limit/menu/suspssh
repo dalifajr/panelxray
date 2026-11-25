@@ -22,7 +22,15 @@ while [[ $# -gt 0 ]]; do
       reason="$2"
       shift 2
       ;;
+    -*)
+      shift
+      ;;
     *)
+      if [[ -z "$user" ]]; then
+        user="$1"
+      elif [[ -z "$reason" || "$reason" == "manual" ]]; then
+        reason="$1"
+      fi
       shift
       ;;
   esac
@@ -51,8 +59,9 @@ fi
 
 mkdir -p "$STATE_DIR"
 if [[ -f "$STATE_DIR/$user" ]]; then
-  echo "User already suspended"
-  exit 1
+  passwd -l "$user" >/dev/null 2>&1 || usermod -L "$user" >/dev/null 2>&1 || true
+  echo "User already suspended: $user"
+  exit 0
 fi
 
 exp_raw=$(chage -l "$user" 2>/dev/null | awk -F": " '/Account expires/ {print $2}')
@@ -64,7 +73,7 @@ else
   exp=$(date -d "$exp_raw" +%Y-%m-%d 2>/dev/null || echo "unknown")
 fi
 
-passwd -l "$user" >/dev/null 2>&1 || { echo "Failed to suspend user"; exit 1; }
+passwd -l "$user" >/dev/null 2>&1 || usermod -L "$user" >/dev/null 2>&1 || true
 printf '%s %s %s\n' "$exp" "locked" "$reason" > "$STATE_DIR/$user"
 
 # Terminate active sessions ONLY for this non-system VPN user (safe for root/www-data/web services)

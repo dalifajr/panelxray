@@ -27,6 +27,7 @@ class VpnAccountManager
     ];
 
     private const SUSP_SCRIPTS = [
+        'ssh' => 'suspssh',
         'vmess' => 'suspws',
         'vless' => 'suspvless',
         'trojan' => 'susptr',
@@ -34,6 +35,7 @@ class VpnAccountManager
     ];
 
     private const UNSUSP_SCRIPTS = [
+        'ssh' => 'unsuspssh',
         'vmess' => 'unsuspws',
         'vless' => 'unsuspvless',
         'trojan' => 'unsusptr',
@@ -562,16 +564,19 @@ PYTHON;
         $protocol = $this->assertProtocol($protocol);
         $username = $this->assertUsername($username);
         $safeUser = escapeshellarg($username);
+        $safeReason = escapeshellarg($reason ? substr(preg_replace('/[^a-zA-Z0-9 _.-]/', '', $reason), 0, 60) : 'api_suspend');
 
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("usermod -L {$safeUser}");
+            $res = $this->vpn->executeBash("if command -v suspssh >/dev/null 2>&1; then suspssh --user {$safeUser} --reason {$safeReason}; else usermod -L {$safeUser} 2>/dev/null || passwd -l {$safeUser} 2>/dev/null; mkdir -p /etc/kyt/suspended/ssh && printf '%s locked %s\\n' \"$(date +%Y-%m-%d)\" {$safeReason} > /etc/kyt/suspended/ssh/{$safeUser}; fi");
         } else {
             $cmd = self::SUSP_SCRIPTS[$protocol];
-            $safeReason = escapeshellarg($reason ? substr(preg_replace('/[^a-zA-Z0-9 _.-]/', '', $reason), 0, 60) : 'api_suspend');
             $res = $this->vpn->executeBash("{$cmd} --user {$safeUser} --reason {$safeReason}");
         }
 
-        if (empty($res['success'])) {
+        $out = strtolower((string) ($res['output'] ?? '') . ' ' . (string) ($res['error'] ?? ''));
+        $isAlreadySuspended = str_contains($out, 'already suspended') || str_contains($out, 'sudah disuspend');
+
+        if (empty($res['success']) && !$isAlreadySuspended) {
             throw new \RuntimeException('Failed to suspend account: ' . ($res['error'] ?? 'Unknown error'), 502);
         }
 
@@ -595,13 +600,16 @@ PYTHON;
         $safeUser = escapeshellarg($username);
 
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("usermod -U {$safeUser}");
+            $res = $this->vpn->executeBash("if command -v unsuspssh >/dev/null 2>&1; then unsuspssh --user {$safeUser}; else usermod -U {$safeUser} 2>/dev/null || passwd -u {$safeUser} 2>/dev/null; rm -f /etc/kyt/suspended/ssh/{$safeUser}; fi");
         } else {
             $cmd = self::UNSUSP_SCRIPTS[$protocol];
             $res = $this->vpn->executeBash("{$cmd} --user {$safeUser}");
         }
 
-        if (empty($res['success'])) {
+        $out = strtolower((string) ($res['output'] ?? '') . ' ' . (string) ($res['error'] ?? ''));
+        $isAlreadyActive = str_contains($out, 'already active') || str_contains($out, 'not suspended') || str_contains($out, 'tidak disuspend');
+
+        if (empty($res['success']) && !$isAlreadyActive) {
             throw new \RuntimeException('Failed to unsuspend account: ' . ($res['error'] ?? 'Unknown error'), 502);
         }
 

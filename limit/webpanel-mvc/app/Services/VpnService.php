@@ -66,10 +66,12 @@ class VpnService
             Log::info("Bridge stderr: " . substr($stderr, 0, 300));
         }
 
+        $errDetails = $stderr !== '' ? $stderr : $output;
+
         return [
             'success' => ($rc === 0),
             'output' => $output,
-            'error' => ($rc !== 0) ? "Exit $rc: $stderr" : ''
+            'error' => ($rc !== 0) ? ("Exit $rc" . ($errDetails !== '' ? ": $errDetails" : '')) : ''
         ];
     }
 
