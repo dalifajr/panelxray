@@ -564,7 +564,7 @@ os.system("systemctl restart xray >/dev/null 2>&1")
 print(new_expiry.isoformat())
 PYTHON;
 
-        $res = $this->executePython($script);
+        $res = $this->runPython($script);
         $newExp = trim($res['output'] ?? '');
         if (!$res['success'] || $newExp === '' || str_starts_with($newExp, 'ERROR:')) {
             return ['success' => false, 'error' => $res['error'] ?? $res['output'] ?? 'Reduce Xray failed'];
@@ -686,134 +686,6 @@ PYTHON;
         $newExp = trim($res['output'] ?? '');
         if (!$res['success'] || $newExp === '' || strpos($newExp, 'ERROR:') === 0) {
             return ['success' => false, 'error' => $res['error'] ?? $res['output'] ?? 'Renew Xray failed'];
-        }
-
-        return ['success' => true, 'expires_at' => $newExp];
-    }
-
-    public function reduceSshAccount($username, $days, $limitIp)
-    {
-        $safeUser = escapeshellarg($username);
-        $days = (int) $days;
-        $limitIp = (int) $limitIp;
-
-        $script = <<<BASH
-exp_raw=\$(chage -l {$safeUser} | awk -F": " '/Account expires/ {print \$2}')
-if [ -z "\$exp_raw" ] || [ "\$exp_raw" = "never" ] || [ "\$exp_raw" = "Never" ]; then
-    base_ts=\$(date +%s)
-else
-    base_ts=\$(date -d "\$exp_raw" +%s 2>/dev/null || date +%s)
-fi
-now_ts=\$(date +%s)
-target_ts=\$((base_ts - {$days}*86400))
-if [ "\$target_ts" -lt "\$now_ts" ]; then
-    target_ts=\$now_ts
-fi
-new_exp=\$(date -u -d "@\${target_ts}" +%Y-%m-%d)
-usermod -e "\$new_exp" {$safeUser}
-if [ {$limitIp} -gt 0 ]; then
-  mkdir -p /etc/kyt/limit/ssh/ip
-  echo "{$limitIp}" > /etc/kyt/limit/ssh/ip/{$username}
-fi
-echo "\$new_exp"
-BASH;
-
-        $res = $this->executeBash($script);
-        $newExp = trim($res['output'] ?? '');
-        if (!$res['success'] || $newExp === '') {
-            return ['success' => false, 'error' => $res['error'] ?? 'Reduce SSH duration failed'];
-        }
-
-        return ['success' => true, 'expires_at' => $newExp];
-    }
-
-    public function reduceXrayAccount($service, $username, $days, $quota, $limitIp)
-    {
-        $markerMap = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
-        $marker = $markerMap[$service] ?? '###';
-
-        $serviceJson = json_encode($service, JSON_UNESCAPED_SLASHES);
-        $userJson = json_encode($username, JSON_UNESCAPED_SLASHES);
-        $markerJson = json_encode($marker, JSON_UNESCAPED_SLASHES);
-
-        $days = (int) $days;
-        $quota = (int) $quota;
-        $limitIp = (int) $limitIp;
-
-        $script = <<<PYTHON
-import datetime as DT
-import json
-import os
-
-service = json.loads('{$serviceJson}')
-username = json.loads('{$userJson}')
-marker = json.loads('{$markerJson}')
-sub_days = int({$days})
-quota = int({$quota})
-limit_ip = int({$limitIp})
-path = '/etc/xray/config.json'
-
-def parse_date(text):
-    try:
-        return DT.date.fromisoformat(text.strip())
-    except Exception:
-        return None
-
-try:
-    with open(path, 'r') as f:
-        lines = f.readlines()
-except Exception:
-    print('ERROR: config not readable')
-    raise SystemExit(1)
-
-current_exp = None
-for i, line in enumerate(lines):
-    parts = line.strip().split()
-    if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
-        current_exp = parse_date(parts[2])
-        break
-
-if not current_exp:
-    print('ERROR: user not found')
-    raise SystemExit(1)
-
-today = DT.date.today()
-new_expiry = current_exp - DT.timedelta(days=sub_days)
-if new_expiry < today:
-    new_expiry = today
-
-for i, line in enumerate(lines):
-    parts = line.strip().split()
-    if len(parts) >= 3 and parts[0] == marker and parts[1].lower() == username.lower():
-        lines[i] = f"{marker} {username} {new_expiry.isoformat()}\\n"
-
-try:
-    with open(path, 'w') as f:
-        f.writelines(lines)
-except Exception:
-    print('ERROR: config not writable')
-    raise SystemExit(1)
-
-if limit_ip > 0:
-    os.makedirs(f"/etc/kyt/limit/{service}/ip", exist_ok=True)
-    with open(f"/etc/kyt/limit/{service}/ip/{username}", "w") as fh:
-        fh.write(str(limit_ip))
-
-if service != "shadowsocks":
-    quota_path = f"/etc/{service}/{username}"
-    if quota > 0:
-        os.makedirs(f"/etc/{service}", exist_ok=True)
-        with open(quota_path, "w") as fq:
-            fq.write(str(quota))
-
-os.system("systemctl restart xray >/dev/null 2>&1")
-print(new_expiry.isoformat())
-PYTHON;
-
-        $res = $this->executePython($script);
-        $newExp = trim($res['output'] ?? '');
-        if (!$res['success'] || $newExp === '' || str_starts_with($newExp, 'ERROR:')) {
-            return ['success' => false, 'error' => $res['error'] ?? $res['output'] ?? 'Reduce Xray failed'];
         }
 
         return ['success' => true, 'expires_at' => $newExp];
