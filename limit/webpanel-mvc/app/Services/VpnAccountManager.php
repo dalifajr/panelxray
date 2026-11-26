@@ -228,6 +228,8 @@ PYTHON;
             $local = $localMap->get(strtolower($svc . ':' . $uname));
             $quotaGb = (int) ($row['quota'] ?? 0);
             $ipLimit = max(1, (int) ($row['ip_limit'] ?? 1));
+            $suspendReason = $computedStatus === 'suspended' ? trim((string) ($row['suspend_reason'] ?? '')) : '';
+            $autoSuspended = $computedStatus === 'suspended' && str_starts_with(strtolower($suspendReason), 'auto-');
 
             $entry = [
                 'protocol' => $svc,
@@ -235,6 +237,8 @@ PYTHON;
                 'status' => $computedStatus,
                 'active' => $activeFlag === 1,
                 'admin_suspended' => (bool) ($local?->admin_suspended ?? false),
+                'auto_suspended' => $autoSuspended,
+                'suspend_reason' => $suspendReason,
                 'is_trial' => (bool) ($local?->is_trial ?? false),
                 'created_at' => (string) ($row['created_at'] ?? ''),
                 'expired_at' => $expiresAt,
@@ -390,6 +394,9 @@ PYTHON;
                 'uuid' => null,
                 'password' => $plainPassword,
                 'status' => $status,
+                'admin_suspended' => (bool) ($matched['admin_suspended'] ?? false),
+                'auto_suspended' => (bool) ($matched['auto_suspended'] ?? false),
+                'suspend_reason' => (string) ($matched['suspend_reason'] ?? ''),
                 'quota_gb' => 0,
                 'ip_limit' => $ipLimit,
                 'expired_at' => $expiredAt,
@@ -424,6 +431,9 @@ PYTHON;
             'password' => null,
             'sni_mode' => $sniMode,
             'status' => $status,
+            'admin_suspended' => (bool) ($matched['admin_suspended'] ?? false),
+            'auto_suspended' => (bool) ($matched['auto_suspended'] ?? false),
+            'suspend_reason' => (string) ($matched['suspend_reason'] ?? ''),
             'quota_gb' => $quotaGb,
             'ip_limit' => $ipLimit,
             'expired_at' => $expiredAt,

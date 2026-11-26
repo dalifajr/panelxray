@@ -119,6 +119,7 @@ import sqlite3, json, os, glob
 
 ip_limits = {}
 quotas = {}
+suspended_meta = {}
 for path in glob.glob('/etc/kyt/limit/*/ip/*'):
     parts = path.split('/')
     if len(parts) >= 7:
@@ -145,6 +146,22 @@ for path in glob.glob('/etc/kyt/limit/*/quota/*'):
         except:
             pass
 
+for path in glob.glob('/etc/kyt/suspended/*/*'):
+    parts = path.split('/')
+    if len(parts) >= 6:
+        svc = parts[4]
+        user = parts[5]
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                raw_line = f.readline().strip()
+                toks = raw_line.split(None, 2)
+                suspended_meta[f"{svc}_{user}"] = {
+                    'exp': toks[0] if len(toks) >= 1 else '',
+                    'reason': toks[2].strip() if len(toks) >= 3 else '',
+                }
+        except:
+            pass
+
 try:
     c = sqlite3.connect('/usr/bin/kyt/database.db')
     c.row_factory = sqlite3.Row
@@ -152,16 +169,18 @@ try:
     print(json.dumps({
         'db': [dict(r) for r in db_rows],
         'ip_limits': ip_limits,
-        'quotas': quotas
+        'quotas': quotas,
+        'suspended_meta': suspended_meta
     }))
 except Exception as e:
-    print(json.dumps({'db': [], 'ip_limits': ip_limits, 'quotas': quotas}))
+    print(json.dumps({'db': [], 'ip_limits': ip_limits, 'quotas': quotas, 'suspended_meta': suspended_meta}))
 PYTHON;
         $resDb = $this->runPython($pythonScript);
-        $parsed = json_decode(trim($resDb['output']), true) ?? ['db' => [], 'ip_limits' => [], 'quotas' => []];
+        $parsed = json_decode(trim($resDb['output']), true) ?? ['db' => [], 'ip_limits' => [], 'quotas' => [], 'suspended_meta' => []];
         $dbRows = $parsed['db'] ?? [];
         $ipLimits = $parsed['ip_limits'] ?? [];
         $quotas = $parsed['quotas'] ?? [];
+        $suspendedMeta = $parsed['suspended_meta'] ?? [];
         
         $dbMap = [];
         foreach ($dbRows as $r) {
@@ -185,15 +204,18 @@ PYTHON;
                 if (empty($user)) continue;
                 $k = "ssh_$user";
                 $dbInfo = $dbMap[$k] ?? [];
+                $meta = $suspendedMeta[$k] ?? null;
+                $isSusp = isset($suspendedSsh[$user]) || is_array($meta);
                 
                 $accounts[] = [
                     'service' => 'ssh',
                     'username' => $user,
-                    'active' => isset($suspendedSsh[$user]) ? 0 : 1,
+                    'active' => $isSusp ? 0 : 1,
                     'created_at' => $dbInfo['created_at'] ?? '',
-                    'expires_at' => $dbInfo['expires_at'] ?? '',
+                    'expires_at' => $dbInfo['expires_at'] ?? ($meta['exp'] ?? ''),
                     'ip_limit' => $ipLimits["ssh_{$user}"] ?? 1,
-                    'quota' => $quotas["ssh_{$user}"] ?? 0
+                    'quota' => $quotas["ssh_{$user}"] ?? 0,
+                    'suspend_reason' => $isSusp ? (string) ($meta['reason'] ?? '') : '',
                 ];
             }
         }
@@ -248,10 +270,12 @@ PYTHON;
 
                     $k = "{$svc}_{$user}";
                     $dbInfo = $dbMap[$k] ?? [];
-
-                    // Try to read expiry from the suspended file
-                    $resExp = $this->executeBash("awk '{print \$1}' /etc/kyt/suspended/{$svc}/{$user} 2>/dev/null");
-                    $suspExp = trim($resExp['output']);
+                    $meta = $suspendedMeta[$k] ?? [];
+                    $suspExp = trim((string) ($meta['exp'] ?? ''));
+                    if ($suspExp === '') {
+                        $resExp = $this->executeBash("awk '{print \$1}' /etc/kyt/suspended/{$svc}/{$user} 2>/dev/null");
+                        $suspExp = trim($resExp['output']);
+                    }
 
                     $accounts[] = [
                         'service' => $svc,
@@ -260,7 +284,8 @@ PYTHON;
                         'created_at' => $dbInfo['created_at'] ?? '',
                         'expires_at' => $suspExp ?: ($dbInfo['expires_at'] ?? ''),
                         'ip_limit' => $ipLimits["{$svc}_{$user}"] ?? 1,
-                        'quota' => $quotas["{$svc}_{$user}"] ?? 0
+                        'quota' => $quotas["{$svc}_{$user}"] ?? 0,
+                        'suspend_reason' => (string) ($meta['reason'] ?? ''),
                     ];
                 }
             }
