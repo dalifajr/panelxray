@@ -440,7 +440,7 @@ config = re.sub(
 php_block_81_1013 = f"""    # WEBPANEL-START
     index index.php index.html;
 
-    location ~* \\.(txt|ovpn|zip|png)$ {{
+    location ~* ^/((tcp|udp|ssl|ws-ssl)\\.ovpn|Kyt-Project\\.zip|(ssh|vmess|vless|trojan|sodosokws|sodosokgrpc)-[^/]+\\.(txt|png))$ {{
         root /var/www/html;
         try_files $uri =404;
     }}
@@ -464,7 +464,7 @@ php_block_81_1013 = f"""    # WEBPANEL-START
 php_block_1010 = f"""    # WEBPANEL-START
     index index.php index.html;
 
-    location ~* \\.(txt|ovpn|zip|png)$ {{
+    location ~* ^/((tcp|udp|ssl|ws-ssl)\\.ovpn|Kyt-Project\\.zip|(ssh|vmess|vless|trojan|sodosokws|sodosokgrpc)-[^/]+\\.(txt|png))$ {{
         root /var/www/html;
         try_files $uri =404;
     }}
