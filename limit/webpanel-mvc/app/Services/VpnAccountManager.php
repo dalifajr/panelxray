@@ -230,14 +230,16 @@ PYTHON;
             $ipLimit = max(1, (int) ($row['ip_limit'] ?? 1));
             $suspendReason = $computedStatus === 'suspended' ? trim((string) ($row['suspend_reason'] ?? '')) : '';
             $autoSuspended = $computedStatus === 'suspended' && str_starts_with(strtolower($suspendReason), 'auto-');
+            $expiredGrace = $computedStatus === 'suspended' && str_starts_with(strtolower($suspendReason), 'auto-expired');
 
             $entry = [
                 'protocol' => $svc,
                 'username' => $uname,
                 'status' => $computedStatus,
                 'active' => $activeFlag === 1,
-                'admin_suspended' => (bool) ($local?->admin_suspended ?? false),
+                'admin_suspended' => (bool) ($local?->admin_suspended ?? false) || $autoSuspended,
                 'auto_suspended' => $autoSuspended,
+                'expired_grace' => $expiredGrace,
                 'suspend_reason' => $suspendReason,
                 'is_trial' => (bool) ($local?->is_trial ?? false),
                 'created_at' => (string) ($row['created_at'] ?? ''),
@@ -525,6 +527,75 @@ PYTHON;
         return $detail;
     }
 
+    public function updateAccount(string $protocol, string $username, array $payload): array
+    {
+        $protocol = $this->assertProtocol($protocol);
+        $username = $this->assertUsername($username);
+
+        $existing = $this->getAccountDetail($protocol, $username);
+        if (!$existing) {
+            throw new \RuntimeException("Account {$protocol}/{$username} not found.", 404);
+        }
+
+        $expiryMode = in_array((string) ($payload['expiry_mode'] ?? 'keep'), ['keep', 'add', 'reduce', 'set_date'], true)
+            ? (string) ($payload['expiry_mode'] ?? 'keep')
+            : 'keep';
+        $days = max(0, min(365, (int) ($payload['days'] ?? 0)));
+        $targetDate = isset($payload['expired_at']) && trim((string) $payload['expired_at']) !== ''
+            ? trim((string) $payload['expired_at'])
+            : null;
+        $quotaGb = array_key_exists('quota_gb', $payload) && $payload['quota_gb'] !== null && $payload['quota_gb'] !== ''
+            ? max(0, min(10000, (int) $payload['quota_gb']))
+            : null;
+        $ipLimit = array_key_exists('ip_limit', $payload) && $payload['ip_limit'] !== null && $payload['ip_limit'] !== ''
+            ? max(1, min(50, (int) $payload['ip_limit']))
+            : null;
+        $password = isset($payload['password']) && trim((string) $payload['password']) !== ''
+            ? (string) $payload['password']
+            : null;
+        $reactivate = !empty($payload['reactivate']);
+
+        if ($protocol === 'ssh' && $password !== null) {
+            if (preg_match('/[\r\n\0\s]/', $password) || strlen($password) < 3 || strlen($password) > 64) {
+                throw new InvalidArgumentException('Valid SSH password (3-64 chars, no spaces/newlines) is required.');
+            }
+        }
+
+        if ($protocol === 'ssh') {
+            $res = $this->vpn->updateSshAccount($username, $expiryMode, $days, $targetDate, $ipLimit, $password, $reactivate);
+        } else {
+            $res = $this->vpn->updateXrayAccount($protocol, $username, $expiryMode, $days, $targetDate, $quotaGb, $ipLimit, $reactivate);
+        }
+
+        if (empty($res['success'])) {
+            throw new \RuntimeException('Failed to update account: ' . ($res['error'] ?? 'Unknown error'), 502);
+        }
+
+        $newExpiry = (string) ($res['expires_at'] ?? ($existing['expired_at'] ?? date('Y-m-d')));
+        $newStatus = (string) ($res['status'] ?? ($reactivate ? 'active' : ($existing['status'] ?? 'active')));
+        $activeFlag = $newStatus === 'suspended' ? 0 : 1;
+
+        $this->updateSqliteStatusAndExpiry($protocol, $username, $activeFlag, $newExpiry);
+
+        if ($reactivate) {
+            VpnAccount::where('service', $protocol)
+                ->where('vpn_username', $username)
+                ->update(['admin_suspended' => false]);
+        }
+
+        $updated = $this->getAccountDetail($protocol, $username, '3', $protocol === 'ssh' ? $password : null);
+
+        return [
+            'protocol' => $protocol,
+            'username' => $username,
+            'status' => $newStatus,
+            'expired_at' => $newExpiry,
+            'quota_gb' => $quotaGb !== null ? $quotaGb : (int) ($updated['quota_gb'] ?? $existing['quota_gb'] ?? 0),
+            'ip_limit' => $ipLimit !== null ? $ipLimit : max(1, (int) ($updated['ip_limit'] ?? $existing['ip_limit'] ?? 1)),
+            'detail' => $updated,
+        ];
+    }
+
     public function renewAccount(string $protocol, string $username, int $days, ?int $quotaGb = null, ?int $ipLimit = null): array
     {
         $protocol = $this->assertProtocol($protocol);
@@ -664,6 +735,7 @@ PYTHON;
         }
 
         $this->updateSqliteStatusAndExpiry($protocol, $username, 1, null);
+        $this->vpn->executeBash('rm -f ' . escapeshellarg("/etc/kyt/limit/.state/{$protocol}/{$username}.state"));
 
         VpnAccount::where('service', $protocol)
             ->where('vpn_username', $username)
@@ -1494,6 +1566,7 @@ print(json.dumps({
     "active_device_count": active_count,
     "recent_device_count": len(sorted_devices),
     "current_strikes": current_strikes,
+    "required_strikes": 4,
     "loopback_only": loopback_only,
     "devices": sorted_devices[:50],
     "violations": violations,

@@ -54,5 +54,6 @@ fi
 
 passwd -u "$user" >/dev/null 2>&1 || usermod -U "$user" >/dev/null 2>&1 || true
 rm -f "$STATE_DIR/$user"
+rm -f "/etc/kyt/limit/.state/${SERVICE}/${user}.state"
 
 echo "SSH account unsuspended: $user"

@@ -134,6 +134,34 @@ class ExternalVpnApiController extends Controller
         return response()->json($body, 201);
     }
 
+    public function update(Request $request, string $protocol, string $username): JsonResponse
+    {
+        $validated = $request->validate([
+            'expiry_mode' => ['nullable', 'string', 'in:keep,add,reduce,set_date'],
+            'days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'expired_at' => ['nullable', 'date_format:Y-m-d'],
+            'quota_gb' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'ip_limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'password' => ['nullable', 'string', 'min:3', 'max:64'],
+            'reactivate' => ['nullable', 'boolean'],
+        ]);
+
+        try {
+            $result = $this->manager->updateAccount($protocol, $username, $validated);
+        } catch (InvalidArgumentException $e) {
+            return $this->error($e->getMessage(), 422);
+        } catch (\RuntimeException $e) {
+            $code = in_array($e->getCode(), [404, 409, 422, 502, 503], true) ? $e->getCode() : 500;
+            return $this->error($e->getMessage(), $code);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'VPN account info updated successfully.',
+            'data' => $result,
+        ]);
+    }
+
     public function renew(Request $request, string $protocol, string $username): JsonResponse
     {
         $validated = $request->validate([

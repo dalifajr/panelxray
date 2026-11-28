@@ -13,9 +13,11 @@ LEGACY_BOT_DB="${LIMIT_LEGACY_BOT_DB:-/etc/bot/.bot.db}"
 VIOLATION_LOG="${LIMIT_VIOLATION_LOG:-/root/log-limit.txt}"
 
 CHECK_INTERVAL="${LIMIT_CHECK_INTERVAL:-60}"
-LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-150}"
-REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-2}"
-MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-1}"
+LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-55}"
+REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-4}"
+MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-3}"
+CONCURRENCY_GAP_SECONDS="${LIMIT_CONCURRENCY_GAP_SECONDS:-12}"
+DUALSTACK_GRACE="${LIMIT_DUALSTACK_GRACE:-1}"
 LOG_TAIL_BYTES="${LIMIT_LOG_TAIL_BYTES:-5242880}"
 
 mkdir -p "$STATE_ROOT"
@@ -289,13 +291,14 @@ suspend_account() {
     return 0
 }
 
-# Single-pass Xray access.log parser (reads tail once per cycle, supports legacy & modern Xray v1.8+/v24+ logs)
-# Outputs lines: username<TAB>ip<TAB>hits
+# Single-pass Xray access.log parser with true concurrency overlap detection,
+# IPv6 /64 prefix grouping, and Dual-Stack (IPv4 + IPv6) single-device grace.
+# Outputs lines: username<TAB>device_key<TAB>hits
 collect_xray_ip_stats_batch() {
     [[ -f "$ACCESS_LOG" ]] || return 0
 
     if command -v python3 >/dev/null 2>&1; then
-        python3 - "$ACCESS_LOG" "$LOOKBACK_SECONDS" "$MIN_HITS_PER_IP" "$LOG_TAIL_BYTES" <<'PYEOF' 2>/dev/null
+        python3 - "$ACCESS_LOG" "$LOOKBACK_SECONDS" "$MIN_HITS_PER_IP" "$LOG_TAIL_BYTES" "$CONCURRENCY_GAP_SECONDS" "$DUALSTACK_GRACE" <<'PYEOF' 2>/dev/null
 import collections
 import datetime
 import ipaddress
@@ -308,6 +311,8 @@ log_path = sys.argv[1]
 lookback = int(sys.argv[2])
 min_hits = int(sys.argv[3])
 tail_bytes = int(sys.argv[4])
+concurrency_gap = max(0, int(sys.argv[5]))
+dualstack_grace = int(sys.argv[6]) != 0
 
 now_ts = time.time()
 cutoff_ts = now_ts - max(1, lookback)
@@ -323,7 +328,8 @@ line_re = re.compile(
 )
 email_re = re.compile(r"(?:^|\s)email:\s*([^\s,;]+)")
 
-hits = collections.defaultdict(int)
+# per_user[user][entity_key] = {"hits": int, "first_ts": float, "last_ts": float, "family": "v4"|"v6"}
+per_user = collections.defaultdict(dict)
 ts_cache = {}
 
 try:
@@ -339,7 +345,7 @@ except OSError:
     sys.exit(0)
 
 for line in raw.splitlines():
-    if "email:" not in line:
+    if "email:" not in line or "accepted" not in line.lower():
         continue
     m = line_re.match(line)
     if not m:
@@ -358,7 +364,7 @@ for line in raw.splitlines():
             continue
         ts_cache[ts_key] = ts_val
 
-    if ts_val < cutoff_ts:
+    if ts_val < cutoff_ts or ts_val > (now_ts + 120):
         continue
 
     raw_ip = m.group(3).strip("[]")
@@ -371,13 +377,82 @@ for line in raw.splitlines():
     if ip_obj.is_loopback or ip_obj.is_unspecified:
         continue
 
-    user = em.group(1).strip()
-    if user:
-        hits[(user, str(ip_obj))] += 1
+    if isinstance(ip_obj, ipaddress.IPv6Address):
+        entity_key = str(ipaddress.IPv6Network((ip_obj, 64), strict=False))
+        family = "v6"
+    else:
+        entity_key = str(ip_obj)
+        family = "v4"
 
-for (user, ip), count in sorted(hits.items()):
-    if count >= min_hits:
-        sys.stdout.write(f"{user}\t{ip}\t{count}\n")
+    user = em.group(1).strip()
+    if not user:
+        continue
+
+    bucket = per_user[user]
+    info = bucket.get(entity_key)
+    if info is None:
+        bucket[entity_key] = {
+            "hits": 1,
+            "first_ts": ts_val,
+            "last_ts": ts_val,
+            "family": family,
+        }
+    else:
+        info["hits"] += 1
+        if ts_val < info["first_ts"]:
+            info["first_ts"] = ts_val
+        if ts_val > info["last_ts"]:
+            info["last_ts"] = ts_val
+
+for user in sorted(per_user.keys()):
+    qualified = {k: v for k, v in per_user[user].items() if v["hits"] >= min_hits}
+    if not qualified:
+        continue
+
+    # Dual-stack single-device grace: 1 IPv4 + 1 IPv6 /64 from Happy Eyeballs on one phone counts as 1 device
+    if dualstack_grace and len(qualified) == 2:
+        v4_keys = [k for k, v in qualified.items() if v["family"] == "v4"]
+        v6_keys = [k for k, v in qualified.items() if v["family"] == "v6"]
+        if len(v4_keys) == 1 and len(v6_keys) == 1:
+            combined_hits = qualified[v4_keys[0]]["hits"] + qualified[v6_keys[0]]["hits"]
+            sys.stdout.write(f"{user}\t{v4_keys[0]}+{v6_keys[0]}\t{combined_hits}\n")
+            continue
+
+    if len(qualified) == 1:
+        only_key, only_val = next(iter(qualified.items()))
+        sys.stdout.write(f"{user}\t{only_key}\t{only_val['hits']}\n")
+        continue
+
+    # Sweep-line true concurrency overlap check:
+    # Two IPs are only concurrent if their active intervals overlap within concurrency_gap seconds.
+    # Sequential handoffs (e.g., Wi-Fi stops at t=10, 4G starts at t=26) have peak overlap = 1 -> zero false positive!
+    events = []
+    for k, v in qualified.items():
+        events.append((v["first_ts"], 0, k))
+        events.append((v["last_ts"] + concurrency_gap, 1, k))
+    events.sort(key=lambda item: (item[0], item[1]))
+
+    active_now = set()
+    peak_cluster = set()
+    for _, ev_type, k in events:
+        if ev_type == 0:
+            active_now.add(k)
+            if len(active_now) > len(peak_cluster):
+                peak_cluster = set(active_now)
+        else:
+            active_now.discard(k)
+
+    # Apply dual-stack grace inside peak concurrent cluster too (e.g. phone switches Wi-Fi->4G with dual-stack)
+    if dualstack_grace and len(peak_cluster) == 2:
+        v4_keys = [k for k in peak_cluster if qualified[k]["family"] == "v4"]
+        v6_keys = [k for k in peak_cluster if qualified[k]["family"] == "v6"]
+        if len(v4_keys) == 1 and len(v6_keys) == 1:
+            combined_hits = qualified[v4_keys[0]]["hits"] + qualified[v6_keys[0]]["hits"]
+            sys.stdout.write(f"{user}\t{v4_keys[0]}+{v6_keys[0]}\t{combined_hits}\n")
+            continue
+
+    for k in sorted(peak_cluster):
+        sys.stdout.write(f"{user}\t{k}\t{qualified[k]['hits']}\n")
 PYEOF
         return 0
     fi
@@ -393,7 +468,7 @@ PYEOF
             gsub(/[\[\]]/, "", ip)
             return ip
         }
-        /email:/ {
+        /email:/ && tolower($0) ~ /accepted/ {
             t = $2
             sub(/\.[0-9]+$/, "", t)
             if ($1 ~ /^[0-9]{4}\/[0-9]{2}\/[0-9]{2}$/ && t ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
@@ -431,7 +506,7 @@ collect_ssh_ip_stats() {
     local user="$1"
 
     if command -v python3 >/dev/null 2>&1; then
-        python3 - "$user" <<'PYEOF' 2>/dev/null
+        python3 - "$user" "$DUALSTACK_GRACE" <<'PYEOF' 2>/dev/null
 import collections
 import ipaddress
 import os
@@ -440,7 +515,9 @@ import subprocess
 import sys
 
 target = sys.argv[1]
+dualstack_grace = int(sys.argv[2]) != 0
 hits = collections.defaultdict(int)
+families = {}
 
 def record_ip(raw_ip, pid_tag=None):
     raw_ip = (raw_ip or "").strip().strip("()[]")
@@ -448,13 +525,31 @@ def record_ip(raw_ip, pid_tag=None):
         raw_ip = raw_ip.split(":", 1)[0]
     try:
         ip_obj = ipaddress.ip_address(raw_ip)
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+            ip_obj = ip_obj.ipv4_mapped
     except ValueError:
         return
     if ip_obj.is_loopback or ip_obj.is_unspecified:
         if pid_tag:
-            hits[f"ws-pid-{pid_tag}"] += 1
+            key = f"ws-pid-{pid_tag}"
+            hits[key] += 1
+            families[key] = "ws"
         return
-    hits[str(ip_obj)] += 1
+    if isinstance(ip_obj, ipaddress.IPv6Address):
+        key = str(ipaddress.IPv6Network((ip_obj, 64), strict=False))
+        families[key] = "v6"
+    else:
+        key = str(ip_obj)
+        families[key] = "v4"
+    hits[key] += 1
+
+# 0. Collect PIDs with live ESTABLISHED TCP sockets (filters zombie/closing Dropbear workers on reconnect)
+established_pids = None
+try:
+    ss_out = subprocess.check_output(["ss", "-tnp", "state", "established"], text=True, stderr=subprocess.DEVNULL)
+    established_pids = set(int(m) for m in re.findall(r"pid=(\d+)", ss_out))
+except Exception:
+    established_pids = None
 
 # 1. Active Dropbear & OpenSSH PIDs matched against auth logs
 db_pids = set()
@@ -468,6 +563,8 @@ try:
         try:
             pid, ppid = int(parts[0]), int(parts[1])
         except ValueError:
+            continue
+        if established_pids is not None and pid not in established_pids:
             continue
         comm = parts[2].lower()
         if comm == "dropbear" and ppid > 1:
@@ -539,6 +636,13 @@ for ovpn_log in ("/etc/openvpn/server/openvpn-tcp.log", "/etc/openvpn/server/ope
                             record_ip(cols[2])
         except OSError:
             pass
+
+if dualstack_grace and len(hits) == 2:
+    v4_keys = [k for k in hits if families.get(k) == "v4"]
+    v6_keys = [k for k in hits if families.get(k) == "v6"]
+    if len(v4_keys) == 1 and len(v6_keys) == 1:
+        sys.stdout.write(f"{v4_keys[0]}+{v6_keys[0]} {hits[v4_keys[0]] + hits[v6_keys[0]]}\n")
+        sys.exit(0)
 
 for ip, count in sorted(hits.items()):
     sys.stdout.write(f"{ip} {count}\n")

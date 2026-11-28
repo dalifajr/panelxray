@@ -16,6 +16,7 @@ Route::prefix('v1/vpn')
         Route::get('/accounts/{protocol}/{username}/devices', [ExternalVpnApiController::class, 'devices']);
         Route::get('/accounts/{protocol}/{username}', [ExternalVpnApiController::class, 'show']);
         Route::post('/accounts', [ExternalVpnApiController::class, 'store']);
+        Route::post('/accounts/{protocol}/{username}/update', [ExternalVpnApiController::class, 'update']);
         Route::post('/accounts/{protocol}/{username}/renew', [ExternalVpnApiController::class, 'renew']);
         Route::post('/accounts/{protocol}/{username}/reduce', [ExternalVpnApiController::class, 'reduce']);
         Route::post('/accounts/{protocol}/{username}/suspend', [ExternalVpnApiController::class, 'suspend']);

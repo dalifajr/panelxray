@@ -66,6 +66,7 @@ sed -i '/#ssgrpc$/a\#!# '"$user $exp"'\
 },{"password": "'""$uuid""'","method": "aes-128-gcm","email": "'""$user""'"' "$CONFIG"
 
 rm -f "$STATE_DIR/$user"
+rm -f "/etc/kyt/limit/.state/${SERVICE}/${user}.state"
 systemctl restart xray >/dev/null 2>&1
 
 echo "Shadowsocks account unsuspended: $user"

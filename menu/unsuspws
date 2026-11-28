@@ -66,6 +66,7 @@ sed -i '/#vmessgrpc$/a\### '"$user $exp"'\
 },{"id": "'""$uuid""'","alterId": 0,"email": "'""$user""'"' "$CONFIG"
 
 rm -f "$STATE_DIR/$user"
+rm -f "/etc/kyt/limit/.state/${SERVICE}/${user}.state"
 systemctl restart xray >/dev/null 2>&1
 
 echo "Vmess account unsuspended: $user"
