@@ -196,14 +196,19 @@ try:
     # WEBPANEL-END"""
 
     # Split berdasarkan blok server { ... } agar tiap listener dikonfigurasi bersih tanpa duplikasi
+    # Catatan arsitektur HAProxy (:443 alpn h2,http/1.1):
+    #   - HTTP/2 (browser modern, cURL, Laravel Http:: Web Jualan) -> backend grpc_bridge -> listen 1013
+    #   - HTTP/1.1 (fallback / Cloudflare WS / klien lama)         -> backend ws_bridge   -> listen 1010
+    #   - Static / Direct Panel SSL                                -> listen 81
+    # Regex location ~ ^/(vless|vmess|trojan|ss)-grpc pada 1013 tetap lebih tinggi prioritasnya dibanding prefix location /
     server_chunks = re.split(r'(?=\nserver\s*\{)', config)
     new_chunks = []
     for chunk in server_chunks:
-        if 'listen 81' in chunk:
+        if 'listen 81' in chunk or 'listen 1013' in chunk:
             chunk = re.sub(r'\s*location\s+/\s*\{[^}]*try_files[^}]*\}\s*', '\n', chunk, flags=re.S)
             if 'root /var/www/webpanel-mvc/public;' not in chunk:
                 chunk = re.sub(
-                    r'(listen\s+81[^;]*;)',
+                    r'(listen\s+(?:81|1013)[^;]*;)',
                     r'\1\n    root /var/www/webpanel-mvc/public;',
                     chunk,
                     count=1,
@@ -238,13 +243,6 @@ try:
             chunk = re.sub(
                 r'try_files\s+\$uri\s+\$uri/\s+=404;',
                 'try_files $uri $uri/ /index.php?$query_string;',
-                chunk,
-            )
-        elif 'listen 1013' in chunk:
-            # Pertahankan listener 1013 murni untuk gRPC Xray & file statis /var/www/html
-            chunk = re.sub(
-                r'root\s+/var/www/webpanel-mvc/public;',
-                'root /var/www/html;',
                 chunk,
             )
         new_chunks.append(chunk)

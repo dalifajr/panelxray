@@ -408,12 +408,99 @@ sync_runtime_configs() {
     mkdir -p /etc/nginx/conf.d /etc/haproxy /etc/systemd/system /usr/bin
 
     if [[ -f "$TMP_DIR/limit/xray.conf" ]]; then
-        if [[ -f /var/www/webpanel-mvc/.env && -f /etc/nginx/conf.d/xray.conf ]] && grep -q 'webpanel-mvc/public' /etc/nginx/conf.d/xray.conf 2>/dev/null; then
-            log_info "WebPanel terdeteksi — mempertahankan blok PHP/API pada /etc/nginx/conf.d/xray.conf."
-        else
-            cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
-            sed -i 's/\r$//' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
-            sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
+        sed -i 's/\r$//' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        if [[ -f /var/www/webpanel-mvc/.env ]] && command -v python3 >/dev/null 2>&1; then
+            local php_sock="/var/run/php/php8.4-fpm.sock"
+            for cand_sock in /var/run/php/php8.4-fpm.sock /var/run/php/php8.3-fpm.sock /var/run/php/php8.2-fpm.sock /run/php/php-fpm.sock; do
+                if [[ -S "$cand_sock" ]]; then
+                    php_sock="$cand_sock"
+                    break
+                fi
+            done
+            python3 - /etc/nginx/conf.d/xray.conf "$php_sock" <<'PYNGINX'
+import re, sys
+
+path, php_sock = sys.argv[1], sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f:
+    config = f.read()
+
+config = re.sub(r'\n?\s*# WEBPANEL-START.*?# WEBPANEL-END\n?', '\n', config, flags=re.S)
+config = re.sub(r'\s*index\s+index\.php\s+index\.html;\s*', '\n    ', config)
+config = re.sub(r'\s*index\s+index\.html\s+index\.htm;\s*', '\n    ', config)
+config = re.sub(r'\s*location\s+~\s+\\\.php\$\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
+config = re.sub(r'\s*location\s+\^\~\s+/api/\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
+config = re.sub(
+    r'root\s+/(var/www/html|var/www/webpanel-mvc/public|etc/kyt/limit/webpanel-mvc/public);',
+    'root /var/www/webpanel-mvc/public;',
+    config,
+)
+
+php_block_81_1013 = f"""    # WEBPANEL-START
+    index index.php index.html;
+
+    location ~* \\.(txt|ovpn|zip|png)$ {{
+        root /var/www/html;
+        try_files $uri =404;
+    }}
+
+    location ^~ /api/ {{
+        try_files $uri $uri/ /index.php?$query_string;
+    }}
+
+    location / {{
+        try_files $uri $uri/ /index.php?$query_string;
+    }}
+
+    location ~ \\.php$ {{
+        include fastcgi_params;
+        fastcgi_pass unix:{php_sock};
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    }}
+    # WEBPANEL-END"""
+
+php_block_1010 = f"""    # WEBPANEL-START
+    index index.php index.html;
+
+    location ~* \\.(txt|ovpn|zip|png)$ {{
+        root /var/www/html;
+        try_files $uri =404;
+    }}
+
+    location ^~ /api/ {{
+        try_files $uri $uri/ /index.php?$query_string;
+    }}
+
+    location ~ \\.php$ {{
+        include fastcgi_params;
+        fastcgi_pass unix:{php_sock};
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    }}
+    # WEBPANEL-END"""
+
+chunks = re.split(r'(?=\nserver\s*\{)', config)
+out = []
+for chunk in chunks:
+    if 'listen 81' in chunk or 'listen 1013' in chunk:
+        chunk = re.sub(r'\s*location\s+/\s*\{[^}]*try_files[^}]*\}\s*', '\n', chunk, flags=re.S)
+        if 'root /var/www/webpanel-mvc/public;' not in chunk:
+            chunk = re.sub(r'(listen\s+(?:81|1013)[^;]*;)', r'\1\n    root /var/www/webpanel-mvc/public;', chunk, count=1)
+        chunk = re.sub(r'(root\s+/var/www/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block_81_1013, chunk, count=1)
+    elif 'listen 1010' in chunk:
+        chunk = re.sub(r'\s*if\s*\(\s*\$host\s*!=\s*\$server_name\s*\)\s*\{[^}]*\}\s*', '\n        ', chunk, flags=re.S)
+        if 'root /var/www/webpanel-mvc/public;' not in chunk:
+            chunk = re.sub(r'(listen\s+1010[^;]*;)', r'\1\n    root /var/www/webpanel-mvc/public;', chunk, count=1)
+        chunk = re.sub(r'(root\s+/var/www/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block_1010, chunk, count=1)
+        chunk = re.sub(r'try_files\s+\$uri\s+\$uri/\s+=404;', 'try_files $uri $uri/ /index.php?$query_string;', chunk)
+    out.append(chunk)
+
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(''.join(out))
+PYNGINX
+            log_info "WebPanel terdeteksi — konfigurasi Nginx xray.conf (port 81, 1010, 1013) disinkronkan dengan blok PHP/API (${php_sock})."
         fi
     fi
 
