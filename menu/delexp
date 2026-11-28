@@ -7,59 +7,43 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-# ==========================================
-# Color
-RED='\033[0;31m'
-NC='\033[0m'
-GREEN='\033[0;32m'
-ORANGE='\033[0;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-LIGHT='\033[0;37m'
-# ==========================================
+EXPIRE_GRACE_DAYS="${EXPIRE_GRACE_DAYS:-3}"
+hariini="$(date +%d-%m-%Y)"
+today_utc_days=$(( $(date -u -d "$(date -u +%Y-%m-%d)" +%s) / 86400 ))
+
 clear
-               hariini=`date +%d-%m-%Y`
-               echo "Thank you for removing the EXPIRED USERS"
-               echo "--------------------------------------"
-               cat /etc/shadow | cut -d: -f1,8 | sed /:$/d > /tmp/expirelist.txt
-               totalaccounts=`cat /tmp/expirelist.txt | wc -l`
-               EXPIRE_GRACE_DAYS="${EXPIRE_GRACE_DAYS:-3}"
-               todaystime=`date +%s`
-               grace_cutoff=$((todaystime - EXPIRE_GRACE_DAYS * 86400))
-               for((i=1; i<=$totalaccounts; i++))
-               do
-               tuserval=`head -n $i /tmp/expirelist.txt | tail -n 1`
-               username=`echo $tuserval | cut -f1 -d:`
-               userexp=`echo $tuserval | cut -f2 -d:`
-               [[ "$userexp" =~ ^[0-9]+$ ]] || continue
-               userexpireinseconds=$((userexp * 86400))
-               tglexp=`date -d @$userexpireinseconds`             
-               tgl=`echo $tglexp |awk -F" " '{print $3}'`
-               while [ ${#tgl} -lt 2 ]
-               do
-               tgl="0"$tgl
-               done
-               username_clean="$username"
-               while [ ${#username} -lt 15 ]
-               do
-               username=$username" " 
-               done
-               bulantahun=`echo $tglexp |awk -F" " '{print $2,$6}'`
-               echo "echo "Expired- User : $username Expire at : $tgl $bulantahun"" >> /usr/local/bin/alluser
-               if [ $userexpireinseconds -gt $grace_cutoff ] ;
-               then
-		    	:
-               else
-               echo "echo "Expired- Username : $username are expired at: $tgl $bulantahun and removed : $hariini "" >> /usr/local/bin/deleteduser
-	           echo "Username $username that are expired at $tgl $bulantahun removed from the VPS $hariini (grace ${EXPIRE_GRACE_DAYS}d elapsed)"
-               userdel --force "$username_clean" 2>/dev/null || true
-               rm -f "/etc/kyt/suspended/ssh/${username_clean}" "/etc/kyt/limit/ssh/ip/${username_clean}" "/etc/kyt/limit/.state/ssh/${username_clean}.state"
-               fi
-               done
-               echo " "
-               echo "--------------------------------------"
-               echo "Script are successfully run"
-echo -e "back to menu on 2 second"
-sleep 2
-menu               
+echo "Removing SSH users past ${EXPIRE_GRACE_DAYS}-day expired grace period"
+echo "--------------------------------------"
+
+while IFS=: read -r username _ _ _ _ _ _ userexp _; do
+  [[ -z "$username" || -z "$userexp" ]] && continue
+  [[ "$userexp" =~ ^[0-9]+$ ]] || continue
+  (( userexp > 0 )) || continue
+
+  uid_num="$(id -u "$username" 2>/dev/null || echo 0)"
+  (( uid_num >= 1000 )) || continue
+  [[ "$username" == "nobody" || "$username" == "root" ]] && continue
+
+  exp_fmt="$(date -u -d "@$((userexp * 86400))" '+%d %b %Y' 2>/dev/null || echo "$userexp")"
+  days_overdue=$(( today_utc_days - userexp ))
+
+  if (( days_overdue >= EXPIRE_GRACE_DAYS )); then
+    echo "Username ${username} expired on ${exp_fmt} (${days_overdue}d overdue) -> removed (${hariini})"
+    userdel --force "$username" 2>/dev/null || true
+    [[ -f /etc/ssh/.ssh.db ]] && sed -i "/^\(#ssh#\|###\) ${username} /d" /etc/ssh/.ssh.db 2>/dev/null || true
+    rm -f "/etc/kyt/suspended/ssh/${username}" "/etc/kyt/limit/ssh/ip/${username}" "/etc/kyt/limit/.state/ssh/${username}.state" "/etc/ssh/${username}" "/var/www/html/ssh-${username}.txt"
+    if [[ -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+      esc_user="${username//\'/\'\'}"
+      sqlite3 /usr/bin/kyt/database.db "DELETE FROM account_registry WHERE LOWER(service)='ssh' AND LOWER(username)=LOWER('${esc_user}');" >/dev/null 2>&1 || true
+    fi
+  fi
+done < /etc/shadow
+
+echo ""
+echo "--------------------------------------"
+echo "Script successfully run"
+if [ -t 0 ]; then
+  echo -e "Back to menu in 2 seconds..."
+  sleep 2
+  menu
+fi

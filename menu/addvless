@@ -7,13 +7,13 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-MYIP=$(curl -sS ipv4.icanhazip.com)
-ISP=$(cat /etc/xray/isp)
-CITY=$(cat /etc/xray/city)
+MYIP=$(curl -sS --max-time 5 ipv4.icanhazip.com 2>/dev/null || curl -sS --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+ISP=$(cat /etc/xray/isp 2>/dev/null || echo "-")
+CITY=$(cat /etc/xray/city 2>/dev/null || echo "-")
 red() { echo -e "\\033[32;1m${*}\\033[0m"; }
-# // Getting Bot
-export CHATID="6691212410"
-export KEY="6918566731:AAHu5DpfzL6kJY9t726w_guTKX9ehams2SQ"
+# // Getting Bot (opsional, dari konfigurasi lokal)
+CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 3)
+KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear

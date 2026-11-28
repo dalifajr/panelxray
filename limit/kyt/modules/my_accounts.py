@@ -6,9 +6,20 @@ from kyt.modules.ui import manager_banner, delete_messages, upsert_message, run_
 async def my_accounts(event):
     sender = await event.get_sender()
     
-    # Call Laravel API to list accounts
+    # Call Laravel API to list accounts, with standalone SQLite fallback
     res = api_call("GET", f"/bot/accounts/{sender.id}")
-    raw_accounts = res.get("accounts", [])
+    if "error" not in res:
+        raw_accounts = res.get("accounts", [])
+    else:
+        conn = get_db()
+        try:
+            rows = conn.execute(
+                "SELECT id, service, username, expires_at FROM account_registry WHERE tg_id = ? AND active = 1 ORDER BY id DESC",
+                (str(sender.id),),
+            ).fetchall()
+            raw_accounts = [dict(r) for r in rows]
+        finally:
+            conn.close()
 
     # Filter out accounts that have been deleted via VPS or Website
     accounts = []
@@ -18,12 +29,7 @@ async def my_accounts(event):
         if _account_exists_in_system(service, username):
             accounts.append(acc)
         else:
-            # Sync back to Laravel API to mark as inactive
-            api_call("POST", "/bot/account/deactivate", {
-                "tg_id": str(sender.id),
-                "service": service,
-                "username": username
-            })
+            mark_account_inactive(service, username)
 
     if not accounts:
         msg = (

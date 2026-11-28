@@ -8,7 +8,8 @@ if [[ -r "$THEME_FILE" ]]; then
 fi
 
 clear
-
+if declare -F thm_title >/dev/null; then
+	thm_title "INFO PORT LAYANAN"
 	thm_info_row "OpenSSH" "443, 80, 22"
 	thm_info_row "Dropbear" "443, 109, 143"
 	thm_info_row "Dropbear WS" "443, 109"

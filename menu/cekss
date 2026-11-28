@@ -7,66 +7,114 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-DF='\e[39m'
-Bold='\e[1m'
-Blink='\e[5m'
-yell='\e[33m'
-red='\e[31m'
-green='\e[32m'
-blue='\e[34m'
-PURPLE='\e[35m'
-cyan='\e[36m'
-Lred='\e[91m'
-Lgreen='\e[92m'
-Lyellow='\e[93m'
-NC='\e[0m'
-GREEN='\033[0;32m'
-ORANGE='\033[0;33m'
-LIGHT='\033[0;37m'
-grenbo="\e[92;1m"
-
 clear
-
-echo -n >/tmp/other.txt
-data=($(cat /etc/xray/config.json | grep '^#!#' | cut -d ' ' -f 2 | sort | uniq))
 echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
 echo -e "           SHADOWSOCKS USER LOGIN        "
 echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
 echo -e "\033[1;91m┌──────────────────────────────────────────┐\033[0m"
-for akun in "${data[@]}"; do
-    if [[ -z "$akun" ]]; then
-        akun="tidakada"
-    fi
 
-    echo -n >/tmp/ipshadowsocks.txt
-    data2=($(cat /var/log/xray/access.log | tail -n 500 | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq))
-    for ip in "${data2[@]}"; do
+python3 - <<'PYEOF'
+import os, re, ipaddress
+from collections import deque
 
-        jum=$(cat /var/log/xray/access.log | grep -w "$akun" | tail -n 500 | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | grep -w "$ip" | sort | uniq)
-        if [[ "$jum" = "$ip" ]]; then
-            echo "$jum" >>/tmp/ipshadowsocks.txt
-        else
-            echo "$ip" >>/tmp/other.txt
-        fi
-        jum2=$(cat /tmp/ipshadowsocks.txt)
-        sed -i "/$jum2/d" /tmp/other.txt >/dev/null 2>&1
-    done
+def fmt_bytes(b):
+    try:
+        b = int(b)
+    except Exception:
+        return "0B"
+    if b <= 0:
+        return "0B"
+    if b < 1024:
+        return f"{b}B"
+    if b < 1048576:
+        return f"{(b + 1023)//1024}KB"
+    if b < 1073741824:
+        return f"{(b + 1048575)//1048576}MB"
+    return f"{(b + 1073741823)//1073741824}GB"
 
-    jum=$(cat /tmp/ipshadowsocks.txt)
-    if [[ -z "$jum" ]]; then
-        echo >/dev/null
-    else
-        jum2=$(cat /tmp/ipshadowsocks.txt | nl)
-        echo "user : $akun"
-        echo "$jum2"
-        echo -e "\033[0;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-    fi
-    rm -rf /tmp/ipshadowsocks.txt
-done
+def read_int(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            raw = f.read().strip()
+        return int(raw) if raw.isdigit() else 0
+    except Exception:
+        return 0
 
-rm -rf /tmp/other.txt
+def parse_ip(token):
+    t = token.strip()
+    if t.startswith("tcp:") or t.startswith("udp:"):
+        t = t[4:]
+    if t.startswith("["):
+        end = t.find("]")
+        if end != -1:
+            t = t[1:end]
+    elif t.count(":") == 1:
+        t = t.split(":", 1)[0]
+    try:
+        ip = ipaddress.ip_address(t)
+        if ip.is_loopback or ip.is_unspecified:
+            return None
+        return str(ip)
+    except Exception:
+        return None
+
+users = []
+seen = set()
+if os.path.isfile("/etc/xray/config.json"):
+    with open("/etc/xray/config.json", "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            m = re.match(r"^#!#\s+(\S+)\s+", line)
+            if m and m.group(1) not in seen:
+                seen.add(m.group(1))
+                users.append(m.group(1))
+
+user_ips = {u: set() for u in users}
+user_last = {}
+log_path = "/var/log/xray/access.log"
+if os.path.isfile(log_path) and users:
+    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = deque(f, maxlen=2000)
+    for line in lines:
+        if "email:" not in line or "accepted" not in line:
+            continue
+        em = re.search(r"email:\s*(\S+)", line)
+        if not em:
+            continue
+        u = em.group(1)
+        if u not in user_ips:
+            continue
+        parts = line.split()
+        ip_tok = None
+        if len(parts) >= 4 and parts[2] == "from":
+            ip_tok = parts[3]
+        elif len(parts) >= 3:
+            ip_tok = parts[2]
+        ip = parse_ip(ip_tok or "")
+        if ip:
+            user_ips[u].add(ip)
+        if len(parts) >= 2:
+            user_last[u] = parts[1].split(".")[0]
+
+found = 0
+for u in users:
+    ips = sorted(user_ips.get(u, set()))
+    if not ips:
+        continue
+    found += 1
+    iplim = read_int(f"/etc/kyt/limit/shadowsocks/ip/{u}")
+    qlim = read_int(f"/etc/shadowsocks/{u}")
+    qusage = read_int(f"/etc/limit/shadowsocks/{u}")
+    print(f"user        : {u}")
+    print(f"login       : {user_last.get(u, '-')}")
+    print(f"usage quota : {fmt_bytes(qusage)} / {fmt_bytes(qlim) if qlim > 0 else 'Unlimited'}")
+    print(f"limit ip    : {iplim if iplim > 0 else 'Unlimited'}")
+    for idx, ip in enumerate(ips, 1):
+        print(f"  {idx}. {ip}")
+    print("\033[0;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m")
+
+if found == 0:
+    print("  Tidak ada user SHADOWSOCKS aktif terdeteksi di log.")
+PYEOF
+
 echo -e "\033[1;91m└──────────────────────────────────────────┘\033[0m"
-echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
-echo -e "            Autoscript by Zenhost         "
-echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
 echo ""

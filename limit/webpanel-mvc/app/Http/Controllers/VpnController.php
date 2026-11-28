@@ -475,12 +475,13 @@ class VpnController extends Controller
             // Reactivate/Unsuspend and convert to normal account if it was a trial
             $acc = \App\Models\VpnAccount::where('service', $protocol)->where('vpn_username', $user)->first();
             if ($acc && $acc->is_trial) {
+                $safeUser = escapeshellarg((string) $user);
                 if ($protocol === 'ssh') {
-                    $this->vpn->executeBash("usermod -U $user");
+                    $this->vpn->executeBash("unsuspssh --user {$safeUser}");
                 } else {
                     $scriptMap = ['vmess' => 'unsuspws', 'vless' => 'unsuspvless', 'trojan' => 'unsusptr', 'shadowsocks' => 'unsuspss'];
                     $cmd = $scriptMap[$protocol] ?? 'unsuspws';
-                    $this->vpn->executeBash("$cmd --user $user");
+                    $this->vpn->executeBash("{$cmd} --user {$safeUser}");
                 }
                 
                 $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1, is_trial=0 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -530,8 +531,9 @@ class VpnController extends Controller
             if (!$owns) abort(403, 'Unauthorized action.');
         }
 
+        $safeUser = escapeshellarg((string) $user);
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("usermod -L $user");
+            $res = $this->vpn->executeBash("suspssh --user {$safeUser} --reason manual");
         } else {
             $scriptMap = [
                 'vmess' => 'suspws',
@@ -540,7 +542,7 @@ class VpnController extends Controller
                 'shadowsocks' => 'suspss'
             ];
             $cmd = $scriptMap[$protocol] ?? 'suspws';
-            $res = $this->vpn->executeBash("$cmd --user $user --reason manual");
+            $res = $this->vpn->executeBash("{$cmd} --user {$safeUser} --reason manual");
         }
 
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET updated_at=date('now') WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
@@ -572,8 +574,9 @@ class VpnController extends Controller
             }
         }
 
+        $safeUser = escapeshellarg((string) $user);
         if ($protocol === 'ssh') {
-            $res = $this->vpn->executeBash("usermod -U $user");
+            $res = $this->vpn->executeBash("unsuspssh --user {$safeUser}");
         } else {
             $scriptMap = [
                 'vmess' => 'unsuspws',
@@ -582,8 +585,9 @@ class VpnController extends Controller
                 'shadowsocks' => 'unsuspss'
             ];
             $cmd = $scriptMap[$protocol] ?? 'unsuspws';
-            $res = $this->vpn->executeBash("$cmd --user $user");
+            $res = $this->vpn->executeBash("{$cmd} --user {$safeUser}");
         }
+        $this->vpn->executeBash('rm -f ' . escapeshellarg("/etc/kyt/limit/.state/{$protocol}/{$user}.state"));
 
         $dbScript = "import sqlite3; c=sqlite3.connect('/usr/bin/kyt/database.db'); c.execute(\"UPDATE account_registry SET active=1 WHERE service='{$protocol}' AND username='{$user}'\"); c.commit()";
         $this->runPython($dbScript);
@@ -609,7 +613,18 @@ class VpnController extends Controller
         }
 
         if ($protocol === 'ssh') {
-            $this->vpn->executeBash("userdel -f $user 2>/dev/null; rm -f /etc/kyt/limit/ssh/ip/$user");
+            $safeUser = escapeshellarg((string) $user);
+            $limitFile = escapeshellarg('/etc/kyt/limit/ssh/ip/' . $user);
+            $suspFile = escapeshellarg('/etc/kyt/suspended/ssh/' . $user);
+            $stateFile = escapeshellarg('/etc/kyt/limit/.state/ssh/' . $user . '.state');
+            $quotaFile = escapeshellarg('/etc/ssh/' . $user);
+            $htmlFile = escapeshellarg('/var/www/html/ssh-' . $user . '.txt');
+            $userRegex = escapeshellarg('/^\(#ssh#\|###\) ' . $user . ' /d');
+            $this->vpn->executeBash(
+                "userdel -f {$safeUser} 2>/dev/null || true; "
+                . "rm -f {$limitFile} {$suspFile} {$stateFile} {$quotaFile} {$htmlFile}; "
+                . "[[ -f /etc/ssh/.ssh.db ]] && sed -i {$userRegex} /etc/ssh/.ssh.db 2>/dev/null || true"
+            );
         } else {
             $xrayMarkers = ['vmess' => '###', 'vless' => '#&', 'trojan' => '#!', 'shadowsocks' => '#!#'];
             $marker = $xrayMarkers[$protocol] ?? '###';

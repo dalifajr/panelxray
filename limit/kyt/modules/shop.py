@@ -317,7 +317,7 @@ async def confirm_buy(event):
             
             if real_proto == "ssh":
                 password = "".join(random.choices("0123456789", k=6))
-                code, out = await asyncio.to_thread(run_command, "addssh", [user, password, str(days)])
+                code, out = await asyncio.to_thread(run_command, "addssh", [user, password, str(iplimit), "0", str(days)])
             else:
                 script_map = {"vmess": "addws", "vless": "addvless", "trojan": "addtr", "shadowsocks": "addss"}
                 cmd = script_map.get(real_proto, "addws")

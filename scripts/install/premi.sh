@@ -259,9 +259,9 @@ green='\e[0;32m'
 TIME=$(date '+%d %b %Y')
 ipsaya=$(wget -qO- ipinfo.io/ip)
 TIMES="10"
-CHATID="-1002030911878"
-KEY="6617696083:AAEbXm7JbDiX3mSzHWeDjHG2_qeC1NqCKxA"
-URL="https://api.telegram.org/bot$KEY/sendMessage"
+CHATID="${INSTALL_NOTIFY_CHATID:-}"
+KEY="${INSTALL_NOTIFY_TOKEN:-}"
+URL="https://api.telegram.org/bot${KEY}/sendMessage"
 # ===================
 clear
   # // Exporint IP AddressInformation
@@ -341,9 +341,9 @@ expx="${INSTALL_LOGIN_EXP:-$(cat /usr/bin/e 2>/dev/null || echo Lifetime)}"
 echo "$username" >/usr/bin/user
 echo "$expx" >/usr/bin/e
 # DETAIL ORDER
-username=$(cat /usr/bin/user)
-oid=$(cat /usr/bin/ver)
-exp=$(cat /usr/bin/e)
+username=$(cat /usr/bin/user 2>/dev/null || echo User)
+oid=$(cat /usr/bin/ver 2>/dev/null || echo "latest")
+exp=$(cat /usr/bin/e 2>/dev/null || echo Lifetime)
 clear
 # CERTIFICATE STATUS
 valid="$exp"
@@ -535,7 +535,9 @@ function base_package() {
     sudo apt-get install -y --no-install-recommends software-properties-common
     echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
     echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
-    sudo apt-get install -y speedtest-cli vnstat libnss3-dev libnspr4-dev pkg-config libpam0g-dev libcap-ng-dev libcap-ng-utils libselinux1-dev libcurl4-openssl-dev flex bison make libnss3-tools libevent-dev bc rsyslog dos2unix zlib1g-dev libssl-dev libsqlite3-dev sed dirmngr libxml-parser-perl build-essential gcc g++ python3 htop lsof tar wget curl gawk ruby zip unzip p7zip-full python3-pip libc6 util-linux build-essential msmtp-mta ca-certificates bsd-mailx iptables iptables-persistent netfilter-persistent net-tools openssl ca-certificates gnupg gnupg2 ca-certificates lsb-release gcc shc make cmake git screen socat xz-utils apt-transport-https dnsutils cron bash-completion ntpdate chrony jq openvpn easy-rsa netcat-openbsd
+    sudo apt-get install -y speedtest-cli vnstat libnss3-dev libnspr4-dev pkg-config libpam0g-dev libcap-ng-dev libcap-ng-utils libselinux1-dev libcurl4-openssl-dev flex bison make libnss3-tools libevent-dev bc rsyslog dos2unix zlib1g-dev libssl-dev libsqlite3-dev sqlite3 sed dirmngr libxml-parser-perl build-essential gcc g++ python3 htop lsof tar wget curl gawk ruby zip unzip p7zip-full python3-pip libc6 util-linux build-essential msmtp-mta ca-certificates bsd-mailx iptables iptables-persistent netfilter-persistent net-tools openssl ca-certificates gnupg gnupg2 ca-certificates lsb-release gcc shc make cmake git screen socat xz-utils apt-transport-https dnsutils cron bash-completion ntpdate chrony jq openvpn easy-rsa netcat-openbsd
+    sudo apt-get install -y at tmux >/dev/null 2>&1 || true
+    systemctl enable --now atd >/dev/null 2>&1 || true
     print_success "Packet Yang Dibutuhkan"
     
 }
@@ -576,7 +578,7 @@ function preflight_check(){
 
     local pkg required_pkgs missing_pkgs
     required_pkgs=(
-        curl wget jq unzip tar cron nginx haproxy openvpn dropbear vnstat
+        curl wget jq unzip tar cron nginx haproxy openvpn dropbear vnstat sqlite3
         python3 python3-pip iptables-persistent netfilter-persistent netcat-openbsd gawk
     )
     missing_pkgs=()
@@ -610,35 +612,51 @@ echo ""
 if [[ $host == "1" ]]; then
 echo -e "   \e[1;32mPlease Enter Your Subdomain $NC"
 read -p "   Subdomain: " host1
+host1="$(printf '%s' "$host1" | tr -d '\r\n ')"
+if [[ -z "$host1" ]]; then
+    fallback_ip="$(curl -fsS --max-time 8 https://ipv4.icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
+    host1="${fallback_ip}.sslip.io"
+fi
+mkdir -p /var/lib/kyt /etc/xray
 echo "IP=" >> /var/lib/kyt/ipvps.conf
-echo $host1 > /etc/xray/domain
-echo $host1 > /root/domain
+echo "$host1" > /etc/xray/domain
+echo "$host1" > /root/domain
 echo ""
 elif [[ $host == "2" ]]; then
-#install cf
-SYS_ARCH=$(uname -m)
-if [[ "$SYS_ARCH" == "aarch64" ]]; then
-    wget -q "${REPO}limit/cf-arm.sh" -O cf.sh && chmod +x cf.sh && ./cf.sh
-else
-    wget ${REPO}limit/cf.sh && chmod +x cf.sh && ./cf.sh
-fi
+# Install Cloudflare DNS subdomain (transparan & kompatibel x86_64/ARM64)
+wget -q "${REPO}limit/cf-arm.sh" -O /root/cf.sh && sed -i 's/\r$//' /root/cf.sh && chmod +x /root/cf.sh && /root/cf.sh
 rm -f /root/cf.sh
 clear
 else
-print_install "Random Subdomain/Domain is Used"
+print_install "Auto Domain (sslip.io) Digunakan"
+fallback_ip="$(curl -fsS --max-time 8 https://ipv4.icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
+auto_domain="${fallback_ip:-localhost}"
+if [[ "$auto_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    auto_domain="${auto_domain}.sslip.io"
+fi
+mkdir -p /var/lib/kyt /etc/xray
+echo "IP=" >> /var/lib/kyt/ipvps.conf
+echo "$auto_domain" > /etc/xray/domain
+echo "$auto_domain" > /root/domain
 clear
-    fi
+fi
+if [[ ! -s /etc/xray/domain && -s /root/domain ]]; then
+    cp -f /root/domain /etc/xray/domain
+elif [[ -s /etc/xray/domain && ! -s /root/domain ]]; then
+    cp -f /etc/xray/domain /root/domain
+fi
 }
 
 clear
 #GANTI PASSWORD DEFAULT
 restart_system() {
+    [[ -n "${KEY:-}" && -n "${CHATID:-}" ]] || return 0
     USRSC=$(cat /usr/bin/user 2>/dev/null || echo User)
     EXPSC=$(cat /usr/bin/e 2>/dev/null || echo Lifetime)
     TIMEZONE=$(printf '%(%H:%M:%S)T')
     TEXT="
 <code>────────────────────</code>
-<b>⚡AUTOSCRIPT PREMIUM⚡</b>
+<b>⚡PANELXRAY INSTALLED⚡</b>
 <code>────────────────────</code>
 <code>ID     : </code><code>$USRSC</code>
 <code>Domain : </code><code>$domain</code>
@@ -646,10 +664,8 @@ restart_system() {
 <code>Time   : </code><code>$TIMEZONE</code>
 <code>Ip vps : </code><code>$ipsaya</code>
 <code>Exp Sc : </code><code>$EXPSC</code>
-<code>────────────────────</code>
-<i>Automatic Notification from Github</i>
-"'&reply_markup={"inline_keyboard":[[{"text":"ᴏʀᴅᴇʀ🐳","url":"https://t.me/supra_store31"},{"text":"ɪɴꜱᴛᴀʟʟ🐬","url":"https://t.me/nusantaraVpn"}]]}'
-    curl -s --max-time $TIMES -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+<code>────────────────────</code>"
+    curl -s --max-time "${TIMES:-10}" -d "chat_id=${CHATID}&disable_web_page_preview=1&text=${TEXT}&parse_mode=html" "$URL" >/dev/null 2>&1 || true
 }
 clear
 # Pasang SSL
@@ -763,20 +779,38 @@ clear
 print_install "Memasang SSL Pada Domain"
     rm -rf /etc/xray/xray.key
     rm -rf /etc/xray/xray.crt
-    domain=$(cat /root/domain)
-    STOPWEBSERVER=$(lsof -i:80 | cut -d' ' -f1 | awk 'NR==2 {print $1}')
+    domain=""
+    if [[ -s /etc/xray/domain ]]; then
+        domain="$(tr -d '\r\n ' < /etc/xray/domain)"
+    elif [[ -s /root/domain ]]; then
+        domain="$(tr -d '\r\n ' < /root/domain)"
+    fi
+    if [[ -z "$domain" ]]; then
+        fallback_ip="$(curl -fsS --max-time 8 https://ipv4.icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
+        domain="${fallback_ip:-localhost}"
+        echo "$domain" > /etc/xray/domain
+        echo "$domain" > /root/domain
+    fi
+    STOPWEBSERVER=$(lsof -i:80 2>/dev/null | cut -d' ' -f1 | awk 'NR==2 {print $1}')
     rm -rf /root/.acme.sh
-    mkdir /root/.acme.sh
-    systemctl stop $STOPWEBSERVER
-    systemctl stop nginx
-    curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
-    chmod +x /root/.acme.sh/acme.sh
-    /root/.acme.sh/acme.sh --upgrade --auto-upgrade
-    /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-    /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
-    ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
+    mkdir -p /root/.acme.sh
+    if [[ -n "${STOPWEBSERVER:-}" ]]; then
+        systemctl stop "$STOPWEBSERVER" >/dev/null 2>&1 || true
+    fi
+    systemctl stop nginx >/dev/null 2>&1 || true
+    systemctl stop haproxy >/dev/null 2>&1 || true
+    curl -fsSL https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh >/dev/null 2>&1 || true
+    if [[ -s /root/.acme.sh/acme.sh ]]; then
+        chmod +x /root/.acme.sh/acme.sh
+        /root/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1 || true
+        /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+        /root/.acme.sh/acme.sh --issue -d "$domain" --standalone -k ec-256 || true
+        ~/.acme.sh/acme.sh --installcert -d "$domain" --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc || true
+    fi
     ensure_valid_xray_certificates
-    chmod 777 /etc/xray/xray.key
+    chmod 644 /etc/xray/xray.crt 2>/dev/null || true
+    chmod 640 /etc/xray/xray.key 2>/dev/null || true
+    chown root:www-data /etc/xray/xray.key 2>/dev/null || true
     print_success "SSL Certificate"
 }
 
@@ -800,10 +834,14 @@ rm -rf /etc/vmess/.vmess.db
     mkdir -p /etc/kyt/limit/vmess/ip
     mkdir -p /etc/kyt/limit/vless/ip
     mkdir -p /etc/kyt/limit/trojan/ip
+    mkdir -p /etc/kyt/limit/shadowsocks/ip
     mkdir -p /etc/kyt/limit/ssh/ip
+    mkdir -p /etc/kyt/limit/.state
+    mkdir -p /etc/kyt/suspended
     mkdir -p /etc/limit/vmess
     mkdir -p /etc/limit/vless
     mkdir -p /etc/limit/trojan
+    mkdir -p /etc/limit/shadowsocks
     mkdir -p /etc/limit/ssh
     chmod +x /var/log/xray
     touch /etc/xray/domain
@@ -836,6 +874,19 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
  
     # // Ambil Config Server
     wget -O /etc/xray/config.json "${REPO}limit/config.json" >/dev/null 2>&1
+    sed -i 's/\r$//' /etc/xray/config.json 2>/dev/null || true
+    # Guard compatibility: strip sockopt.trustedXForwardedFor only if installed Xray build rejects it
+    if command -v /usr/local/bin/xray >/dev/null 2>&1; then
+        if ! /usr/local/bin/xray run -test -config /etc/xray/config.json >/dev/null 2>&1; then
+            python3 -c '
+import re
+p = "/etc/xray/config.json"
+txt = open(p, "r", encoding="utf-8", errors="ignore").read()
+txt = re.sub(r",\s*\"sockopt\"\s*:\s*\{\s*\"trustedXForwardedFor\"\s*:\s*\[[^\]]*\]\s*\}", "", txt, flags=re.S)
+open(p, "w", encoding="utf-8").write(txt)
+' 2>/dev/null || true
+        fi
+    fi
     #wget -O /usr/local/bin/xray "${REPO}xray/xray.linux.64bit" >/dev/null 2>&1
     wget -O /etc/systemd/system/runn.service "${REPO}limit/runn.service" >/dev/null 2>&1
     #chmod +x /usr/local/bin/xray
@@ -850,9 +901,11 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     print_install "Memasang Konfigurasi Packet"
     wget -O /etc/haproxy/haproxy.cfg "${REPO}limit/haproxy.cfg" >/dev/null 2>&1
     wget -O /etc/nginx/conf.d/xray.conf "${REPO}limit/xray.conf" >/dev/null 2>&1
+    sed -i 's/\r$//' /etc/haproxy/haproxy.cfg /etc/nginx/conf.d/xray.conf 2>/dev/null || true
     sed -i "s/xxx/${domain}/g" /etc/haproxy/haproxy.cfg
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf
-    curl ${REPO}limit/nginx.conf > /etc/nginx/nginx.conf
+    curl -fsSL "${REPO}limit/nginx.conf" > /etc/nginx/nginx.conf
+    sed -i 's/\r$//' /etc/nginx/nginx.conf 2>/dev/null || true
     validate_nginx_config
 
     mkdir -p /etc/haproxy/certs
@@ -870,7 +923,7 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     validate_haproxy_config
 
     # > Set Permission
-    chmod +x /etc/systemd/system/runn.service
+    chmod 644 /etc/systemd/system/runn.service 2>/dev/null || true
 
     # > Create Service
     rm -rf /etc/systemd/system/xray.service.d
@@ -1110,101 +1163,46 @@ print_success "Password SSH"
 
 function udp_mini(){
 clear
-print_install "Memasang Service Limit Quota"
-wget raw.githubusercontent.com/fttunnel7/vip/main/limit/limit.sh && chmod +x limit.sh && ./limit.sh
+print_install "Memasang Service Limit IP"
+# Disable any legacy conflicting /etc/xray/limit.* daemons (do NOT pull external repo scripts)
+for legacy_svc in limitvmess limitvless limittrojan limitshadowsocks; do
+    systemctl disable --now "$legacy_svc" >/dev/null 2>&1 || true
+done
 
 cd
 wget -q -O /usr/bin/limit-ip "${REPO}limit/limit-ip"
 chmod +x /usr/bin/limit-ip
-cd /usr/bin
-sed -i 's/\r//' limit-ip
+sed -i 's/\r$//' /usr/bin/limit-ip
 cd
 clear
 #SERVICE LIMIT ALL IP
-cat >/etc/systemd/system/vmip.service << EOF
+for pair in "vmip:VMESS" "vlip:VLESS" "trip:TROJAN" "ssip:SHADOWSOCKS" "sship:SSH"; do
+    svc="${pair%%:*}"
+    desc="${pair#*:}"
+    cat >"/etc/systemd/system/${svc}.service" << EOF
 [Unit]
-Description=My
-After=network.target
+Description=VPN IP Limit Monitor (${desc})
+After=network-online.target xray.service
 
 [Service]
+Type=simple
+User=root
+Nice=15
+IOSchedulingClass=idle
 WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip vmip
+ExecStart=/usr/bin/limit-ip ${svc}
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
+done
 systemctl daemon-reload
-systemctl restart vmip
-systemctl enable vmip
-
-cat >/etc/systemd/system/vlip.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip vlip
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart vlip
-systemctl enable vlip
-
-cat >/etc/systemd/system/trip.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip trip
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart trip
-systemctl enable trip
-
-cat >/etc/systemd/system/ssip.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip ssip
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart ssip
-systemctl enable ssip
-
-cat >/etc/systemd/system/sship.service << EOF
-[Unit]
-Description=My
-After=network.target
-
-[Service]
-WorkingDirectory=/root
-ExecStart=/usr/bin/limit-ip sship
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl restart sship
-systemctl enable sship
+for svc in vmip vlip trip ssip sship; do
+    systemctl enable "$svc" >/dev/null 2>&1 || true
+    systemctl restart "$svc" >/dev/null 2>&1 || true
+done
 #SERVICE LIMIT QUOTA
 
 #SERVICE VMESS
@@ -1249,9 +1247,10 @@ print_success "Limit Quota Service"
 
 function ssh_slow(){
 clear
-# // Installing UDP Mini
+# // Installing SlowDNS
 print_install "Memasang modul SlowDNS Server"
     wget -q -O /tmp/nameserver "${REPO}limit/nameserver" >/dev/null 2>&1
+    sed -i 's/\r$//' /tmp/nameserver 2>/dev/null || true
     chmod +x /tmp/nameserver
     bash /tmp/nameserver | tee /root/install.log
  print_success "SlowDNS"
@@ -1262,7 +1261,8 @@ function ins_SSHD(){
 clear
 print_install "Memasang SSHD"
 wget -q -O /etc/ssh/sshd_config "${REPO}limit/sshd" >/dev/null 2>&1
-chmod 700 /etc/ssh/sshd_config
+sed -i 's/\r$//' /etc/ssh/sshd_config 2>/dev/null || true
+chmod 600 /etc/ssh/sshd_config
 # keep SSHD on port 22 only, port 143 is reserved for dropbear
 sed -i '/^Port 143$/d' /etc/ssh/sshd_config
 grep -q '^Port 22$' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
@@ -1334,8 +1334,8 @@ ensure_dropbear_legacy_runtime() {
             if [[ -d "$src_dir" ]]; then
                 (
                     cd "$src_dir" || exit 0
-                    ./configure --prefix=/usr --sysconfdir=/etc/dropbear >/dev/null 2>&1 || exit 0
-                    make PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp" >/dev/null 2>&1 || exit 0
+                    CFLAGS="-O2 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types" ./configure --prefix=/usr --sysconfdir=/etc/dropbear >/dev/null 2>&1 || exit 0
+                    make -j"$(nproc)" PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp" >/dev/null 2>&1 || exit 0
                     install -m 0755 dropbear /usr/sbin/dropbear >/dev/null 2>&1 || true
                     install -m 0755 dropbearkey /usr/bin/dropbearkey >/dev/null 2>&1 || true
                     install -m 0755 dbclient /usr/bin/dbclient >/dev/null 2>&1 || true
@@ -1374,7 +1374,8 @@ print_install "Menginstall Dropbear"
 # // Installing Dropbear
 apt-get install dropbear -y > /dev/null 2>&1
 wget -q -O /etc/default/dropbear "${REPO}limit/dropbear.conf"
-chmod +x /etc/default/dropbear
+sed -i 's/\r$//' /etc/default/dropbear 2>/dev/null || true
+chmod 644 /etc/default/dropbear
 sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=143/' /etc/default/dropbear
 sed -i 's|^DROPBEAR_EXTRA_ARGS=.*|DROPBEAR_EXTRA_ARGS="-p 109 -r /etc/dropbear/dropbear_rsa_host_key"|' /etc/default/dropbear
 grep -q '^DROPBEAR_EXTRA_ARGS=' /etc/default/dropbear || echo 'DROPBEAR_EXTRA_ARGS="-p 109 -r /etc/dropbear/dropbear_rsa_host_key"' >> /etc/default/dropbear
@@ -1388,23 +1389,18 @@ clear
 function ins_vnstat(){
 clear
 print_install "Menginstall Vnstat"
-# setting vnstat
-apt -y install vnstat > /dev/null 2>&1
-/etc/init.d/vnstat restart
-apt -y install libsqlite3-dev > /dev/null 2>&1
-wget https://humdi.net/vnstat/vnstat-2.6.tar.gz
-tar zxvf vnstat-2.6.tar.gz
-cd vnstat-2.6
-./configure --prefix=/usr --sysconfdir=/etc && make && make install
-cd
-vnstat -u -i $NET
-sed -i 's/Interface "'""eth0""'"/Interface "'""$NET""'"/g' /etc/vnstat.conf
-chown vnstat:vnstat /var/lib/vnstat -R
-systemctl enable vnstat
-/etc/init.d/vnstat restart
-/etc/init.d/vnstat status
-rm -f /root/vnstat-2.6.tar.gz
-rm -rf /root/vnstat-2.6
+# Use official distro vnstat package (vnStat 2.12+ on Ubuntu 24.04; flag -u was removed in vnStat 2.x)
+apt-get install -y vnstat >/dev/null 2>&1 || apt -y install vnstat >/dev/null 2>&1
+if [[ -f /etc/vnstat.conf && -n "${NET:-}" ]]; then
+    sed -i "s/^;*Interface .*/Interface \"${NET}\"/" /etc/vnstat.conf 2>/dev/null || true
+fi
+mkdir -p /var/lib/vnstat
+chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null || true
+systemctl enable vnstat >/dev/null 2>&1 || true
+systemctl restart vnstat >/dev/null 2>&1 || /etc/init.d/vnstat restart >/dev/null 2>&1 || true
+if [[ -n "${NET:-}" ]]; then
+    vnstat --add -i "$NET" >/dev/null 2>&1 || true
+fi
 print_success "Vnstat"
 }
 
@@ -1412,14 +1408,13 @@ function ins_openvpn(){
 clear
 print_install "Menginstall OpenVPN"
 #OpenVPN
-wget ${REPO}limit/openvpn &&  chmod +x openvpn && ./openvpn
-if [[ -x /etc/init.d/openvpn ]]; then
-    /etc/init.d/openvpn restart >/dev/null 2>&1 || true
-elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn\.service'; then
-    systemctl restart openvpn >/dev/null 2>&1 || true
-elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn-server@server\.service'; then
-    systemctl restart openvpn-server@server >/dev/null 2>&1 || true
-fi
+wget -q -O /root/openvpn "${REPO}limit/openvpn" && sed -i 's/\r$//' /root/openvpn && chmod +x /root/openvpn && bash /root/openvpn
+for ovpn_unit in openvpn-server@server-tcp openvpn-server@server-udp openvpn-server@server openvpn; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${ovpn_unit}\.service"; then
+        systemctl enable --now "$ovpn_unit" >/dev/null 2>&1 || true
+        systemctl restart "$ovpn_unit" >/dev/null 2>&1 || true
+    fi
+done
 print_success "OpenVPN"
 }
 
@@ -1439,7 +1434,8 @@ cd
 rm -rf wondershaper
 echo > /home/limit
 apt install msmtp-mta ca-certificates bsd-mailx -y
-cat<<EOF>>/etc/msmtprc
+if [[ ! -s /etc/msmtprc ]]; then
+cat >/etc/msmtprc <<'EOF'
 defaults
 tls on
 tls_starttls on
@@ -1449,13 +1445,14 @@ account default
 host smtp.gmail.com
 port 587
 auth on
-user oceantestdigital@gmail.com
-from oceantestdigital@gmail.com
-password jokerman77 
+user your-email@example.com
+from your-email@example.com
+password CHANGE_ME_APP_PASSWORD
 logfile ~/.msmtp.log
 EOF
-chown -R www-data:www-data /etc/msmtprc
-wget -q -O /etc/ipserver "${REPO}limit/ipserver" && bash /etc/ipserver
+chmod 600 /etc/msmtprc
+fi
+wget -q -O /etc/ipserver "${REPO}limit/ipserver" && sed -i 's/\r$//' /etc/ipserver && bash /etc/ipserver
 print_success "Backup Server"
 }
 
@@ -1540,7 +1537,8 @@ print_install "Menginstall ePro WebSocket Proxy"
     wget -O /etc/whoiamluna/ws.py "${REPO}limit/ws.py" >/dev/null 2>&1
     wget -O /usr/bin/tun.conf "${REPO}limit/tun.conf" >/dev/null 2>&1
     wget -O /etc/systemd/system/ws.service "${REPO}limit/ws.service" >/dev/null 2>&1
-    chmod +x /etc/systemd/system/ws.service
+    sed -i 's/\r$//' /etc/whoiamluna/ws.py /usr/bin/tun.conf /etc/systemd/system/ws.service 2>/dev/null || true
+    chmod 644 /etc/systemd/system/ws.service
     chmod 755 /etc/whoiamluna/ws.py >/dev/null 2>&1 || true
     rm -f /usr/bin/ws.py >/dev/null 2>&1 || true
     chmod 644 /usr/bin/tun.conf
@@ -1590,13 +1588,12 @@ print_install "Restarting  All Packet"
 validate_nginx_config
 ensure_dropbear_port_override
 if [[ -x /etc/init.d/nginx ]]; then /etc/init.d/nginx restart >/dev/null 2>&1 || true; else systemctl restart nginx >/dev/null 2>&1 || true; fi
-if [[ -x /etc/init.d/openvpn ]]; then
-    /etc/init.d/openvpn restart >/dev/null 2>&1 || true
-elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn\.service'; then
-    systemctl restart openvpn >/dev/null 2>&1 || true
-elif systemctl list-unit-files 2>/dev/null | grep -q '^openvpn-server@server\.service'; then
-    systemctl restart openvpn-server@server >/dev/null 2>&1 || true
-fi
+for ovpn_unit in openvpn-server@server-tcp openvpn-server@server-udp openvpn-server@server openvpn; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${ovpn_unit}\.service"; then
+        systemctl enable --now "$ovpn_unit" >/dev/null 2>&1 || true
+        systemctl restart "$ovpn_unit" >/dev/null 2>&1 || true
+    fi
+done
 if [[ -x /etc/init.d/ssh ]]; then /etc/init.d/ssh restart >/dev/null 2>&1 || true; else systemctl restart ssh >/dev/null 2>&1 || true; fi
 if [[ -x /etc/init.d/dropbear ]]; then /etc/init.d/dropbear restart >/dev/null 2>&1 || true; else systemctl restart dropbear >/dev/null 2>&1 || true; fi
 if systemctl list-unit-files 2>/dev/null | grep -q '^fail2ban\.service'; then
@@ -1656,6 +1653,10 @@ function menu(){
 
     mkdir -p /usr/local/sbin
     cp -rf "${menu_src}/." /usr/local/sbin/
+    for f in /usr/local/sbin/*; do
+        [ -f "$f" ] || continue
+        sed -i 's/\r$//' "$f" 2>/dev/null || true
+    done
     chmod +x /usr/local/sbin/*
     rm -rf /tmp/panelxray-assets
 }
@@ -1684,14 +1685,51 @@ cat >/etc/cron.d/xp_all <<-END
 		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 		*/10 * * * * root /usr/local/sbin/clearlog
 		END
+	cat >/etc/cron.d/vpn-quota <<-END
+		SHELL=/bin/sh
+		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+		*/3 * * * * root /usr/local/sbin/vpn-quota-sync >/dev/null 2>&1
+		END
+	cat >/etc/cron.d/vpn-ssh-traffic <<-END
+		SHELL=/bin/sh
+		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+		*/5 * * * * root /usr/local/sbin/vpn-ssh-traffic-sync >/dev/null 2>&1
+		END
+    chmod 644 /etc/cron.d/xp_all /etc/cron.d/logclean /etc/cron.d/vpn-quota /etc/cron.d/vpn-ssh-traffic 2>/dev/null || true
+    if [[ ! -f /etc/default/limit-ip ]]; then
+        cat >/etc/default/limit-ip <<'EOF'
+# Konfigurasi opsional daemon limit-ip (vmip/vlip/trip/ssip/sship)
+# Ubah LIMIT_DUALSTACK_GRACE=1 bila ingin memberi kelonggaran APN dual-stack IPv4+IPv6 pada 1 perangkat.
+LIMIT_DUALSTACK_GRACE=0
+LIMIT_REQUIRED_STRIKES=4
+LIMIT_CONCURRENCY_GAP_SECONDS=12
+EOF
+        chmod 644 /etc/default/limit-ip
+    fi
+    if [[ -x /usr/local/sbin/vpn-ssh-traffic-sync ]]; then
+        /usr/local/sbin/vpn-ssh-traffic-sync >/dev/null 2>&1 || true
+    fi
     chmod 644 /root/.profile
 
     # Do not enable hidden reboot scheduler by default.
     rm -f /etc/cron.d/daily_reboot
 
-    echo "*/1 * * * * root echo -n > /var/log/nginx/access.log" >/etc/cron.d/log.nginx
-    echo "*/1 * * * * root echo -n > /var/log/xray/access.log" >>/etc/cron.d/log.xray
-    service cron restart
+    # Do not truncate xray/access.log every minute (would break limit-ip strike tracking!)
+    rm -f /etc/cron.d/log.xray /etc/cron.d/log.nginx
+    cat >/etc/logrotate.d/panelxray <<'LOGROTATE'
+/var/log/xray/access.log /var/log/xray/error.log /var/log/nginx/access.log {
+    daily
+    maxsize 50M
+    rotate 3
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
+LOGROTATE
+    chmod 644 /etc/logrotate.d/panelxray
+    service cron restart || systemctl restart cron || true
     cat >/home/daily_reboot <<-END
 		0
 	END
@@ -1752,7 +1790,7 @@ mkdir -p /etc/iptables
 iptables-save >/etc/iptables/rules.v4 2>/dev/null || true
 fi
 
-for unit in ssh sshd dropbear ws xray cron kyt nginx haproxy; do
+for unit in ssh sshd dropbear ws xray cron nginx haproxy vmip vlip trip ssip sship; do
 if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
 systemctl reset-failed "${unit}" >/dev/null 2>&1 || true
 systemctl enable "${unit}" >/dev/null 2>&1 || true
@@ -1760,9 +1798,16 @@ systemctl restart "${unit}" >/dev/null 2>&1 || true
 fi
 done
 
+if [[ -s /usr/bin/kyt/var.txt ]] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+systemctl reset-failed kyt >/dev/null 2>&1 || true
+systemctl enable kyt >/dev/null 2>&1 || true
+systemctl restart kyt >/dev/null 2>&1 || true
+fi
+
+# Keep ssh.socket disabled on Ubuntu 24.04+ so classic ssh.service owns port 22 cleanly
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-systemctl enable ssh.socket >/dev/null 2>&1 || true
-systemctl restart ssh.socket >/dev/null 2>&1 || true
+systemctl stop ssh.socket >/dev/null 2>&1 || true
+systemctl disable ssh.socket >/dev/null 2>&1 || true
 fi
 
 exit 0
@@ -1871,7 +1916,9 @@ clear
     run_install_step "Install Paket Dasar" base_package
     run_install_step "Siapkan Folder Xray" make_folder_xray
     run_install_step "Konfigurasi Domain" pasang_domain
-    run_install_step "Atur Password Default" password_default
+    if declare -F password_default >/dev/null 2>&1; then
+        run_install_step "Atur Password Default" password_default
+    fi
     run_install_step "Pasang Sertifikat SSL" pasang_ssl
     run_install_step "Install Xray Core" install_xray
     run_install_step "Setup SSH" ssh
@@ -1901,10 +1948,11 @@ rm -rf /root/*.zip
 rm -rf /root/*.sh
 rm -rf /root/LICENSE
 rm -rf /root/README.md
-rm -rf /root/domain
+if [[ -s /etc/xray/domain ]]; then
+    cp -f /etc/xray/domain /root/domain 2>/dev/null || true
+fi
 #sudo hostnamectl set-hostname $user
 secs_to_human "$(($(date +%s) - ${start}))"
-sudo hostnamectl set-hostname $username
 echo -e "${green} Script Successfull Installed"
 echo ""
 read -p "$( echo -e "Press ${YELLOW}[ ${NC}${YELLOW}Enter${NC} ${YELLOW}]${NC} For Reboot") "

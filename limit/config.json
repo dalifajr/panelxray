@@ -14,15 +14,21 @@
     },
     "stats": {},
     "policy": {
-    "levels": {
-      "0": {
-        "handshake": 2,
-        "connIdle": 128,
-        "statsUserUplink": true,
-        "statsUserDownlink": true
+      "levels": {
+        "0": {
+          "handshake": 2,
+          "connIdle": 128,
+          "statsUserUplink": true,
+          "statsUserDownlink": true
         }
-       }
       },
+      "system": {
+        "statsInboundUplink": true,
+        "statsInboundDownlink": true,
+        "statsOutboundUplink": true,
+        "statsOutboundDownlink": true
+      }
+    },
       "inbounds": [
       {
       "listen": "127.0.0.1",
@@ -205,7 +211,7 @@
           {
              "method": "aes-128-gcm",
              "password": "1d1c1d94-6987-4658-a4dc-8821a30fe7e0"
-#ssgrpc 
+#ssgrpc
            }
          ],
            "network": "tcp,udp"
@@ -238,33 +244,6 @@
     "rules": [
       {
         "inboundTag": [
-          "dnsIn"
-        ],
-        "outboundTag": "direct",
-        "type": "field"
-      },
-      {
-        "inboundTag": [
-          "dnsQuery"
-        ],
-        "outboundTag": "direct",
-        "type": "field"
-      },
-      {
-        "outboundTag": "direct",
-        "protocol": [
-          "bittorrent"
-        ],
-        "type": "field"
-      },
-      {
-        "type": "field",
-        "outboundTag": "blocked",       
-        "ip": [
-          "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "::1/128", "fc00::/7", "fe80::/10"]
-      },
-      {
-        "inboundTag": [
           "api"
         ],
         "outboundTag": "api",
@@ -279,20 +258,10 @@
       },
       {
         "type": "field",
-        "outboundTag": "direct",
-        "ip": ["1.1.1.1/32", "1.0.0.1/32",
-          "8.8.8.8/32", "8.8.4.4/32", "geoip:us", "geoip:ca", "geoip:cloudflare", "geoip:cloudfront", "geoip:facebook", "geoip:fastly", "geoip:google", "geoip:netflix", "geoip:telegram", "geoip:yt", "geoip:twitter"]
-      },
-      {
-        "type": "field",
-        "outboundTag": "blocked",       
+        "outboundTag": "blocked",
         "ip": [
-          "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "::1/128", "fc00::/7", "fe80::/10"]
-      },
-      {
-        "type": "field",
-        "outboundTag": "direct",
-        "ip": ["223.5.5.5/32", "119.29.29.29/32", "180.76.76.76/32", "114.114.114.114/32", "geoip:cn", "geoip:jp", "geoip:in", "geoip:private"]
+          "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "::1/128", "fc00::/7", "fe80::/10"
+        ]
       },
       {
         "type": "field",
@@ -302,31 +271,19 @@
       {
         "type": "field",
         "outboundTag": "direct",
+        "ip": [
+          "1.1.1.1/32", "1.0.0.1/32",
+          "8.8.8.8/32", "8.8.4.4/32",
+          "223.5.5.5/32", "119.29.29.29/32", "180.76.76.76/32", "114.114.114.114/32"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
         "network": "tcp,udp"
-      } 
+      }
     ]
   },
-  "stats": {},
-  "api": {
-    "services": [
-      "StatsService"
-    ],
-    "tag": "api"
-  },
-  "policy": {
-    "levels": {
-      "0": {
-        "statsUserDownlink": true,
-        "statsUserUplink": true
-      }
-    },
-    "system": {
-      "statsInboundUplink": true,
-      "statsInboundDownlink": true,
-      "statsOutboundUplink" : true,
-      "statsOutboundDownlink" : true
-     }
-    },
     "dns": {
       "hosts": {
         "dns.google": "8.8.8.8",

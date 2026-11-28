@@ -756,7 +756,16 @@ PYTHON;
 
         if ($protocol === 'ssh') {
             $limitFile = escapeshellarg('/etc/kyt/limit/ssh/ip/' . $username);
-            $this->vpn->executeBash("userdel -f {$safeUser} 2>/dev/null || true; rm -f {$limitFile}");
+            $suspFile = escapeshellarg('/etc/kyt/suspended/ssh/' . $username);
+            $stateFile = escapeshellarg('/etc/kyt/limit/.state/ssh/' . $username . '.state');
+            $quotaFile = escapeshellarg('/etc/ssh/' . $username);
+            $htmlFile = escapeshellarg('/var/www/html/ssh-' . $username . '.txt');
+            $userRegex = escapeshellarg('/^\(#ssh#\|###\) ' . $username . ' /d');
+            $this->vpn->executeBash(
+                "userdel -f {$safeUser} 2>/dev/null || true; "
+                . "rm -f {$limitFile} {$suspFile} {$stateFile} {$quotaFile} {$htmlFile}; "
+                . "[[ -f /etc/ssh/.ssh.db ]] && sed -i {$userRegex} /etc/ssh/.ssh.db 2>/dev/null || true"
+            );
         } else {
             $marker = self::XRAY_MARKERS[$protocol];
             $payloadB64 = base64_encode(json_encode([
@@ -801,8 +810,17 @@ if os.path.exists(path):
 for p in [
     f'/etc/kyt/suspended/{protocol}/{username}',
     f'/etc/kyt/limit/{protocol}/ip/{username}',
+    f'/etc/kyt/limit/.state/{protocol}/{username}.state',
+    f'/etc/limit/{protocol}/{username}',
     f'/etc/{protocol}/{username}',
+    f'/var/www/html/{protocol}-{username}.txt',
+    f'/var/www/html/{protocol}-{username}-tls.png',
+    f'/var/www/html/{protocol}-{username}-ws.png',
+    f'/var/www/html/sodosokws-{username}.txt' if protocol == 'shadowsocks' else '',
+    f'/var/www/html/sodosokgrpc-{username}.txt' if protocol == 'shadowsocks' else '',
 ]:
+    if not p:
+        continue
     if os.path.isdir(p):
         shutil.rmtree(p, ignore_errors=True)
     elif os.path.exists(p):

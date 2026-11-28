@@ -37,48 +37,58 @@ fun_bar() {
 res1() {
     systemctl daemon-reload
 }
+restart_if_exists() {
+    local unit="$1"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+        systemctl restart "$unit" >/dev/null 2>&1 || true
+    fi
+}
 res2() {
-    systemctl restart nginx
+    restart_if_exists nginx
 }
 res3() {
-    systemctl restart xray
+    restart_if_exists xray
 }
 res4() {
-    systemctl restart rc-local
+    restart_if_exists rc-local
 }
 res5() {
-    systemctl restart client
+    restart_if_exists client
 }
 res6() {
-    systemctl restart server
+    restart_if_exists server
 }
 res7() {
-    systemctl restart dropbear
+    restart_if_exists dropbear
 }
 res8() {
-    systemctl restart ws
+    restart_if_exists ws
 }
 res9() {
-    systemctl restart openvpn
+    restart_if_exists openvpn-server@server-tcp
+    restart_if_exists openvpn-server@server-udp
+    restart_if_exists openvpn
 }
 res10() {
-    systemctl restart cron
+    restart_if_exists cron
 }
 res11() {
-    systemctl restart haproxy
+    restart_if_exists haproxy
 }
 res12() {
-    systemctl restart netfilter-persistent
+    restart_if_exists netfilter-persistent
 }
 res13() {
-    systemctl restart squid
+    for svc in vmip vlip trip ssip sship; do
+        restart_if_exists "$svc"
+    done
 }
 res14() {
-    systemctl restart badvpn1
-    systemctl restart badvpn2
-    systemctl restart badvpn3
+    restart_if_exists udp-mini-1
+    restart_if_exists udp-mini-2
+    restart_if_exists udp-mini-3
 }
-netfilter-persistent
+netfilter-persistent save >/dev/null 2>&1 || true
 clear
 echo -e "${RED_BG}                     Restart Service Server                    ${NC}"
 echo -e ""

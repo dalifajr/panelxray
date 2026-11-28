@@ -1,0 +1,148 @@
+#!/bin/bash
+# Non-destructive Xray traffic quota tracker & auto-suspend enforcer.
+# Reads Xray stats API (127.0.0.1:10000), accumulates usage in /etc/limit/<service>/<user>,
+# and suspends accounts exceeding /etc/<service>/<user> using suspws/suspvless/susptr/suspss
+# (NEVER deletes config blocks destructively).
+
+set -u
+
+XRAY_BIN="/usr/local/bin/xray"
+API_SERVER="127.0.0.1:10000"
+CONFIG="/etc/xray/config.json"
+
+[[ -x "$XRAY_BIN" ]] || exit 0
+[[ -f "$CONFIG" ]] || exit 0
+
+python3 - <<'PY'
+import json
+import os
+import re
+import subprocess
+import sys
+
+XRAY_BIN = "/usr/local/bin/xray"
+API_SERVER = "127.0.0.1:10000"
+CONFIG_PATH = "/etc/xray/config.json"
+
+SERVICES = (
+    ("vmess", "###", "suspws"),
+    ("vless", "#&", "suspvless"),
+    ("trojan", "#!", "susptr"),
+    ("shadowsocks", "#!#", "suspss"),
+)
+
+
+def resolve_cmd(name: str) -> str:
+    for base in ("/usr/local/sbin", "/usr/bin", "/usr/sbin"):
+        cand = os.path.join(base, name)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return ""
+
+
+def fetch_xray_stats() -> dict:
+    try:
+        proc = subprocess.run(
+            [XRAY_BIN, "api", "statsquery", f"--server={API_SERVER}", "--reset=true"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception:
+        return {}
+    if proc.returncode != 0 or not proc.stdout:
+        return {}
+
+    usage = {}
+    try:
+        payload = json.loads(proc.stdout)
+        for item in payload.get("stat", []) or []:
+            name = str(item.get("name") or "")
+            val = int(item.get("value") or 0)
+            m = re.match(r"^user>>>([^>]+)>>>traffic>>>(uplink|downlink)$", name)
+            if m and val > 0:
+                u = m.group(1).strip()
+                usage[u] = usage.get(u, 0) + val
+    except Exception:
+        cur_user = None
+        for line in proc.stdout.splitlines():
+            m_name = re.search(r'name:\s*"user>>>([^>]+)>>>traffic>>>(uplink|downlink)"', line)
+            if m_name:
+                cur_user = m_name.group(1).strip()
+                continue
+            m_val = re.search(r"value:\s*(\d+)", line)
+            if m_val and cur_user:
+                val = int(m_val.group(1))
+                if val > 0:
+                    usage[cur_user] = usage.get(cur_user, 0) + val
+                cur_user = None
+    return usage
+
+
+def collect_active_users() -> dict:
+    by_service = {svc: set() for svc, _, _ in SERVICES}
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                parts = line.strip().split()
+                if len(parts) < 2:
+                    continue
+                for svc, marker, _ in SERVICES:
+                    if parts[0] == marker:
+                        by_service[svc].add(parts[1])
+    except Exception:
+        pass
+    return by_service
+
+
+def read_int(path: str) -> int:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            raw = fh.read().strip()
+        return int(raw) if raw.isdigit() else 0
+    except Exception:
+        return 0
+
+
+def write_int(path: str, val: int) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(f"{max(0, int(val))}\n")
+
+
+def main() -> int:
+    deltas = fetch_xray_stats()
+    active_by_service = collect_active_users()
+
+    for svc, _, susp_name in SERVICES:
+        users = active_by_service.get(svc) or set()
+        if not users:
+            continue
+        usage_dir = f"/etc/limit/{svc}"
+        os.makedirs(usage_dir, exist_ok=True)
+        susp_bin = resolve_cmd(susp_name)
+
+        for user in sorted(users):
+            delta = int(deltas.get(user, 0))
+            usage_path = os.path.join(usage_dir, user)
+            total = read_int(usage_path) + delta
+            if delta > 0 or not os.path.exists(usage_path):
+                write_int(usage_path, total)
+
+            quota_limit = read_int(f"/etc/{svc}/{user}")
+            if quota_limit > 0 and total >= quota_limit:
+                susp_marker = f"/etc/kyt/suspended/{svc}/{user}"
+                if not os.path.exists(susp_marker) and susp_bin:
+                    reason = f"quota_exceeded:{svc}:used={total}:limit={quota_limit}"
+                    subprocess.run(
+                        [susp_bin, "--user", user, "--reason", reason],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=60,
+                    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+PY

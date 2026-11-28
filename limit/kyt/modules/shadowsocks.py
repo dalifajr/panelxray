@@ -78,7 +78,7 @@ async def create_shadowsocks(event):
                 [
                     ("TLS", x[0]),
                     ("gRPC", x[1].replace(" ", "")),
-                    ("JSON", f"https://{DOMAIN}:81/ss-{user}.txt"),
+                    ("JSON", f"https://{DOMAIN}:81/sodosokws-{user}.txt"),
                 ],
             )
             await send_account_with_qr(event, msg, x[0], "QR TLS SHADOWSOCKS")
@@ -234,7 +234,7 @@ async def renew_shadowsocks(event):
                     ("Limit IP", iplim),
                     ("Aktif sampai dengan", exp),
                 ],
-                [("JSON", f"https://{DOMAIN}:81/ss-{user}.txt")],
+                [("JSON", f"https://{DOMAIN}:81/sodosokws-{user}.txt")],
             )
             warning = str(result.get("message") or "").strip()
             if warning:
@@ -376,7 +376,7 @@ async def trial_shadowsocks(event):
                 [
                     ("TLS", x[0]),
                     ("gRPC", x[1].replace(" ", "")),
-                    ("JSON", f"https://{DOMAIN}:81/ss-{remarks}.txt"),
+                    ("JSON", f"https://{DOMAIN}:81/sodosokws-{remarks}.txt"),
                 ],
             )
             await send_account_with_qr(event, msg, x[0], "QR TLS SHADOWSOCKS Trial")

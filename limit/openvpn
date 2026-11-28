@@ -1,10 +1,17 @@
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
-OS=`uname -m`;
-MYIP=$(wget -qO- ipinfo.io/ip);
-domain=$(cat /root/domain)
-#MYIP2="s/xxxxxxxxx/$MYIP/g";
-MYIP2="s/xxxxxxxxx/$domain/g";
+OS=`uname -m`
+MYIP=$(curl -fsS --max-time 10 https://ipv4.icanhazip.com 2>/dev/null || wget -qO- --timeout=10 ipinfo.io/ip 2>/dev/null || hostname -I | awk '{print $1}')
+domain=""
+if [[ -s /etc/xray/domain ]]; then
+    domain="$(tr -d '\r\n ' < /etc/xray/domain)"
+elif [[ -s /root/domain ]]; then
+    domain="$(tr -d '\r\n ' < /root/domain)"
+fi
+if [[ -z "$domain" ]]; then
+    domain="$MYIP"
+fi
+MYIP2="s/xxxxxxxxx/${domain}/g"
 
 function ovpn_install() {
     rm -rf /etc/openvpn
@@ -53,7 +60,6 @@ nobind
 persist-key
 persist-tun
 auth-user-pass
-comp-lzo
 verb 3
 END
     
@@ -69,7 +75,6 @@ nobind
 persist-key
 persist-tun
 auth-user-pass
-comp-lzo
 verb 3
 END
     
@@ -85,7 +90,6 @@ nobind
 persist-key
 persist-tun
 auth-user-pass
-comp-lzo
 verb 3
 END
     sed -i $MYIP2 /etc/openvpn/ws-ssl.ovpn;
@@ -100,7 +104,6 @@ nobind
 persist-key
 persist-tun
 auth-user-pass
-comp-lzo
 verb 3
 END
     sed -i $MYIP2 /etc/openvpn/ssl.ovpn;
@@ -118,8 +121,10 @@ function cert_ovpn() {
     cat /etc/openvpn/server/ca.crt >> /etc/openvpn/ws-ssl.ovpn
     echo '</ca>' >> /etc/openvpn/ws-ssl.ovpn
     cp /etc/openvpn/ws-ssl.ovpn /var/www/html/ws-ssl.ovpn
+    echo '<ca>' >> /etc/openvpn/ssl.ovpn
+    cat /etc/openvpn/server/ca.crt >> /etc/openvpn/ssl.ovpn
     echo '</ca>' >> /etc/openvpn/ssl.ovpn
-    cp /etc/openvpn/ws-ssl.ovpn /var/www/html/ssl.ovpn
+    cp /etc/openvpn/ssl.ovpn /var/www/html/ssl.ovpn
     
 # Delete script
  
@@ -134,20 +139,16 @@ cat <<'mySiteOvpn' > /var/www/html/index.html
 
 <head><meta charset="utf-8" /><title>OVPN Config Download</title><meta name="description" content="Server" /><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" /><meta name="theme-color" content="#000000" /><link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.2/css/all.css"><link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdnjs.cloudflare.com/ajax/libs/mdbootstrap/4.8.3/css/mdb.min.css" rel="stylesheet"></head><body><div class="container justify-content-center" style="margin-top:9em;margin-bottom:5em;"><div class="col-md"><div class="view"><img src="https://openvpn.net/wp-content/uploads/openvpn.jpg" class="card-img-top"><div class="mask rgba-white-slight"></div></div><div class="card"><div class="card-body"><h5 class="card-title">Config List</h5><br /><ul class="list-group">
 
-<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>TCP <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small></small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/tcp.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
+<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>TCP (Port 1194) <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small>Direct OpenVPN TCP</small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/tcp.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
 
-<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>UDP <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small></small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/udp.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
+<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>UDP (Port 2200) <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small>Direct OpenVPN UDP</small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/udp.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
 
-<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>SSL <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small></small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/ssl.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
-
-<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p> WS SSL <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small></small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/ws-ssl.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
-
-<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p> ALL.zip <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small></small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/Kyt-Project.zip" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
+<li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>ALL.zip <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small>Bundel OpenVPN TCP &amp; UDP</small></p><a class="btn btn-outline-success waves-effect btn-sm" href="https://IP-ADDRESSS:81/Kyt-Project.zip" style="float:right;"><i class="fa fa-download"></i> Download</a></li>
 
 </ul></div></div></div></div></body></html>
 mySiteOvpn
 
-sed -i "s|IP-ADDRESSS|$(curl -sS ifconfig.me)|g" /var/www/html/index.html
+sed -i "s|IP-ADDRESSS|${domain}|g" /var/www/html/index.html
 
 }
 
@@ -155,11 +156,11 @@ function install_ovpn() {
     ovpn_install
     config_easy
     make_follow
-    make_follow
     cert_ovpn
-    systemctl enable openvpn
-    systemctl start openvpn
-    /etc/init.d/openvpn restart
-    
+    systemctl enable openvpn >/dev/null 2>&1 || true
+    systemctl start openvpn >/dev/null 2>&1 || true
+    systemctl enable --now openvpn-server@server-tcp >/dev/null 2>&1 || true
+    systemctl enable --now openvpn-server@server-udp >/dev/null 2>&1 || true
+    /etc/init.d/openvpn restart >/dev/null 2>&1 || true
 }
 install_ovpn

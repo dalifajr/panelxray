@@ -60,12 +60,12 @@ cleanup_xray_account() {
     local user="$5"
     local exp="$6"
 
-    if [[ -f "$CONFIG" ]] && grep -qwE "^${marker} ${user} " "$CONFIG"; then
+    if [[ -f "$CONFIG" ]] && grep -qE "^${marker} ${user}[[:space:]]" "$CONFIG"; then
         sed -i "/^${marker} ${user} /,/^},{/d" "$CONFIG"
         xray_changed=1
     fi
     if [[ -f "$db_file" ]]; then
-        sed -i "/^### ${user} /d" "$db_file" 2>/dev/null || true
+        sed -i "/^\(###\|${marker}\) ${user} /d" "$db_file" 2>/dev/null || true
     fi
     rm -f "${SUSPEND_ROOT}/${service}/${user}"
     rm -rf "/etc/${service}/${user}"
@@ -73,6 +73,10 @@ cleanup_xray_account() {
     rm -f "/etc/kyt/limit/.state/${service}/${user}.state"
     rm -f "/etc/limit/${service}/${user}"
     rm -f "/var/www/html/${html_prefix}-${user}.txt"
+    rm -f "/var/www/html/${html_prefix}-${user}-tls.png" "/var/www/html/${html_prefix}-${user}-ws.png"
+    if [[ "$service" == "shadowsocks" ]]; then
+        rm -f "/var/www/html/sodosokgrpc-${user}.txt"
+    fi
     update_sqlite_account "delete" "$service" "$user"
 }
 
@@ -138,7 +142,8 @@ if (( xray_changed == 1 )); then
 fi
 
 ##------ Auto Suspend (0..2 days overdue) & Auto Remove (>=3 days overdue) SSH
-today_days=$(( now_epoch / 86400 ))
+today_utc_epoch="$(date -u -d "$(date -u +%Y-%m-%d)" +%s)"
+today_days=$(( today_utc_epoch / 86400 ))
 suspssh_bin="$(resolve_cmd "suspssh" || true)"
 
 while IFS=: read -r username _ _ _ _ _ _ userexp _; do
@@ -151,11 +156,11 @@ while IFS=: read -r username _ _ _ _ _ _ userexp _; do
     [[ "$username" == "nobody" || "$username" == "root" ]] && continue
 
     days_overdue=$(( today_days - userexp ))
-    exp_date="$(date -d "@$((userexp * 86400))" +%Y-%m-%d 2>/dev/null || echo "$now_date")"
+    exp_date="$(date -u -d "@$((userexp * 86400))" +%Y-%m-%d 2>/dev/null || echo "$now_date")"
 
     if (( days_overdue >= EXPIRE_GRACE_DAYS )); then
         userdel --force "$username" >/dev/null 2>&1 || true
-        sed -i "/^### ${username} /d" /etc/ssh/.ssh.db 2>/dev/null || true
+        [[ -f /etc/ssh/.ssh.db ]] && sed -i "/^\(#ssh#\|###\) ${username} /d" /etc/ssh/.ssh.db 2>/dev/null || true
         rm -f "${SUSPEND_ROOT}/ssh/${username}"
         rm -f "/etc/ssh/${username}"
         rm -f "/etc/kyt/limit/ssh/ip/${username}"

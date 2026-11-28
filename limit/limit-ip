@@ -3,6 +3,12 @@
 set -u
 shopt -s nullglob
 
+# Optional operator overrides (e.g. LIMIT_DUALSTACK_GRACE=1, LIMIT_REQUIRED_STRIKES=4)
+if [[ -r /etc/default/limit-ip ]]; then
+    # shellcheck disable=SC1091
+    source /etc/default/limit-ip
+fi
+
 LIMIT_ROOT="${LIMIT_ROOT:-/etc/kyt/limit}"
 SUSPEND_ROOT="${SUSPEND_ROOT:-/etc/kyt/suspended}"
 STATE_ROOT="${LIMIT_ROOT}/.state"
@@ -17,7 +23,7 @@ LOOKBACK_SECONDS="${LIMIT_LOOKBACK_SECONDS:-55}"
 REQUIRED_STRIKES="${LIMIT_REQUIRED_STRIKES:-4}"
 MIN_HITS_PER_IP="${LIMIT_MIN_HITS_PER_IP:-3}"
 CONCURRENCY_GAP_SECONDS="${LIMIT_CONCURRENCY_GAP_SECONDS:-12}"
-DUALSTACK_GRACE="${LIMIT_DUALSTACK_GRACE:-1}"
+DUALSTACK_GRACE="${LIMIT_DUALSTACK_GRACE:-0}"
 LOG_TAIL_BYTES="${LIMIT_LOG_TAIL_BYTES:-5242880}"
 
 mkdir -p "$STATE_ROOT"
@@ -583,7 +589,9 @@ if db_pids or sshd_pids:
                     f.seek(0, os.SEEK_END)
                     size = f.tell()
                     f.seek(max(0, size - 4 * 1024 * 1024))
-                    log_lines.extend(f.read().decode("utf-8", errors="ignore").splitlines())
+                    log_lines.extend(
+                        ln for ln in f.read().decode("utf-8", errors="ignore").splitlines() if ln.strip()
+                    )
             except OSError:
                 pass
     if not log_lines:
@@ -592,7 +600,7 @@ if db_pids or sshd_pids:
                 ["journalctl", "-u", "dropbear", "-u", "ssh", "-u", "sshd", "--since", "24 hours ago", "--no-pager"],
                 text=True, stderr=subprocess.DEVNULL
             )
-            log_lines.extend(jout.splitlines())
+            log_lines.extend(ln for ln in jout.splitlines() if ln.strip())
         except Exception:
             pass
 

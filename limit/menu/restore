@@ -199,17 +199,22 @@ if os.path.exists('/etc/passwd'):
 
 current_xray_users = set()
 xray_config_path = '/etc/xray/config.json'
+
+def load_xray_json_strip_comments(p):
+    with open(p, 'r', encoding='utf-8', errors='ignore') as fh:
+        cleaned = '\n'.join(l for l in fh if not l.lstrip().startswith('#'))
+    return json.loads(cleaned)
+
 if os.path.exists(xray_config_path):
     try:
-        with open(xray_config_path, 'r') as f:
-            cfg = json.load(f)
+        cfg = load_xray_json_strip_comments(xray_config_path)
         for inbound in cfg.get('inbounds', []):
             for client in inbound.get('settings', {}).get('clients', []):
                 email = client.get('email', '')
                 username = email.split('@')[0] if '@' in email else email
                 if username:
                     current_xray_users.add(username.lower())
-    except Exception as e:
+    except Exception:
         pass
 
 duplicates = current_users.union(current_xray_users)
@@ -264,44 +269,54 @@ if os.path.exists(f"{backup_dir}/passwd"):
         with open('/etc/gshadow', 'a') as f:
             f.writelines(new_gshadow)
 
-# 3. Merge Xray configs
+# 3. Merge Xray configs while preserving #vmess/#vless/#trojanws/#ssws markers
 backup_xray_config = f"{backup_dir}/xray/config.json"
 if os.path.exists(xray_config_path) and os.path.exists(backup_xray_config):
     try:
-        with open(xray_config_path, 'r') as f:
-            curr_cfg = json.load(f)
-        with open(backup_xray_config, 'r') as f:
-            bak_cfg = json.load(f)
-            
-        curr_clients_by_id = {}
-        for inbound in curr_cfg.get('inbounds', []):
-            for client in inbound.get('settings', {}).get('clients', []):
-                c_id = client.get('id', client.get('password'))
-                if c_id:
-                    curr_clients_by_id[c_id] = client
+        with open(xray_config_path, 'r', encoding='utf-8', errors='ignore') as f:
+            curr_lines = f.readlines()
+        with open(backup_xray_config, 'r', encoding='utf-8', errors='ignore') as f:
+            bak_lines = f.readlines()
 
+        markers = {'#vmess', '#vmessgrpc', '#vless', '#vlessgrpc', '#trojanws', '#trojangrpc', '#ssws', '#ssgrpc'}
+        user_prefixes = ('###', '#&', '#!', '#!#')
+
+        # Extract marker -> list of (header_line, client_line, username) from backup
+        bak_blocks = {m: [] for m in markers}
+        cur_section = None
+        i = 0
+        while i < len(bak_lines):
+            st = bak_lines[i].strip()
+            if st in markers:
+                cur_section = st
+                i += 1
+                continue
+            if cur_section and any(st.startswith(p + ' ') for p in user_prefixes):
+                parts = st.split()
+                if len(parts) >= 2 and i + 1 < len(bak_lines):
+                    uname = parts[1]
+                    if uname.lower() not in duplicates:
+                        bak_blocks[cur_section].append((bak_lines[i], bak_lines[i + 1]))
+                    i += 2
+                    continue
+            i += 1
+
+        merged_lines = []
         merged_count = 0
-        for inbound in bak_cfg.get('inbounds', []):
-            protocol = inbound.get('protocol')
-            curr_inbound = None
-            for ci in curr_cfg.get('inbounds', []):
-                if ci.get('protocol') == protocol:
-                    curr_inbound = ci
-                    break
-            if curr_inbound:
-                curr_clients = curr_inbound.setdefault('settings', {}).setdefault('clients', [])
-                for client in inbound.get('settings', {}).get('clients', []):
-                    c_id = client.get('id', client.get('password'))
-                    email = client.get('email', '')
-                    username = email.split('@')[0] if '@' in email else email
-                    if username.lower() not in duplicates and c_id not in curr_clients_by_id:
-                        curr_clients.append(client)
-                        merged_count += 1
-                        
+        for line in curr_lines:
+            merged_lines.append(line)
+            st = line.strip()
+            if st in bak_blocks and bak_blocks[st]:
+                for hdr, body in bak_blocks[st]:
+                    merged_lines.append(hdr)
+                    merged_lines.append(body)
+                    merged_count += 1
+                bak_blocks[st] = []
+
         if merged_count > 0:
-            with open(xray_config_path, 'w') as f:
-                json.dump(curr_cfg, f, indent=4)
-    except Exception as e:
+            with open(xray_config_path, 'w', encoding='utf-8') as f:
+                f.writelines(merged_lines)
+    except Exception:
         pass
 
 # 4. Merge bot SQLite database

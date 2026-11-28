@@ -39,19 +39,17 @@ LIGHT='\033[0;37m'
 grenbo="\e[92;1m"
 red() { echo -e "\\033[32;1m${*}\\033[0m"; }
 # Getting
-CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
-KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
+CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 3)
+KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
 #IZIN SCRIPT
-MYIP=$(curl -sS ipv4.icanhazip.com)
+MYIP=$(curl -sS --max-time 5 ipv4.icanhazip.com 2>/dev/null || curl -sS --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 echo -e "\e[32mloading...\e[0m"
 clear
 # Valid Script
-ipsaya=$(wget -qO- ipinfo.io/ip)
-data_server=$(curl -v --insecure --silent https://google.com/ 2>&1 | grep Date | sed -e 's/< Date: //')
-date_list=$(date +"%Y-%m-%d" -d "$data_server")
+ipsaya="$MYIP"
 data_ip=""
 checking_sc() {
   return 0
@@ -59,7 +57,7 @@ checking_sc() {
 checking_sc
 echo -e "\e[32mloading...\e[0m"
 clear
-sspwd=$(cat /etc/xray/passwd)
+sspwd=$(cat /etc/xray/passwd 2>/dev/null || true)
 clear
 source /var/lib/kyt/ipvps.conf
 if [[ "$IP" = "" ]]; then
@@ -112,20 +110,18 @@ sed -i '/#ssws$/a\#!# '"$user $exp"'\
 },{"password": "'""$uuid""'","method": "'""$cipher""'","email": "'""$user""'"' /etc/xray/config.json
 sed -i '/#ssgrpc$/a\#!# '"$user $exp"'\
 },{"password": "'""$uuid""'","method": "'""$cipher""'","email": "'""$user""'"' /etc/xray/config.json
-echo $cipher:$uuid > /tmp/log
-shadowsocks_base64=$(cat /tmp/log)
-echo -n "${shadowsocks_base64}" | base64 > /tmp/log1
+tls="443"
+echo -n "${cipher}:${uuid}" | base64 -w 0 > /tmp/log1 2>/dev/null || echo -n "${cipher}:${uuid}" | base64 | tr -d '\n' > /tmp/log1
 shadowsocks_base64e=$(cat /tmp/log1)
-shadowsockslink="ss://${shadowsocks_base64e}@$domain:$tls?plugin=xray-plugin;mux=0;path=/ss-ws;host=$domain;tls#${user}"
-shadowsockslink1="ss://${shadowsocks_base64e}@$domain:$tls?plugin=xray-plugin;mux=0;serviceName=ss-grpc;host=$domain;tls#${user}"
+shadowsockslink="ss://${shadowsocks_base64e}@${domain}:${tls}?plugin=xray-plugin;mux=0;path=/ss-ws;host=${domain};tls#${user}"
+shadowsockslink1="ss://${shadowsocks_base64e}@${domain}:${tls}?plugin=xray-plugin;mux=0;serviceName=ss-grpc;host=${domain};tls#${user}"
 
 #buat ss WEBSOCKET
-sslinkws="ss://${shadowsocks_base64e}@${domain}:443?path=/ss-ws&security=tls&encryption=none&type=ws#${user}"
-nonsslinkws="ss://${shadowsocks_base64e}@${domain}:80?path=/ss-ws&security=none&encryption=none&type=ws#${user}"
+sslinkws="ss://${shadowsocks_base64e}@${domain}:443?path=/ss-ws&security=tls&encryption=none&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"
+nonsslinkws="ss://${shadowsocks_base64e}@${domain}:80?path=/ss-ws&security=none&encryption=none&host=${domain}&type=ws#${user}"
 
-#buat ss GRPC
-sslinkgrpc="ss://${shadowsocks_base64e}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=ss-grpc&sni=bug.com#${user}"
-nonsslinkgrpc="ss://${shadowsocks_base64e}@${domain}:80?mode=gun&security=none&encryption=none&type=grpc&serviceName=ss-grpc&sni=bug.com#${user}"
+#buat ss GRPC (TLS 443 via HAProxy ALPN h2 -> Nginx 1013 -> Xray 10008)
+sslinkgrpc="ss://${shadowsocks_base64e}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=ss-grpc&sni=${domain}&allowInsecure=1#${user}"
 
 systemctl restart xray
 #buatshadowsocks custom
@@ -191,7 +187,7 @@ cat > /var/www/html/sodosokws-$user.txt <<-END
         "security": "tls",
         "tlsSettings": {
           "allowInsecure": true,
-          "serverName": "isi_bug_disini"
+          "serverName": "$domain"
         },
         "wsSettings": {
           "headers": {
@@ -302,7 +298,7 @@ cat > /var/www/html/sodosokgrpc-$user.txt <<-END
         "security": "tls",
         "tlsSettings": {
           "allowInsecure": true,
-          "serverName": "isi_bug_disini"
+          "serverName": "$domain"
         }
       },
       "tag": "proxy"
@@ -343,13 +339,13 @@ cat > /var/www/html/sodosokgrpc-$user.txt <<-END
   "stats": {}
 }
 END
-systemctl reload xray >/dev/null 2>&1
+systemctl restart xray >/dev/null 2>&1
 service cron restart >/dev/null 2>&1
 if [ ! -e /etc/shadowsocks ]; then
   mkdir -p /etc/shadowsocks
 fi
 
-if [ -z ${Quota} ]; then
+if [ -z "${Quota}" ]; then
   Quota="0"
 fi
 
@@ -365,11 +361,11 @@ if [[ "${iplimit}" =~ ^[0-9]+$ ]] && [[ "${iplimit}" -gt 0 ]]; then
 else
   rm -f /etc/kyt/limit/shadowsocks/ip/${user}
 fi
-DATADB=$(cat /etc/shadowsocks/.shadowsocks.db | grep "^###" | grep -w "${user}" | awk '{print $2}')
+DATADB=$(grep "^###" /etc/shadowsocks/.shadowsocks.db 2>/dev/null | grep -w "${user}" | awk '{print $2}')
 if [[ "${DATADB}" != '' ]]; then
-  sed -i "/\b${user}\b/d" /etc/shadowsocks/.shadowsocks.db
+  sed -i "/^### ${user} /d" /etc/shadowsocks/.shadowsocks.db
 fi
-echo "### ${user} ${exp} ${uuid}" >>/etc/shadowsocks/.shadowsocks.db
+echo "### ${user} ${exp} ${uuid} ${Quota} ${iplimit}" >>/etc/shadowsocks/.shadowsocks.db
 clear
 
 clear

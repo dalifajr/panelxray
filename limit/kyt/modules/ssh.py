@@ -407,7 +407,7 @@ async def trial_ssh(event):
 			await upsert_message(event, f"⏳ {label}\n`[{_progress_bar(percent)}] {percent}%`")
 			await asyncio.sleep(0.35)
 
-		cmd = f'useradd -e `date -d "{exp} days" +"%Y-%m-%d"` -s /bin/false -M {user} && echo "{pw}\n{pw}" | passwd {user} | tmux new-session -d -s {user} "trial trialssh {user} {exp}"'
+		cmd = f"trial {int(exp)} {user} {pw}"
 		code, out = run_command(cmd)
 		if code != 0:
 			await upsert_message(

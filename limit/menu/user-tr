@@ -23,7 +23,7 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#! " "/etc/xray/config.json")
     echo ""
     echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     read -n 1 -s -r -p "Press [ Enter ] to back on menu trojan"
-    trojan
+    m-trojan
 fi
 
   echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -39,12 +39,12 @@ fi
                 fi
         done
 user=$(grep -E "^#! " "/etc/xray/config.json" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
-iplim=$(cat /etc/kyt/limit/trojan/ip/$user)
+iplim=$(cat "/etc/kyt/limit/trojan/ip/$user" 2>/dev/null || echo "0")
 domain=$(cat /etc/xray/domain)
 status_badge="ACTIVE"
 [[ -f "/etc/kyt/suspended/trojan/$user" ]] && status_badge="SUSPENDED"
-uuid=$(grep -E "^### " "/etc/trojan/.trojan.db" | cut -d ' ' -f 4 | sed -n "${CLIENT_NUMBER}"p)
-Quota=$(grep -E "^### " "/etc/trojan/.trojan.db" | cut -d ' ' -f 5 | sed -n "${CLIENT_NUMBER}"p)
+uuid=$(awk -v u="$user" '($1 == "###" || $1 == "#!") && $2 == u {print $4; exit}' /etc/trojan/.trojan.db 2>/dev/null)
+Quota=$(awk -v u="$user" '($1 == "###" || $1 == "#!") && $2 == u {print $5; exit}' /etc/trojan/.trojan.db 2>/dev/null)
 exp=$(grep -E "^#! " "/etc/xray/config.json" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
 hariini=`date -d "0 days" +"%Y-%m-%d"`
 cat >/var/www/html/trojan-$user.txt <<-END

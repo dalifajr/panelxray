@@ -65,12 +65,12 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
     if [ -z "$user" ]; then
     return_to_menu 1
     else
-    if ! grep -qwE "^#!# $user " "/etc/xray/config.json"; then
+    if ! grep -qE "^#!# ${user}[[:space:]]" "/etc/xray/config.json"; then
       if [[ -f "/etc/kyt/suspended/shadowsocks/$user" ]]; then
         unsuspss --user "$user" >/dev/null 2>&1 || true
       fi
     fi
-    if ! grep -qwE "^#!# $user " "/etc/xray/config.json"; then
+    if ! grep -qE "^#!# ${user}[[:space:]]" "/etc/xray/config.json"; then
       echo "User not found"
       exit 1
     fi
@@ -80,20 +80,22 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#!# " "/etc/xray/config.json")
       iplim="1"
     fi
     mkdir -p /etc/kyt/limit/shadowsocks/ip
+    rm -f /etc/kyt/limit/.state/shadowsocks/${user}.state
     if [[ "${iplim}" =~ ^[0-9]+$ ]] && [[ "${iplim}" -gt 0 ]]; then
       echo "${iplim}" > /etc/kyt/limit/shadowsocks/ip/${user}
     else
       rm -f /etc/kyt/limit/shadowsocks/ip/${user}
     fi
-    exp=$(grep -wE "^#!# $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
+    exp=$(grep -E "^#!# ${user}[[:space:]]" "/etc/xray/config.json" | awk '{print $3}' | head -n 1)
     now=$(date +%Y-%m-%d)
     d1=$(date -d "$exp" +%s)
     d2=$(date -d "$now" +%s)
     exp2=$(( (d1 - d2) / 86400 ))
+    (( exp2 < 0 )) && exp2=0
     exp3=$(($exp2 + $masaaktif))
     exp4=`date -d "$exp3 days" +"%Y-%m-%d"`
-    sed -i "/#!# $user/c\#!# $user $exp4" /etc/xray/config.json
-    [[ -f /root/akun/shadowsocks/.shadowsocks.conf ]] && sed -i "/#!# $user/c\#!# $user $exp4" /root/akun/shadowsocks/.shadowsocks.conf
+    sed -i "/^#!# ${user} /c\#!# ${user} ${exp4}" /etc/xray/config.json
+    [[ -f /root/akun/shadowsocks/.shadowsocks.conf ]] && sed -i "/^#!# ${user} /c\#!# ${user} ${exp4}" /root/akun/shadowsocks/.shadowsocks.conf
     update_db_expiry /etc/shadowsocks/.shadowsocks.db
     systemctl restart xray > /dev/null 2>&1
     clear

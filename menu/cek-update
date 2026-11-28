@@ -359,17 +359,22 @@ if command -v netfilter-persistent >/dev/null 2>&1; then
 fi
 
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-  systemctl enable ssh.socket >/dev/null 2>&1 || true
-  systemctl restart ssh.socket >/dev/null 2>&1 || true
+  systemctl stop ssh.socket >/dev/null 2>&1 || true
+  systemctl disable ssh.socket >/dev/null 2>&1 || true
 fi
 
-for unit in ssh sshd dropbear ws xray cron kyt vmip vlip trip ssip sship; do
+for unit in ssh sshd dropbear ws xray cron vmip vlip trip ssip sship; do
   if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
     systemctl reset-failed "$unit" >/dev/null 2>&1 || true
     systemctl enable "$unit" >/dev/null 2>&1 || true
     systemctl restart "$unit" >/dev/null 2>&1 || true
   fi
 done
+if [ -s /usr/bin/kyt/var.txt ] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+  systemctl reset-failed kyt >/dev/null 2>&1 || true
+  systemctl enable kyt >/dev/null 2>&1 || true
+  systemctl restart kyt >/dev/null 2>&1 || true
+fi
 
 rm -f /etc/cron.d/daily_reboot /etc/cron.d/reboot_otomatis 2>/dev/null || true
 if [ -x /usr/local/sbin/vpn-ssh-traffic-sync ]; then
@@ -471,10 +476,14 @@ sync_runtime_configs() {
       xray_conf_backup="/tmp/xray.conf.bak.$$"
       cp -a /etc/nginx/conf.d/xray.conf "$xray_conf_backup" 2>/dev/null || true
     fi
-    cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
-    sed -i 's/\r$//' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
-    sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
-    log_info "Konfigurasi Nginx xray.conf disinkronkan (backup disiapkan)."
+    if [ -f /var/www/webpanel-mvc/.env ] && [ -f /etc/nginx/conf.d/xray.conf ] && grep -q 'webpanel-mvc/public' /etc/nginx/conf.d/xray.conf 2>/dev/null; then
+      log_info "WebPanel terdeteksi — mempertahankan blok PHP/API pada /etc/nginx/conf.d/xray.conf."
+    else
+      cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
+      sed -i 's/\r$//' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+      sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+      log_info "Konfigurasi Nginx xray.conf disinkronkan (mode Terminal)."
+    fi
   fi
 
   if [ -f "$TMP_DIR/limit/haproxy.cfg" ]; then
@@ -551,15 +560,22 @@ sync_runtime_configs() {
       'HostKey /etc/ssh/ssh_host_ed25519_key' \
       >> /etc/ssh/sshd_config
   fi
-  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-    mkdir -p /etc/systemd/system/ssh.socket.d
-    printf '%s\n' \
-      '[Socket]' \
-      'ListenStream=' \
-      'ListenStream=0.0.0.0:22' \
-      'ListenStream=[::]:22' \
-      >/etc/systemd/system/ssh.socket.d/override.conf
-    systemctl restart ssh.socket >>"$UPDATE_LOG" 2>&1 || true
+  # Remove legacy every-minute xray log truncation cron that blinds limit-ip; use daily logrotate instead
+  rm -f /etc/cron.d/log.xray 2>/dev/null || true
+  if [ -d /etc/logrotate.d ]; then
+    cat >/etc/logrotate.d/panelxray <<'EOF'
+/var/log/xray/access.log /var/log/xray/error.log {
+    daily
+    maxsize 50M
+    rotate 3
+    missingok
+    notifempty
+    copytruncate
+    compress
+    delaycompress
+}
+EOF
+    chmod 644 /etc/logrotate.d/panelxray 2>/dev/null || true
   fi
 
   # Keep SSH-WS route aligned to dropbear main port to avoid drift.
@@ -742,11 +758,19 @@ PYEOF
   fi
 
   systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
-  for unit in ssh.socket ssh sshd dropbear ws xray kyt; do
-    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}"; then
+  # Keep ssh.socket disabled on Ubuntu 24.04+ so classic ssh.service handles port 22 cleanly
+  if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+    systemctl stop ssh.socket >>"$UPDATE_LOG" 2>&1 || true
+    systemctl disable ssh.socket >>"$UPDATE_LOG" 2>&1 || true
+  fi
+  for unit in ssh sshd dropbear ws xray; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
       systemctl enable "$unit" >>"$UPDATE_LOG" 2>&1 || true
     fi
   done
+  if [ -s /usr/bin/kyt/var.txt ] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+    systemctl enable kyt >>"$UPDATE_LOG" 2>&1 || true
+  fi
 
   if command -v nginx >/dev/null 2>&1; then
     if nginx -t >>"$UPDATE_LOG" 2>&1; then
@@ -861,6 +885,11 @@ sync_kyt_bot_assets() {
   kyt_dir="/usr/bin/kyt"
   venv_pip="${kyt_dir}/.venv/bin/pip"
 
+  if [ ! -s /usr/bin/kyt/var.txt ] && ! systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+    log_info "Bot Telegram KYT tidak terpasang (/usr/bin/kyt/var.txt tidak ada) — dilewati."
+    return 0
+  fi
+
   if [ -d "$TMP_DIR/limit/bot" ]; then
     cp -rf "$TMP_DIR/limit/bot/." /usr/bin/ 2>/dev/null || true
     chmod +x /usr/bin/bot-* 2>/dev/null || true
@@ -881,7 +910,7 @@ sync_kyt_bot_assets() {
     fi
   fi
 
-  if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+  if [ -s /usr/bin/kyt/var.txt ] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
     systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
     systemctl enable kyt >>"$UPDATE_LOG" 2>&1 || true
     systemctl restart kyt >>"$UPDATE_LOG" 2>&1 || true
@@ -1123,6 +1152,12 @@ sync_laravel_webpanel() {
   # Hindari error "chdir: error retrieving current directory" jika user mengeksekusi update dari dalam folder web_dir
   cd /tmp || true
 
+  # Respect Pure Terminal / Bot-Only installs: skip Web Panel sync if Web Panel was never installed!
+  if [ ! -d "$web_dir" ] || [ ! -f "$web_dir/.env" ]; then
+    log_info "Web Panel Laravel tidak terpasang (${web_dir}/.env tidak ada) — dilewati (mode Terminal/Bot)."
+    return 0
+  fi
+
   if [ ! -d "$src_web" ]; then
     log_warn "Folder source webpanel-mvc tidak ditemukan di repository, dilewati."
     return 0
@@ -1276,8 +1311,10 @@ sync_laravel_webpanel() {
     chmod 664 "$web_dir/database/database.sqlite" 2>/dev/null || true
   fi
 
-  # Restart vpn-bridge if installed
-  if systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+  # Sync & restart vpn-bridge if installed
+  if [ -f "$web_dir/vpn-bridge.py" ] && systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+    cp -f "$web_dir/vpn-bridge.py" /usr/local/bin/vpn-bridge.py 2>/dev/null || true
+    chmod +x /usr/local/bin/vpn-bridge.py 2>/dev/null || true
     systemctl restart vpn-bridge >>"$UPDATE_LOG" 2>&1 || true
     report_service_status vpn-bridge
   fi

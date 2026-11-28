@@ -16,7 +16,30 @@ service_state() {
   local svc="$1"
   if systemctl is-active --quiet "$svc" 2>/dev/null; then
     echo -e "${GREEN}AKTIF${NC}"
-  elif systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\\.service"; then
+  elif systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
+    echo -e "${RED}TIDAK AKTIF${NC}"
+  else
+    echo -e "${YELLOW}BELUM TERPASANG${NC}"
+  fi
+}
+
+ssh_state() {
+  if systemctl is-active --quiet ssh 2>/dev/null || systemctl is-active --quiet sshd 2>/dev/null; then
+    echo -e "${GREEN}AKTIF${NC}"
+  else
+    echo -e "${RED}TIDAK AKTIF${NC}"
+  fi
+}
+
+openvpn_state() {
+  local u
+  for u in openvpn-server@server-tcp openvpn-server@server-udp openvpn-server@server openvpn; do
+    if systemctl is-active --quiet "$u" 2>/dev/null; then
+      echo -e "${GREEN}AKTIF${NC}"
+      return
+    fi
+  done
+  if systemctl list-unit-files 2>/dev/null | grep -qE '^openvpn(@|-server@|\.service)'; then
     echo -e "${RED}TIDAK AKTIF${NC}"
   else
     echo -e "${YELLOW}BELUM TERPASANG${NC}"
@@ -26,27 +49,47 @@ service_state() {
 clear
 if declare -F thm_title >/dev/null; then
   thm_title "STATUS LAYANAN"
+  thm_info_row "ssh" "$(ssh_state)"
   thm_info_row "nginx" "$(service_state nginx)"
   thm_info_row "xray" "$(service_state xray)"
   thm_info_row "haproxy" "$(service_state haproxy)"
   thm_info_row "ws" "$(service_state ws)"
   thm_info_row "dropbear" "$(service_state dropbear)"
-  thm_info_row "openvpn" "$(service_state openvpn)"
+  thm_info_row "openvpn" "$(openvpn_state)"
   thm_info_row "fail2ban" "$(service_state fail2ban)"
   thm_info_row "cron" "$(service_state cron)"
+  thm_info_row "limit-ip (vmip)" "$(service_state vmip)"
+  thm_info_row "limit-ip (vlip)" "$(service_state vlip)"
+  thm_info_row "limit-ip (trip)" "$(service_state trip)"
+  thm_info_row "limit-ip (ssip)" "$(service_state ssip)"
+  thm_info_row "limit-ip (sship)" "$(service_state sship)"
+  if [[ -s /usr/bin/kyt/var.txt ]] || systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+    thm_info_row "bot kyt" "$(service_state kyt)"
+  fi
+  if [[ -f /var/www/webpanel-mvc/.env ]] || systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+    thm_info_row "vpn-bridge" "$(service_state vpn-bridge)"
+  fi
   thm_footer
 else
   echo -e "STATUS LAYANAN"
+  echo -e "ssh      : $(ssh_state)"
   echo -e "nginx    : $(service_state nginx)"
   echo -e "xray     : $(service_state xray)"
   echo -e "haproxy  : $(service_state haproxy)"
   echo -e "ws       : $(service_state ws)"
   echo -e "dropbear : $(service_state dropbear)"
-  echo -e "openvpn  : $(service_state openvpn)"
+  echo -e "openvpn  : $(openvpn_state)"
   echo -e "fail2ban : $(service_state fail2ban)"
   echo -e "cron     : $(service_state cron)"
+  echo -e "vmip     : $(service_state vmip)"
+  echo -e "vlip     : $(service_state vlip)"
+  echo -e "trip     : $(service_state trip)"
+  echo -e "ssip     : $(service_state ssip)"
+  echo -e "sship    : $(service_state sship)"
 fi
 
-echo
-read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
-menu
+if [[ -t 0 ]]; then
+  echo
+  read -n 1 -s -r -p "Tekan tombol apa saja untuk kembali ke menu"
+  menu
+fi

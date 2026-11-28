@@ -80,9 +80,10 @@ function pasang_domain() {
         echo $pp > /root/domain
         echo "IP=$pp" > /var/lib/kyt/ipvps.conf
         
-        # Update domain in nginx configurations
+        # Update domain in nginx configurations (safe literal regex escaping)
         if [[ -n "$old_domain" && -f /etc/nginx/conf.d/xray.conf ]]; then
-            sed -i "s/${old_domain}/${pp}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+            old_esc=$(printf '%s' "$old_domain" | sed 's/[.[\*^$()+?{|}\/]/\\&/g')
+            sed -i "s/${old_esc}/${pp}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
         fi
         if [ -f /etc/nginx/conf.d/xray.conf ]; then
             sed -i "s/server_name .*/server_name ${pp};/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true

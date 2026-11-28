@@ -549,19 +549,23 @@ echo $host1 > /etc/xray/domain
 echo $host1 > /root/domain
 echo ""
 elif [[ $host == "2" ]]; then
-#install cf
-SYS_ARCH=$(uname -m)
-if [[ "$SYS_ARCH" == "aarch64" ]]; then
-    wget -q "${REPO}limit/cf-arm.sh" -O cf.sh && chmod +x cf.sh && ./cf.sh
-else
-    wget ${REPO}limit/cf.sh && chmod +x cf.sh && ./cf.sh
-fi
+# Install Cloudflare DNS subdomain (transparan & lintas-arsitektur)
+wget -q "${REPO}limit/cf-arm.sh" -O /root/cf.sh && sed -i 's/\r$//' /root/cf.sh && chmod +x /root/cf.sh && /root/cf.sh
 rm -f /root/cf.sh
 clear
 else
-print_install "Random Subdomain/Domain is Used"
+print_install "Auto Domain (sslip.io) Digunakan"
+fallback_ip="$(curl -fsS --max-time 8 https://ipv4.icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
+auto_domain="${fallback_ip:-localhost}"
+if [[ "$auto_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    auto_domain="${auto_domain}.sslip.io"
+fi
+mkdir -p /var/lib/kyt /etc/xray
+echo "IP=" >> /var/lib/kyt/ipvps.conf
+echo "$auto_domain" > /etc/xray/domain
+echo "$auto_domain" > /root/domain
 clear
-    fi
+fi
 }
 
 clear
@@ -697,20 +701,38 @@ clear
 print_install "Memasang SSL Pada Domain"
     rm -rf /etc/xray/xray.key
     rm -rf /etc/xray/xray.crt
-    domain=$(cat /root/domain)
-    STOPWEBSERVER=$(lsof -i:80 | cut -d' ' -f1 | awk 'NR==2 {print $1}')
+    domain=""
+    if [[ -s /etc/xray/domain ]]; then
+        domain="$(tr -d '\r\n ' < /etc/xray/domain)"
+    elif [[ -s /root/domain ]]; then
+        domain="$(tr -d '\r\n ' < /root/domain)"
+    fi
+    if [[ -z "$domain" ]]; then
+        fallback_ip="$(curl -fsS --max-time 8 https://ipv4.icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
+        domain="${fallback_ip:-localhost}"
+        echo "$domain" > /etc/xray/domain
+        echo "$domain" > /root/domain
+    fi
+    STOPWEBSERVER=$(lsof -i:80 2>/dev/null | cut -d' ' -f1 | awk 'NR==2 {print $1}')
     rm -rf /root/.acme.sh
-    mkdir /root/.acme.sh
-    systemctl stop $STOPWEBSERVER
-    systemctl stop nginx
-    curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
-    chmod +x /root/.acme.sh/acme.sh
-    /root/.acme.sh/acme.sh --upgrade --auto-upgrade
-    /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-    /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
-    ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
+    mkdir -p /root/.acme.sh
+    if [[ -n "${STOPWEBSERVER:-}" ]]; then
+        systemctl stop "$STOPWEBSERVER" >/dev/null 2>&1 || true
+    fi
+    systemctl stop nginx >/dev/null 2>&1 || true
+    systemctl stop haproxy >/dev/null 2>&1 || true
+    curl -fsSL https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh >/dev/null 2>&1 || true
+    if [[ -s /root/.acme.sh/acme.sh ]]; then
+        chmod +x /root/.acme.sh/acme.sh
+        /root/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1 || true
+        /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+        /root/.acme.sh/acme.sh --issue -d "$domain" --standalone -k ec-256 || true
+        ~/.acme.sh/acme.sh --installcert -d "$domain" --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc || true
+    fi
     ensure_valid_xray_certificates
-    chmod 777 /etc/xray/xray.key
+    chmod 644 /etc/xray/xray.crt 2>/dev/null || true
+    chmod 640 /etc/xray/xray.key 2>/dev/null || true
+    chown root:www-data /etc/xray/xray.key 2>/dev/null || true
     print_success "SSL Certificate"
 }
 
@@ -1742,7 +1764,9 @@ clear
     run_install_step "Install Paket Dasar" base_package
     run_install_step "Siapkan Folder Xray" make_folder_xray
     run_install_step "Konfigurasi Domain" pasang_domain
-    run_install_step "Atur Password Default" password_default
+    if declare -F password_default >/dev/null 2>&1; then
+        run_install_step "Atur Password Default" password_default
+    fi
     run_install_step "Pasang Sertifikat SSL" pasang_ssl
     run_install_step "Install Xray Core" install_xray
     run_install_step "Setup SSH" ssh
@@ -1772,7 +1796,9 @@ rm -rf /root/*.zip
 rm -rf /root/*.sh
 rm -rf /root/LICENSE
 rm -rf /root/README.md
-rm -rf /root/domain
+if [[ -s /etc/xray/domain ]]; then
+    cp -f /etc/xray/domain /root/domain 2>/dev/null || true
+fi
 #sudo hostnamectl set-hostname $user
 secs_to_human "$(($(date +%s) - ${start}))"
 sudo hostnamectl set-hostname $username

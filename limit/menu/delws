@@ -23,8 +23,9 @@ NC='\e[0m'
 green() { echo -e "\\033[32;1m${*}\\033[0m"; }
 red() { echo -e "\\033[31;1m${*}\\033[0m"; }
 clear
-NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/xray/config.json")
-	if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
+NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/xray/config.json" 2>/dev/null || echo 0)
+SUSP_COUNT=$(find /etc/kyt/suspended/vmess -maxdepth 1 -type f 2>/dev/null | wc -l)
+	if [[ ${NUMBER_OF_CLIENTS} == '0' && ${SUSP_COUNT} == '0' ]]; then
 		echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
         echo -e "       Delete Vmess Account       "
         echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -32,8 +33,8 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/xray/config.json")
 		echo "You have no existing clients!"
 		echo ""
 		echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-		read -n 1 -s -r -p "Press any key to back on menu"
-        menu
+		if [ -t 0 ]; then read -n 1 -s -r -p "Press any key to back on menu"; menu; fi
+		exit 0
 	fi
 
 	clear
@@ -42,26 +43,45 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/xray/config.json")
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo "  User       Expired  " 
 	echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	grep -E "^### " "/etc/xray/config.json" | cut -d ' ' -f 2-3 | column -t | sort | uniq
+	grep -E "^### " "/etc/xray/config.json" 2>/dev/null | cut -d ' ' -f 2-3 | column -t | sort | uniq
+    if [[ -d /etc/kyt/suspended/vmess ]]; then
+        for sf in /etc/kyt/suspended/vmess/*; do
+            [[ -f "$sf" ]] || continue
+            printf "  %-10s %s [SUSPENDED]\n" "$(basename "$sf")" "$(awk '{print $1}' "$sf" 2>/dev/null)"
+        done
+    fi
     echo ""
     red "tap enter to go back"
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	read -rp "Input Username : " user
-    if [ -z $user ]; then
-    menu
+    user="$(echo "$user" | tr -d '\r' | xargs)"
+    if [ -z "$user" ]; then
+    [ -t 0 ] && menu
+    exit 0
     else
-    exp=$(grep -wE "^### $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-    sed -i "/^### $user $exp/,/^},{/d" /etc/xray/config.json
-    sed -i "/^### $user $exp/,/^},{/d" /etc/vmess/.vmess.db
-    rm -rf /etc/vmess/$user
-    rm -rf /etc/kyt/limit/vmess/ip
+    exp=$(grep -E "^### ${user}[[:space:]]" "/etc/xray/config.json" 2>/dev/null | awk '{print $3}' | head -n 1)
+    if [[ -z "$exp" && -f "/etc/kyt/suspended/vmess/${user}" ]]; then
+        exp=$(awk '{print $1}' "/etc/kyt/suspended/vmess/${user}" 2>/dev/null)
+    fi
+    sed -i "/^### ${user} /,/^},{/d" /etc/xray/config.json 2>/dev/null || true
+    [[ -f /etc/vmess/.vmess.db ]] && sed -i "/^### ${user} /d" /etc/vmess/.vmess.db
+    rm -rf "/etc/vmess/${user}"
+    rm -f "/etc/kyt/limit/vmess/ip/${user}"
+    rm -f "/etc/kyt/limit/.state/vmess/${user}.state"
+    rm -f "/etc/kyt/suspended/vmess/${user}"
+    rm -f "/etc/limit/vmess/${user}"
+    rm -f "/var/www/html/vmess-${user}.txt"
+    if [[ -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+        esc_user="${user//\'/\'\'}"
+        sqlite3 /usr/bin/kyt/database.db "DELETE FROM account_registry WHERE LOWER(service)='vmess' AND LOWER(username)=LOWER('${esc_user}');" >/dev/null 2>&1 || true
+    fi
     systemctl restart xray > /dev/null 2>&1
     clear
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo " Vmess Account Deleted Successfully"
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo " Client Name : $user"
-    echo " Expired On  : $exp"
+    echo " Expired On  : ${exp:--}"
     echo -e "\033[0;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo ""
     fi

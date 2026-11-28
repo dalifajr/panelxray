@@ -46,20 +46,29 @@ ns_domain_cloudflare() {
 }
 
 setup_dnstt() {
-	cd
-	rm -rf *
+	WORK_DIR="$(mktemp -d /tmp/slowdns.XXXXXX)"
+	trap 'rm -rf "$WORK_DIR"' EXIT
 	mkdir -p /etc/slowdns
-	wget -O dnstt-server "${REPOS}slowdns/dnstt-server" >/dev/null 2>&1
-	chmod +x dnstt-server >/dev/null 2>&1
-	wget -O dnstt-client "${REPOS}slowdns/dnstt-client" >/dev/null 2>&1
-	chmod +x dnstt-client >/dev/null 2>&1
-	./dnstt-server -gen-key -privkey-file server.key -pubkey-file server.pub
-	chmod +x *
-	mv * /etc/slowdns
-	wget -O /etc/systemd/system/client.service "${REPOS}slowdns/client" >/dev/null 2>&1
-	wget -O /etc/systemd/system/server.service "${REPOS}slowdns/server" >/dev/null 2>&1
-	sed -i "s/xxxx/$NS_DOMAIN/g" /etc/systemd/system/client.service 
-	sed -i "s/xxxx/$NS_DOMAIN/g" /etc/systemd/system/server.service 
+	wget -q -O "${WORK_DIR}/dnstt-server" "${REPOS}slowdns/dnstt-server" >/dev/null 2>&1 || true
+	chmod +x "${WORK_DIR}/dnstt-server" >/dev/null 2>&1 || true
+	wget -q -O "${WORK_DIR}/dnstt-client" "${REPOS}slowdns/dnstt-client" >/dev/null 2>&1 || true
+	chmod +x "${WORK_DIR}/dnstt-client" >/dev/null 2>&1 || true
+	if [ -x "${WORK_DIR}/dnstt-server" ]; then
+		(cd "$WORK_DIR" && ./dnstt-server -gen-key -privkey-file server.key -pubkey-file server.pub) || true
+	fi
+	for f in dnstt-server dnstt-client server.key server.pub; do
+		if [ -f "${WORK_DIR}/${f}" ]; then
+			mv -f "${WORK_DIR}/${f}" "/etc/slowdns/${f}"
+		fi
+	done
+	chmod +x /etc/slowdns/dnstt-server /etc/slowdns/dnstt-client 2>/dev/null || true
+	wget -q -O /etc/systemd/system/client.service "${REPOS}slowdns/client" >/dev/null 2>&1 || true
+	wget -q -O /etc/systemd/system/server.service "${REPOS}slowdns/server" >/dev/null 2>&1 || true
+	if [ -n "${NS_DOMAIN:-}" ]; then
+		sed -i "s/xxxx/${NS_DOMAIN}/g" /etc/systemd/system/client.service 2>/dev/null || true
+		sed -i "s/xxxx/${NS_DOMAIN}/g" /etc/systemd/system/server.service 2>/dev/null || true
+	fi
+	rm -rf "$WORK_DIR"
 }
 ns_domain_cloudflare
 setup_dnstt

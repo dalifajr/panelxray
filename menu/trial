@@ -37,14 +37,17 @@ CITY=$(curl -s ipinfo.io/city )
 domain=$(cat /etc/xray/domain)
 clear
 
-# // Create Triall
-IP=$(curl -sS ipv4.icanhazip.com)
-Login=wzTxQ`</dev/urandom tr -dc X-Z0-9 | head -c4`
+# // Create Trial
+IP=$(curl -fsS --max-time 8 https://ipv4.icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')
+Login="${2:-wzTxQ$(</dev/urandom tr -dc X-Z0-9 | head -c4)}"
+masaaktif="1"
 hari="1"
-Pass=cr7
+Pass="${3:-cr7}"
 iplimit=99
-ISP=$(cat /etc/xray/isp)
-CITY=$(cat /etc/xray/city)
+Quota="0"
+c="0"
+ISP=$(cat /etc/xray/isp 2>/dev/null || echo "-")
+CITY=$(cat /etc/xray/city 2>/dev/null || echo "-")
 clear
 # // MASA AKTIF
 tgl=$(date -d "$masaaktif days" +"%d")
@@ -55,15 +58,27 @@ tgl2=$(date +"%d")
 bln2=$(date +"%b")
 thn2=$(date +"%Y")
 tnggl="$tgl2 $bln2, $thn2"
-useradd -e `date -d "$masaaktif days" +"%Y-%m-%d"` -s /bin/false -M $Login
-exp="$(chage -l $Login | grep "Account expires" | awk -F": " '{print $2}')"
-hariini=`date -d "0 days" +"%Y-%m-%d"`
-expi=`date -d "$masaaktif days" +"%Y-%m-%d"`
-echo -e "$Pass\n$Pass\n"|passwd $Login &> /dev/null
-echo -e "\033[1;93m---------------------------------------------------\033[0m"
-echo -e " Set Expired In Minutes           "
-echo -e "\033[1;93m---------------------------------------------------\033[0m"
-read -p " Menit : " pup
+useradd -e "$(date -d "$masaaktif days" +"%Y-%m-%d")" -s /bin/false -M "$Login"
+exp="$(chage -l "$Login" | grep "Account expires" | awk -F": " '{print $2}')"
+hariini=$(date -d "0 days" +"%Y-%m-%d")
+expi=$(date -d "$masaaktif days" +"%Y-%m-%d")
+echo -e "${Pass}\n${Pass}\n" | passwd "$Login" &> /dev/null
+mkdir -p /etc/kyt/limit/ssh/ip
+echo "$iplimit" > "/etc/kyt/limit/ssh/ip/${Login}"
+pup="${1:-}"
+if [[ -z "$pup" ]]; then
+  if [[ -t 0 ]]; then
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    echo -e " Set Expired In Minutes           "
+    echo -e "\033[1;93m---------------------------------------------------\033[0m"
+    read -p " Menit : " pup
+  else
+    read -r pup || true
+  fi
+fi
+if ! [[ "${pup:-}" =~ ^[0-9]+$ ]] || (( pup <= 0 )); then
+  pup=30
+fi
 CHATID="$CHATID"
 KEY="$KEY"
 TIME="$TIME"
@@ -76,14 +91,13 @@ TEXT="<code>---------------------------------------------------</code>
 <code>Username      =</code> <code>$Login</code>
 <code>Password      =</code> <code>$Pass</code>
 <code>---------------------------------------------------</code>
-<code>OpenSSH       = 22
-Dropbear      = 443, 109, 143
-SSL/TLS       = 400-900
-SSH WS TLS    = 443
-SSH WS NTLS   = 80, 8080, 8081-9999
-OVPN WS NTLS  = 80, 8080, 8880
-OVPN WS TLS   = 443
-BadVPN UDP    = 7100,7200,7300</code>
+<code>OpenSSH       = 22, 2222, 2223
+Dropbear      = 143, 109
+SSH WS TLS    = 443, 8443, 2096, 2087
+SSH WS NTLS   = 80, 8080, 8880, 2082
+OVPN TCP      = 1194
+OVPN UDP      = 2200
+BadVPN UDP    = 7100, 7200, 7300</code>
 <code>---------------------------------------------------</code>
 Ovpn Download : https://$domain:81/
 <code>---------------------------------------------------</code>
@@ -93,18 +107,18 @@ Berakhir Pada  : $pup Menit
 <code>---------------------------------------------------</code>
 "
 
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+if [[ -n "${KEY:-}" && -n "${CHATID:-}" ]]; then
+  curl -s --max-time "${TIME:-10}" -d "chat_id=${CHATID}&disable_web_page_preview=1&text=${TEXT}&parse_mode=html" "$URL" >/dev/null 2>&1 || true
+fi
 echo ""
 mkdir -p /etc/ssh
+touch /etc/ssh/.ssh.db
 
-if [[ ${c} != "0" ]]; then
-  echo "${d}" >/etc/ssh/${Login}
-fi
-DATADB=$(cat /etc/ssh/.ssh.db | grep "^###" | grep -w "${Login}" | awk '{print $2}')
+DATADB=$(grep -E "^(#ssh#|###) " /etc/ssh/.ssh.db 2>/dev/null | grep -w "${Login}" | awk '{print $2}')
 if [[ "${DATADB}" != '' ]]; then
-  sed -i "/\b${Login}\b/d" /etc/ssh/.ssh.db
+  sed -i "/^\(#ssh#\|###\) ${Login} /d" /etc/ssh/.ssh.db
 fi
-echo "### ${Login} " >>/etc/ssh/.ssh.db
+echo "#ssh# ${Login} ${Pass} ${Quota} ${iplimit} ${expe}" >>/etc/ssh/.ssh.db
 echo ""
 cat > /var/www/html/ssh-$Login.txt <<-END
 ---------------------------------------------------
@@ -112,21 +126,18 @@ Format SSH OVPN Account
 ---------------------------------------------------
 Username         : $Login
 Password         : $Pass
-Berakhir Pada  : $pup Menit
+Berakhir Pada    : $pup Menit
 ---------------------------------------------------
 IP               : $IP
 Host             : $domain
-Port OpenSSH     : 443, 80, 22
-Port Dropbear    : 443, 109
+Port OpenSSH     : 22, 2222, 2223
+Port Dropbear    : 143, 109
 Port SSH UDP     : 1-65535
-Port SSH WS      : 80, 8080, 8081-9999
-Port SSH SSL WS  : 443
-Port SSL/TLS     : 400-900
-Port OVPN WS SSL : 443
-Port OVPN SSL    : 443
+Port SSH WS      : 80, 8080, 8880, 2082
+Port SSH SSL WS  : 443, 8443, 2096, 2087
 Port OVPN TCP    : 1194
 Port OVPN UDP    : 2200
-BadVPN UDP       : 7100, 7300, 7300
+BadVPN UDP       : 7100, 7200, 7300
 ---------------------------------------------------
 Payload : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
 ---------------------------------------------------
@@ -140,25 +151,18 @@ echo -e " Trial SSH OVPN Account    "
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Username         : $Login"
 echo -e "Password         : $Pass"
-#echo -e "Limit Quota      : $Quota GB"
-echo -e "Limit Ip          : ${iplimit} User"
+echo -e "Limit Ip         : ${iplimit} User"
 echo -e "Host             : $domain"
-#echo -e "Host Slowdns     : ${NS}"
-#echo -e "Pub Key          : ${PUB}"
 echo -e "Location         : $CITY"
-echo -e "ISP             : $ISP"
-echo -e "Port OpenSSH     : 443, 80, 22"
-#echo -e "Port DNS         : 443, 53 ,22 "
+echo -e "ISP              : $ISP"
+echo -e "Port OpenSSH     : 22, 2222, 2223"
 echo -e "Port SSH UDP     : 1-65535"
-echo -e "Port Dropbear    : 443, 109"
-echo -e "Port SSH WS      : 80,8080,8880,2086,2082"
-echo -e "Port SSH SSL WS  : 443,8443"
-echo -e "Port SSL/TLS     : 443-900"
-echo -e "Port OVPN WS SSL : 443"
-echo -e "Port OVPN SSL    : 443"
-echo -e "Port OVPN TCP    : 443, 1194"
+echo -e "Port Dropbear    : 143, 109"
+echo -e "Port SSH WS      : 80, 8080, 8880, 2082"
+echo -e "Port SSH SSL WS  : 443, 8443, 2096, 2087"
+echo -e "Port OVPN TCP    : 1194"
 echo -e "Port OVPN UDP    : 2200"
-echo -e "BadVPN UDP       : 7100, 7300, 7300"
+echo -e "BadVPN UDP       : 7100, 7200, 7300"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e " Port 80 : $domain:80@$Login:$Pass"
 echo -e " Port 443 : $domain:443@$Login:$Pass"
@@ -170,12 +174,17 @@ echo -e "OVPN Download    : https://$domain:81/"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
 echo -e "Save Link Account: https://$domain:81/ssh-$Login.txt"
 echo -e "\033[1;93m---------------------------------------------------\033[0m"
-#echo -e "Aktif Selama   : $masaaktif Hari"
-#echo -e "Dibuat Pada    : $tnggl"
 echo -e "Berakhir Pada  : $pup Menit"
 echo -e "----------------------------------------------------------------------"
 echo -e "       Terima Kasih Telah Menggunakan     "
 echo -e "               Premium Script                      "
 echo -e "                Welcome, $(cat /usr/bin/user 2>/dev/null || echo User)       "
 echo -e "----------------------------------------------------------------------"
-echo userdel -f "$Login" | at now + $pup minutes &> /dev/null
+CLEAN_CMD="userdel -f '${Login}' >/dev/null 2>&1 || true; sed -i '/^\(#ssh#\|###\) ${Login} /d' /etc/ssh/.ssh.db 2>/dev/null || true; rm -f '/etc/kyt/limit/ssh/ip/${Login}' '/etc/kyt/suspended/ssh/${Login}' '/etc/kyt/limit/.state/ssh/${Login}.state' '/etc/ssh/${Login}' '/var/www/html/ssh-${Login}.txt'"
+if command -v systemd-run >/dev/null 2>&1; then
+  systemd-run --unit="trial-ssh-${Login}" --on-active="${pup}m" /bin/bash -c "$CLEAN_CMD" >/dev/null 2>&1 || true
+elif command -v at >/dev/null 2>&1; then
+  echo "$CLEAN_CMD" | at now + "$pup" minutes >/dev/null 2>&1 || true
+else
+  nohup /bin/bash -c "sleep $((pup * 60)) && $CLEAN_CMD" >/dev/null 2>&1 &
+fi

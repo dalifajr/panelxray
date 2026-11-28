@@ -295,17 +295,22 @@ elif command -v iptables-save >/dev/null 2>&1; then
 fi
 
 if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-    systemctl enable ssh.socket >/dev/null 2>&1 || true
-    systemctl restart ssh.socket >/dev/null 2>&1 || true
+    systemctl stop ssh.socket >/dev/null 2>&1 || true
+    systemctl disable ssh.socket >/dev/null 2>&1 || true
 fi
 
-for unit in ssh sshd dropbear ws xray cron kyt; do
+for unit in ssh sshd dropbear ws xray cron vmip vlip trip ssip sship; do
     if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
         systemctl reset-failed "$unit" >/dev/null 2>&1 || true
         systemctl enable "$unit" >/dev/null 2>&1 || true
         systemctl restart "$unit" >/dev/null 2>&1 || true
     fi
 done
+if [ -s /usr/bin/kyt/var.txt ] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+    systemctl reset-failed kyt >/dev/null 2>&1 || true
+    systemctl enable kyt >/dev/null 2>&1 || true
+    systemctl restart kyt >/dev/null 2>&1 || true
+fi
 
 systemctl restart nginx >/dev/null 2>&1 || true
 systemctl restart haproxy >/dev/null 2>&1 || true
@@ -403,8 +408,13 @@ sync_runtime_configs() {
     mkdir -p /etc/nginx/conf.d /etc/haproxy /etc/systemd/system /usr/bin
 
     if [[ -f "$TMP_DIR/limit/xray.conf" ]]; then
-        cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
-        sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        if [[ -f /var/www/webpanel-mvc/.env && -f /etc/nginx/conf.d/xray.conf ]] && grep -q 'webpanel-mvc/public' /etc/nginx/conf.d/xray.conf 2>/dev/null; then
+            log_info "WebPanel terdeteksi — mempertahankan blok PHP/API pada /etc/nginx/conf.d/xray.conf."
+        else
+            cp -f "$TMP_DIR/limit/xray.conf" /etc/nginx/conf.d/xray.conf
+            sed -i 's/\r$//' /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+            sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf 2>/dev/null || true
+        fi
     fi
 
     if [[ -f "$TMP_DIR/limit/haproxy.cfg" ]]; then
@@ -480,15 +490,21 @@ HostKey /etc/ssh/ssh_host_ecdsa_key
 HostKey /etc/ssh/ssh_host_ed25519_key
 EOF
     fi
-    if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
-        mkdir -p /etc/systemd/system/ssh.socket.d
-        cat >/etc/systemd/system/ssh.socket.d/override.conf <<'EOF'
-[Socket]
-ListenStream=
-ListenStream=0.0.0.0:22
-ListenStream=[::]:22
+    rm -f /etc/cron.d/log.xray 2>/dev/null || true
+    if [[ -d /etc/logrotate.d ]]; then
+        cat >/etc/logrotate.d/panelxray <<'EOF'
+/var/log/xray/access.log /var/log/xray/error.log {
+    daily
+    maxsize 50M
+    rotate 3
+    missingok
+    notifempty
+    copytruncate
+    compress
+    delaycompress
+}
 EOF
-        systemctl restart ssh.socket >>"$UPDATE_LOG" 2>&1 || true
+        chmod 644 /etc/logrotate.d/panelxray 2>/dev/null || true
     fi
 
     if [[ -f /etc/nginx/conf.d/xray.conf ]]; then
@@ -507,18 +523,24 @@ EOF
     if [[ -f /etc/xray/config.json ]]; then
         sed -i '0,/"protocol"\s*:\s*"freedom"\s*,/s//"protocol": "freedom",\n      "tag": "direct",/' /etc/xray/config.json 2>/dev/null || true
         sed -i 's/"outboundTag"\s*:\s*"dnsOut"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
-        sed -i 's/"outboundTag"\s*:\s*"api"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
         sed -i 's/"outboundTag"\s*:\s*"proxy"/"outboundTag": "direct"/g' /etc/xray/config.json 2>/dev/null || true
         sed -i 's/"outboundTag"\s*:\s*"reject"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
         sed -i 's/"outboundTag"\s*:\s*"block"/"outboundTag": "blocked"/g' /etc/xray/config.json 2>/dev/null || true
     fi
 
     systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
-    for unit in ssh.socket ssh sshd dropbear ws xray kyt; do
-        if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}"; then
+    if systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.socket'; then
+        systemctl stop ssh.socket >>"$UPDATE_LOG" 2>&1 || true
+        systemctl disable ssh.socket >>"$UPDATE_LOG" 2>&1 || true
+    fi
+    for unit in ssh sshd dropbear ws xray; do
+        if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
             systemctl enable "$unit" >>"$UPDATE_LOG" 2>&1 || true
         fi
     done
+    if [[ -s /usr/bin/kyt/var.txt ]] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+        systemctl enable kyt >>"$UPDATE_LOG" 2>&1 || true
+    fi
 
     if command -v nginx >/dev/null 2>&1; then
         if nginx -t >>"$UPDATE_LOG" 2>&1; then
@@ -546,6 +568,44 @@ EOF
     report_service_status dropbear
     report_service_status ws
     report_service_status xray
+
+    if [[ -f "$TMP_DIR/limit/limit-ip" ]]; then
+        cp -f "$TMP_DIR/limit/limit-ip" /usr/bin/limit-ip
+        sed -i 's/\r$//' /usr/bin/limit-ip 2>/dev/null || true
+        chmod 755 /usr/bin/limit-ip
+        for legacy in limitvmess limitvless limittrojan limitshadowsocks; do
+            if [[ -f "/etc/systemd/system/${legacy}.service" ]] && grep -q '/etc/xray/limit\.' "/etc/systemd/system/${legacy}.service" 2>/dev/null; then
+                systemctl disable --now "$legacy" >>"$UPDATE_LOG" 2>&1 || true
+            fi
+        done
+        for pair in "vmip:VMESS" "vlip:VLESS" "trip:TROJAN" "ssip:SHADOWSOCKS" "sship:SSH"; do
+            local svc="${pair%%:*}"
+            local desc="${pair#*:}"
+            cat >"/etc/systemd/system/${svc}.service" <<EOF
+[Unit]
+Description=VPN IP Limit Monitor (${desc})
+After=network-online.target xray.service
+
+[Service]
+Type=simple
+User=root
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/bin/limit-ip ${svc}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        done
+        systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
+        for svc in vmip vlip trip ssip sship; do
+            systemctl enable "$svc" >>"$UPDATE_LOG" 2>&1 || true
+            systemctl restart "$svc" >>"$UPDATE_LOG" 2>&1 || true
+            report_service_status "$svc"
+        done
+    fi
 }
 
 sync_kyt_bot_assets() {
@@ -553,6 +613,11 @@ sync_kyt_bot_assets() {
 
     if [[ "${KYT_ASSETS_CHANGED:-0}" != "1" ]]; then
         log_info "Aset bot KYT tidak berubah (dilewati)."
+        return 0
+    fi
+
+    if [[ ! -s /usr/bin/kyt/var.txt ]] && ! systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+        log_info "Bot Telegram KYT tidak terpasang (/usr/bin/kyt/var.txt tidak ada) — dilewati."
         return 0
     fi
 
@@ -573,7 +638,7 @@ sync_kyt_bot_assets() {
         run_logged "pip install requirements KYT" timeout 180 "$venv_pip" install --no-input -r "${kyt_dir}/requirements.txt" || true
     fi
 
-    if systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
+    if [[ -s /usr/bin/kyt/var.txt ]] && systemctl list-unit-files 2>/dev/null | grep -q '^kyt\.service'; then
         systemctl daemon-reload >>"$UPDATE_LOG" 2>&1 || true
         systemctl enable --now kyt >>"$UPDATE_LOG" 2>&1 || systemctl restart kyt >>"$UPDATE_LOG" 2>&1 || true
         KYT_RESTARTED=1
@@ -780,6 +845,11 @@ sync_laravel_webpanel() {
 
     cd /tmp || true
 
+    if [[ ! -d "$web_dir" || ! -f "$web_dir/.env" ]]; then
+        log_info "Web Panel Laravel tidak terpasang (${web_dir}/.env tidak ada) — dilewati."
+        return 0
+    fi
+
     if [[ ! -d "$src_web" ]]; then
         log_info "Folder limit/webpanel-mvc tidak ditemukan di repository, dilewati."
         return 0
@@ -893,7 +963,9 @@ sync_laravel_webpanel() {
     chmod -R 775 "$web_dir/storage" "$web_dir/bootstrap/cache" 2>/dev/null || true
     [[ -f "$web_dir/database/database.sqlite" ]] && chmod 664 "$web_dir/database/database.sqlite" 2>/dev/null || true
 
-    if systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+    if [[ -f "$web_dir/vpn-bridge.py" ]] && systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+        cp -f "$web_dir/vpn-bridge.py" /usr/local/bin/vpn-bridge.py 2>/dev/null || true
+        chmod +x /usr/local/bin/vpn-bridge.py 2>/dev/null || true
         systemctl restart vpn-bridge >>"$UPDATE_LOG" 2>&1 || true
         report_service_status vpn-bridge
     fi
@@ -929,8 +1001,15 @@ detect_bot_asset_changes
 
 log_step "[3/10] Menyalin script menu ke ${TARGET_SBIN}..."
 mkdir -p "$TARGET_SBIN" /etc/kyt
-cp -rf "$TMP_DIR/limit/menu/." "$TARGET_SBIN/"
-chmod +x "$TARGET_SBIN"/* 2>/dev/null || true
+for src_file in "$TMP_DIR/limit/menu"/*; do
+    [[ -f "$src_file" ]] || continue
+    base_name="$(basename "$src_file")"
+    sed -i 's/\r$//' "$src_file" 2>/dev/null || true
+    tmp_dest="${TARGET_SBIN}/.${base_name}.tmp.$$"
+    cp -f "$src_file" "$tmp_dest"
+    chmod 755 "$tmp_dest" 2>/dev/null || true
+    mv -f "$tmp_dest" "${TARGET_SBIN}/${base_name}"
+done
 log_ok "Menu binary di ${TARGET_SBIN} diperbarui."
 
 log_step "[4/10] Sinkronisasi konfigurasi runtime..."

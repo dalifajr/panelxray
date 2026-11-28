@@ -9,28 +9,22 @@ fi
 
 clear
 MAX=1
+OS=0
+LOG=""
 if [ -e "/var/log/auth.log" ]; then
-        OS=1;
-        LOG="/var/log/auth.log";
-fi
-if [ -e "/var/log/secure" ]; then
-        OS=2;
-        LOG="/var/log/secure";
+        OS=1
+        LOG="/var/log/auth.log"
+elif [ -e "/var/log/secure" ]; then
+        OS=2
+        LOG="/var/log/secure"
 fi
 
-if [ $OS -eq 1 ]; then
-    userdel -f $user
-	service ssh restart > /dev/null 2>&1;
+if [[ -z "$LOG" || ! -r "$LOG" ]]; then
+        exit 0
 fi
-if [ $OS -eq 2 ]; then
-    userdel -f $user
-	service sshd restart > /dev/null 2>&1;
-fi
-     userdel -f $user
-	service dropbear restart > /dev/null 2>&1;
-				
-if [[ ${1+x} ]]; then
-        MAX=$1;
+
+if [[ ${1+x} ]] && [[ "$1" =~ ^[0-9]+$ ]] && (( $1 > 0 )); then
+        MAX=$1
 fi
 
         cat /etc/passwd | grep "/home/" | cut -d":" -f1 > /root/user.txt
@@ -82,28 +76,20 @@ fi
 							done
                 fi
         done
-        j="0";
-        for i in ${!username[*]}
-			do
-                if [ ${jumlah[$i]} -gt $MAX ]; then
-                        date=`date +"%Y-%m-%d %X"`;
-                        echo "$date - ${username[$i]} - ${jumlah[$i]}";
-                        echo "$date - ${username[$i]} - ${jumlah[$i]}" >> /root/log-limit.txt;
-                        kill ${pid[$i]};
-                        pid[$i]="";
-                        j=`expr $j + 1`;
+        j=0
+        for i in ${!username[*]}; do
+                if [ "${jumlah[$i]}" -gt "$MAX" ]; then
+                        offender="${username[$i]}"
+                        date_now="$(date +"%Y-%m-%d %X")"
+                        echo "$date_now - ${offender} - ${jumlah[$i]}"
+                        echo "$date_now - ${offender} - ${jumlah[$i]}" >> /root/log-limit.txt
+                        if [[ -n "${pid[$i]:-}" ]]; then
+                                kill ${pid[$i]} >/dev/null 2>&1 || true
+                        fi
+                        if command -v suspssh >/dev/null 2>&1; then
+                                suspssh --user "$offender" --reason "autokill:count=${jumlah[$i]}:limit=${MAX}" >/dev/null 2>&1 || true
+                        fi
+                        pid[$i]=""
+                        j=$((j + 1))
                 fi
-			done
-        if [ $j -gt 0 ]; then
-                if [ $OS -eq 1 ]; then
-                        userdel -f $user
-                        service ssh restart > /dev/null 2>&1;
-                fi
-                if [ $OS -eq 2 ]; then
-                        userdel -f $user
-                        service sshd restart > /dev/null 2>&1;
-                fi
-                userdel -f $user
-                service dropbear restart > /dev/null 2>&1;
-                j=0;
-		fi
+        done

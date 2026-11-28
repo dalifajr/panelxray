@@ -34,8 +34,8 @@ clear
 Green_font_prefix="\033[32m" && Red_font_prefix="\033[31m" && Green_background_prefix="\033[42;37m" && Red_background_prefix="\033[41;37m" && Font_color_suffix="\033[0m"
 Info="${Green_font_prefix}[ON]${Font_color_suffix}"
 Error="${Red_font_prefix}[OFF]${Font_color_suffix}"
-cek=$(cat /home/limit)
-NIC=$(ip -o $ANU -4 route show to default | awk '{print $5}');
+cek=$(cat /home/limit 2>/dev/null || echo "")
+NIC=$(ip -o -4 route show to default | awk '{print $5}' | head -n1)
 function start () {
 echo -e "Limit Speed All Service"
 read -p "Set maximum download rate (in Kbps): " down
@@ -45,15 +45,19 @@ echo > /dev/null 2>&1
 else
 echo "Start Configuration"
 sleep 0.5
-wondershaper -a $NIC -d $down -u $up > /dev/null 2>&1
-systemctl enable --now wondershaper.service
+wondershaper -a "$NIC" -d "$down" -u "$up" > /dev/null 2>&1 || true
+if systemctl list-unit-files 2>/dev/null | grep -q '^wondershaper\.service'; then
+  systemctl enable --now wondershaper.service >/dev/null 2>&1 || true
+fi
 echo "start" > /home/limit
 echo "Done"
 fi
 }
 function stop () {
-wondershaper -ca $NIC
-systemctl stop wondershaper.service
+wondershaper -ca "$NIC" >/dev/null 2>&1 || true
+if systemctl list-unit-files 2>/dev/null | grep -q '^wondershaper\.service'; then
+  systemctl stop wondershaper.service >/dev/null 2>&1 || true
+fi
 echo "Stop Configuration"
 sleep 0.5
 echo > /home/limit

@@ -1,19 +1,41 @@
 #!/bin/bash
-REPO="https://raw.githubusercontent.com/Arya-Blitar22/st-pusat/main/"
-wget -q -O /etc/systemd/system/limitvmess.service "${REPO}media/limitvmess.service" && chmod +x limitvmess.service >/dev/null 2>&1
-wget -q -O /etc/systemd/system/limitvless.service "${REPO}media/limitvless.service" && chmod +x limitvless.service >/dev/null 2>&1
-wget -q -O /etc/systemd/system/limittrojan.service "${REPO}media/limittrojan.service" && chmod +x limittrojan.service >/dev/null 2>&1
-wget -q -O /etc/systemd/system/limitshadowsocks.service "${REPO}media/limitshadowsocks.service" && chmod +x limitshadowsocks.service >/dev/null 2>&1
-wget -q -O /etc/xray/limit.vmess "${REPO}media/vmess" >/dev/null 2>&1
-wget -q -O /etc/xray/limit.vless "${REPO}media/vless" >/dev/null 2>&1
-wget -q -O /etc/xray/limit.trojan "${REPO}media/trojan" >/dev/null 2>&1
-wget -q -O /etc/xray/limit.shadowsocks "${REPO}media/shadowsocks" >/dev/null 2>&1
-chmod +x /etc/xray/limit.vmess
-chmod +x /etc/xray/limit.vless
-chmod +x /etc/xray/limit.trojan
-chmod +x /etc/xray/limit.shadowsocks
+# Local IP-limiter service activation (replaces legacy third-party /etc/xray/limit.* scripts)
+set -e
+
+for legacy in limitvmess limitvless limittrojan limitshadowsocks; do
+  if systemctl list-unit-files 2>/dev/null | grep -q "^${legacy}\.service"; then
+    systemctl disable --now "$legacy" >/dev/null 2>&1 || true
+  fi
+done
+
+if [[ ! -x /usr/bin/limit-ip ]]; then
+  echo "ERROR: /usr/bin/limit-ip tidak ditemukan atau tidak executable." >&2
+  exit 1
+fi
+
+for pair in "vmip:VMESS" "vlip:VLESS" "trip:TROJAN" "ssip:SHADOWSOCKS" "sship:SSH"; do
+  svc="${pair%%:*}"
+  desc="${pair#*:}"
+  cat > "/etc/systemd/system/${svc}.service" <<EOF
+[Unit]
+Description=VPN IP Limit Monitor (${desc})
+After=network-online.target xray.service
+
+[Service]
+Type=simple
+User=root
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/bin/limit-ip ${svc}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+done
+
 systemctl daemon-reload
-systemctl enable --now limitvmess
-systemctl enable --now limitvless
-systemctl enable --now limittrojan
-systemctl enable --now limitshadowsocks
+for svc in vmip vlip trip ssip sship; do
+  systemctl enable --now "$svc" >/dev/null 2>&1 || systemctl restart "$svc" >/dev/null 2>&1 || true
+done

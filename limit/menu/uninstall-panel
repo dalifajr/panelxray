@@ -29,7 +29,8 @@ if [ "$confirm" != "YES" ]; then
 fi
 
 services=(
-  xray nginx haproxy dropbear openvpn ws kyt
+  xray nginx haproxy dropbear openvpn openvpn-server@server-tcp openvpn-server@server-udp ws kyt
+  vpn-bridge panelxray-boot-guard
   vmip vlip trip ssip sship
   udp-mini-1 udp-mini-2 udp-mini-3
   limitvmess limitvless limittrojan limitshadowsocks
@@ -52,11 +53,13 @@ rm -f /etc/systemd/system/limitvmess.service
 rm -f /etc/systemd/system/limitvless.service
 rm -f /etc/systemd/system/limittrojan.service
 rm -f /etc/systemd/system/limitshadowsocks.service
-rm -f /etc/systemd/system/ssip.service
-rm -f /etc/systemd/system/sship.service
+rm -f /etc/systemd/system/vmip.service /etc/systemd/system/vlip.service /etc/systemd/system/trip.service
+rm -f /etc/systemd/system/ssip.service /etc/systemd/system/sship.service
+rm -f /etc/systemd/system/vpn-bridge.service /etc/systemd/system/panelxray-boot-guard.service
 rm -f /etc/systemd/system/runn.service
 rm -f /etc/systemd/system/kyt.service
-rm -f /etc/cron.d/xp_all /etc/cron.d/logclean /etc/cron.d/daily_reboot
+rm -f /etc/cron.d/xp_all /etc/cron.d/logclean /etc/cron.d/daily_reboot /etc/cron.d/vpn-quota /etc/cron.d/vpn-ssh-traffic /etc/cron.d/vpnxray-webpanel /etc/cron.d/log.xray /etc/cron.d/log.nginx /etc/cron.d/tendang
+rm -f /etc/logrotate.d/panelxray /etc/default/limit-ip /usr/local/sbin/panelxray-boot-guard /usr/local/sbin/vpn-quota-sync /usr/local/sbin/vpn-ssh-traffic-sync
 
 if [ -d /usr/local/sbin ]; then
   rm -f /usr/local/sbin/{menu,m-sshws,m-vmess,m-vless,m-trojan,m-ssws,utility,bw,speedtest,limitspeed,menu-backup,onoff,add-bot-panel,cek-update,uninstall-panel}

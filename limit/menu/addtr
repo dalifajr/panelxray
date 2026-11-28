@@ -7,9 +7,9 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-# Getting bot
-CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
-KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
+# Getting bot (opsional, dari konfigurasi lokal)
+CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 3)
+KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
@@ -239,9 +239,9 @@ TEXT="
 
 
 
-systemctl reload xray
-systemctl reload nginx
-service cron restart
+systemctl restart xray >/dev/null 2>&1
+systemctl reload nginx >/dev/null 2>&1 || true
+service cron restart >/dev/null 2>&1 || true
 trojanlink="trojan://${uuid}@${WS_ADDR}:443?path=%2Ftrojan-ws&security=tls&host=${WS_HOST}&type=ws&sni=${TLS_SNI}&allowInsecure=1#${user}"
 trojanlink1="trojan://${uuid}@${WS_ADDR}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${TLS_SNI}&allowInsecure=1#${user}"
 if command -v qrencode >/dev/null 2>&1; then
@@ -271,12 +271,14 @@ d=$((${c} * 1024 * 1024 * 1024))
 if [[ ${c} != "0" ]]; then
   echo "${d}" >/etc/trojan/${user}
 fi
-DATADB=$(cat /etc/trojan/.trojan.db | grep "^###" | grep -w "${user}" | awk '{print $2}')
+DATADB=$(grep "^###" /etc/trojan/.trojan.db 2>/dev/null | grep -w "${user}" | awk '{print $2}')
 if [[ "${DATADB}" != '' ]]; then
-  sed -i "/\b${user}\b/d" /etc/trojan/.trojan.db
+  sed -i "/^### ${user} /d" /etc/trojan/.trojan.db
 fi
 echo "### ${user} ${exp} ${uuid} ${Quota} ${iplimit}" >>/etc/trojan/.trojan.db
-curl -s --max-time $TIMES -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL
+if [[ -n "${KEY:-}" && -n "${CHATID:-}" ]]; then
+  curl -s --max-time "${TIME:-10}" -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" "$URL" >/dev/null 2>&1 || true
+fi
 clear
 echo -e ""
 echo -e "\033[1;93m---------------------------------------------------\033[0m"

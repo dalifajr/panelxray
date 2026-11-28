@@ -18,28 +18,23 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
 # ==========================================
-data=(`find /var/log/ -name *.log`);
-for log in "${data[@]}"
-do
-echo "$log clear"
-echo > $log
+# Preserve /var/log/xray/access.log and /var/log/auth.log (used by limit-ip & sship daemons; rotated safely via logrotate)
+while IFS= read -r log; do
+  [[ -z "$log" ]] && continue
+  case "$log" in
+    /var/log/xray/access.log|/var/log/auth.log|/var/log/secure)
+      continue
+      ;;
+  esac
+  echo "$log clear"
+  : > "$log"
+done < <(find /var/log/ -type f \( -name '*.log' -o -name '*.err' -o -name 'mail.*' \) 2>/dev/null)
+
+for sys_log in /var/log/syslog /var/log/btmp /var/log/messages /var/log/debug; do
+  if [[ -f "$sys_log" ]]; then
+    : > "$sys_log"
+  fi
 done
-data=(`find /var/log/ -name *.err`);
-for log in "${data[@]}"
-do
-echo "$log clear"
-echo > $log
-done
-data=(`find /var/log/ -name mail.*`);
-for log in "${data[@]}"
-do
-echo "$log clear"
-echo > $log
-done
-echo > /var/log/syslog
-echo > /var/log/btmp
-echo > /var/log/messages
-echo > /var/log/debug
 echo -e ""
-echo -e " ${GREEN} Clear Log Berhasil ${NC}"
+echo -e " ${GREEN} Clear Log Berhasil (xray/access.log & auth.log dijaga untuk limit-ip) ${NC}"
 echo ""

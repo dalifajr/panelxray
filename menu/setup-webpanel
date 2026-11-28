@@ -118,6 +118,10 @@ DOMAIN=$(cat /etc/xray/domain)
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
 if [ -f "$XRAY_CONF" ]; then
+    # Backup xray.conf sebelum modifikasi agar bisa rollback jika nginx -t gagal
+    XRAY_CONF_BAK="/tmp/xray.conf.setup-webpanel.bak.$$"
+    cp -a "$XRAY_CONF" "$XRAY_CONF_BAK"
+
     # Hapus default nginx site bawaan instalasi baru dan config usang
     rm -f /etc/nginx/sites-enabled/default
     rm -f /etc/nginx/sites-available/default
@@ -130,74 +134,123 @@ import sys
 
 path = sys.argv[1]
 try:
-    with open(path, 'r') as f:
+    with open(path, 'r', encoding='utf-8') as f:
         config = f.read()
 
-    # Bersihkan block konfigurasi rusak dari percobaan sebelumnya
-    broken_pattern = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \\ \\/ /index\.php\?\\;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.4-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \\;\s*\}'
-    config = re.sub(broken_pattern, '', config)
-    
-    broken_pattern_83 = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \\ \\/ /index\.php\?\\;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.3-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \\;\s*\}'
-    config = re.sub(broken_pattern_83, '', config)
+    # Bersihkan blok PHP / static / API WebPanel lama jika ada agar idempoten
+    config = re.sub(r'\n?\s*# WEBPANEL-START.*?# WEBPANEL-END\n?', '\n', config, flags=re.S)
+    config = re.sub(r'\s*index\s+index\.php\s+index\.html;\s*', '\n    ', config)
+    config = re.sub(r'\s*index\s+index\.html\s+index\.htm;\s*', '\n    ', config)
+    config = re.sub(r'\s*location\s+~\s+\\\.php\$\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
+    config = re.sub(r'\s*location\s+\^\~\s+/api/\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
 
-    # Ganti root di port 81 (mendukung variasi spasi)
-    config = re.sub(r'root\s+/(var/www/html|etc/kyt/limit/webpanel-mvc/public);', 'root /var/www/webpanel-mvc/public;', config)
+    # Ganti root ke webpanel-mvc/public
+    config = re.sub(
+        r'root\s+/(var/www/html|var/www/webpanel-mvc/public|etc/kyt/limit/webpanel-mvc/public);',
+        'root /var/www/webpanel-mvc/public;',
+        config,
+    )
 
-    php_block = r"""    index index.php index.html;
+    php_block_81_1013 = """    # WEBPANEL-START
+    index index.php index.html;
+
+    location ~* \\.(txt|ovpn|zip|png)$ {
+        root /var/www/html;
+        try_files $uri =404;
+    }
+
+    location ^~ /api/ {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
-    location ~ \.php$ {
+
+    location ~ \\.php$ {
         include fastcgi_params;
         fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-    }"""
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    }
+    # WEBPANEL-END"""
 
-    # Tambahkan block PHP di port 81 jika belum ada
-    if r'location ~ \.php$' not in config:
-        config = re.sub(r'(root\s+/var/www/webpanel-mvc/public;)', lambda m: m.group(1) + '\n' + php_block, config)
-        
-    # Perbaiki Port 1013 (HTTP/2 Fallback dari Xray) yang selama ini menyebabkan Error 403 di browser
-    if 'listen 1013' in config:
-        port_1013_block = config.split('listen 1013', 1)[1]
-        if 'root /var/www/webpanel-mvc/public;' not in port_1013_block:
-            # Sisipkan root dan php_block setelah listen 1013
-            config = re.sub(r'(listen\s+1013\s+http2\s+proxy_protocol.*?;)', r'\1\n    root /var/www/webpanel-mvc/public;\n' + php_block, config, count=1)
+    php_block_1010 = """    # WEBPANEL-START
+    index index.php index.html;
 
-    # Perbaiki Port 1010 (HTTP/1.1 Fallback dari HAProxy) agar bisa menyajikan Laravel Web Panel saat di-proxy Cloudflare
-    if 'listen 1010' in config:
-        port_1010_block = config.split('listen 1010', 1)[1]
-        if 'root /var/www/webpanel-mvc/public;' not in port_1010_block:
-            # Sisipkan root dan php_block setelah listen 1010
-            config = re.sub(r'(listen\s+1010\s+proxy_protocol.*?;)', r'\1\n    root /var/www/webpanel-mvc/public;\n' + php_block, config, count=1)
-            
-            # Ganti location ~ / lama pada port 1010 agar support Laravel fallback routing
-            old_loc = r'location ~ / {\s*if \(\$http_upgrade != "Websocket"\) \{\s*rewrite /\(\.\*\) /fightertunnelssh break;\s*\}\s*proxy_headers_hash_max_size 512;\s*proxy_headers_hash_bucket_size 128;\s*proxy_http_version 1.1;\s*proxy_redirect off;\s*proxy_pass http://127.0.0.1:10015;\s*proxy_set_header Upgrade \$http_upgrade;\s*proxy_set_header Connection "upgrade";\s*proxy_set_header Host \$host;\s*proxy_set_header X-Real-IP \$http_x_forwarded_for;\s*proxy_set_header X-Forwarded-For \$http_x_forwarded_for;\s*\}'
-            
-            new_loc = r"""location / {
-        if ($host != $server_name) {
-            rewrite ^(.*)$ /websocket_ssh_internal last;
-        }
-        if ($http_upgrade ~* websocket) {
-            rewrite ^(.*)$ /websocket_ssh_internal last;
-        }
+    location ~* \\.(txt|ovpn|zip|png)$ {
+        root /var/www/html;
+        try_files $uri =404;
+    }
+
+    location ^~ /api/ {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
-    location = /websocket_ssh_internal {
-        internal;
-        proxy_pass http://127.0.0.1:10015;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $http_x_forwarded_for;
-        proxy_set_header X-Forwarded-For $http_x_forwarded_for;
-    }"""
-            config = re.sub(old_loc, new_loc, config)
+    location ~ \\.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    }
+    # WEBPANEL-END"""
 
-    with open(path, 'w') as f:
-        f.write(config)
+    # Split berdasarkan blok server { ... } agar tiap listener dikonfigurasi bersih tanpa duplikasi
+    server_chunks = re.split(r'(?=\nserver\s*\{)', config)
+    new_chunks = []
+    for chunk in server_chunks:
+        if 'listen 81' in chunk:
+            chunk = re.sub(r'\s*location\s+/\s*\{[^}]*try_files[^}]*\}\s*', '\n', chunk, flags=re.S)
+            if 'root /var/www/webpanel-mvc/public;' not in chunk:
+                chunk = re.sub(
+                    r'(listen\s+81[^;]*;)',
+                    r'\1\n    root /var/www/webpanel-mvc/public;',
+                    chunk,
+                    count=1,
+                )
+            chunk = re.sub(
+                r'(root\s+/var/www/webpanel-mvc/public;)',
+                lambda m: m.group(1) + '\n' + php_block_81_1013,
+                chunk,
+                count=1,
+            )
+        elif 'listen 1010' in chunk:
+            # Jangan bajak request HTTP/HTML non-WebSocket saat WebPanel diakses lewat IP/domain lain
+            chunk = re.sub(
+                r'\s*if\s*\(\s*\$host\s*!=\s*\$server_name\s*\)\s*\{[^}]*\}\s*',
+                '\n        ',
+                chunk,
+                flags=re.S,
+            )
+            if 'root /var/www/webpanel-mvc/public;' not in chunk:
+                chunk = re.sub(
+                    r'(listen\s+1010[^;]*;)',
+                    r'\1\n    root /var/www/webpanel-mvc/public;',
+                    chunk,
+                    count=1,
+                )
+            chunk = re.sub(
+                r'(root\s+/var/www/webpanel-mvc/public;)',
+                lambda m: m.group(1) + '\n' + php_block_1010,
+                chunk,
+                count=1,
+            )
+            chunk = re.sub(
+                r'try_files\s+\$uri\s+\$uri/\s+=404;',
+                'try_files $uri $uri/ /index.php?$query_string;',
+                chunk,
+            )
+        elif 'listen 1013' in chunk:
+            # Pertahankan listener 1013 murni untuk gRPC Xray & file statis /var/www/html
+            chunk = re.sub(
+                r'root\s+/var/www/webpanel-mvc/public;',
+                'root /var/www/html;',
+                chunk,
+            )
+        new_chunks.append(chunk)
+
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(''.join(new_chunks))
 except Exception as e:
     print('Failed to update nginx conf:', e)
     sys.exit(1)
@@ -205,6 +258,11 @@ EOF
 
     python3 /tmp/update_nginx.py "$XRAY_CONF"
     rm -f /tmp/update_nginx.py
+    if ! nginx -t >/dev/null 2>&1; then
+        echo -e "[\e[31mERROR\e[0m] Validasi nginx -t gagal! Mengembalikan xray.conf sebelumnya..."
+        cp -af "$XRAY_CONF_BAK" "$XRAY_CONF"
+    fi
+    rm -f "$XRAY_CONF_BAK"
 fi
 
 # Fix PHP-FPM Systemd restriction (karena Laravel berada di /etc yang di-mount read-only oleh php-fpm)
@@ -229,13 +287,15 @@ echo -e "[\e[32mINFO\e[0m] Mengkonfigurasi Cron Job untuk Web Panel..."
 CRON_FILE="/etc/cron.d/vpnxray-webpanel"
 echo "* * * * * root cd /var/www/webpanel-mvc && php artisan schedule:run >> /dev/null 2>&1" > "$CRON_FILE"
 chmod 644 "$CRON_FILE"
-systemctl restart cron || systemctl restart crond
+systemctl restart cron || systemctl restart crond || true
 
 echo -e "[\e[32mINFO\e[0m] Web Panel berhasil diinstal! Akses langsung melalui https://$DOMAIN"
 echo -e "[\e[32mINFO\e[0m] Pastikan Bot Telegram Anda sedang berjalan untuk proses otentikasi."
 
 
-echo "" 
-read -n 1 -s -r -p "Press any key to back on menu"
-echo ""
-menu
+if [[ -t 0 ]]; then
+    echo ""
+    read -n 1 -s -r -p "Press any key to back on menu"
+    echo ""
+    menu
+fi

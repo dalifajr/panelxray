@@ -77,15 +77,12 @@ fi
 if [[ -z "$exp" ]]; then
   exp=$(awk -v u="$user" '$1=="###" && $2==u {print $3; exit}' "$DB_FILE")
 fi
-if [[ -z "$exp" && -f /usr/bin/kyt/database.db ]]; then
-  exp=$(sqlite3 /usr/bin/kyt/database.db "SELECT exp_date FROM account_registry WHERE service='trojan' AND username='$user' LIMIT 1" 2>/dev/null)
+if [[ -z "$exp" && -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+  esc_user="${user//\'/\'\'}"
+  exp=$(sqlite3 /usr/bin/kyt/database.db "SELECT expires_at FROM account_registry WHERE LOWER(service)='trojan' AND LOWER(username)=LOWER('${esc_user}') LIMIT 1" 2>/dev/null)
 fi
 if [[ -z "$exp" ]]; then
   exp="never"
-fi
-
-if [[ -z "$uuid" && -f /usr/bin/kyt/database.db ]]; then
-  uuid=$(sqlite3 /usr/bin/kyt/database.db "SELECT uuid FROM account_registry WHERE service='trojan' AND username='$user' LIMIT 1" 2>/dev/null)
 fi
 
 if [[ -z "$uuid" ]]; then
@@ -93,8 +90,12 @@ if [[ -z "$uuid" ]]; then
   exit 1
 fi
 
-sed -i "/^#! $user /,/^},{/d" "$CONFIG"
+sed -i "/^#! ${user} /,/^},{/d" "$CONFIG"
 printf '%s %s %s\n' "$exp" "$uuid" "$reason" > "$STATE_DIR/$user"
+if [[ -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+  esc_user="${user//\'/\'\'}"
+  sqlite3 /usr/bin/kyt/database.db "UPDATE account_registry SET active=0, updated_at=datetime('now','localtime') WHERE LOWER(service)='trojan' AND LOWER(username)=LOWER('${esc_user}');" >/dev/null 2>&1 || true
+fi
 systemctl restart xray >/dev/null 2>&1
 
 echo "Trojan account suspended: $user"

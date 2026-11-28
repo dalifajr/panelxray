@@ -61,16 +61,14 @@ sed -i '/#trojanws$/a\#! '"$user $exp"'\
 sed -i '/#trojangrpc$/a\#! '"$user $exp"'\
 },{"password": "'""$uuid""'","email": "'""$user""'"' /etc/xray/config.json
 # Link Trojan Akun
-systemctl restart xray
-trojanlink1="trojan://${uuid}@${domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=bug.com#${user}"
-trojanlink="trojan://${uuid}@bugkamu.com:443?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}#${user}"
+systemctl restart xray >/dev/null 2>&1 || true
+trojanlink="trojan://${uuid}@${domain}:443?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"
+trojanlink1="trojan://${uuid}@${domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${domain}&allowInsecure=1#${user}"
 trojanlink2="trojan://${uuid}@${domain}:80?path=%2Ftrojan-ws&security=none&host=${domain}&type=ws#${user}"
 
 cat >/var/www/html/trojan-$user.txt <<-END
 ---------------------------------------------------
   Lunatic Tunneling 
----------------------------------------------------
- https://github.com/jaka1m/project
 ---------------------------------------------------
 # Format Trojan GO/WS
 
@@ -114,9 +112,7 @@ ${trojanlink1}
 
 END
 
-service cron restart
-trojanlink="trojan://${uuid}@${domain}:443?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"
-trojanlink1="trojan://${uuid}@${domain}:443?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=${domain}&allowInsecure=1#${user}"
+service cron restart >/dev/null 2>&1 || true
 if [ ! -e /etc/trojan ]; then
   mkdir -p /etc/trojan
 fi
@@ -138,12 +134,23 @@ d=$((${c} * 1024 * 1024 * 1024))
 if [[ ${c} != "0" ]]; then
   echo "${d}" >/etc/trojan/${user}
 fi
-DATADB=$(cat /etc/trojan/.trojan.db | grep "^###" | grep -w "${user}" | awk '{print $2}')
+touch /etc/trojan/.trojan.db
+DATADB=$(grep "^###" /etc/trojan/.trojan.db 2>/dev/null | grep -w "${user}" | awk '{print $2}')
 if [[ "${DATADB}" != '' ]]; then
-  sed -i "/\b${user}\b/d" /etc/trojan/.trojan.db
+  sed -i "/^### ${user} /d" /etc/trojan/.trojan.db
 fi
 echo "### ${user} ${exp} ${uuid} ${Quota} ${iplimit}" >>/etc/trojan/.trojan.db
-curl -s --max-time $TIMES -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL
+if [[ "${_trial_minutes:-}" =~ ^[0-9]+$ ]] && (( _trial_minutes > 0 )); then
+  CLEAN_TR="sed -i '/^#! ${user} /,/^},{/d' /etc/xray/config.json; sed -i '/^### ${user} /d' /etc/trojan/.trojan.db 2>/dev/null || true; rm -f '/etc/kyt/limit/trojan/ip/${user}' '/etc/kyt/suspended/trojan/${user}' '/etc/trojan/${user}' '/var/www/html/trojan-${user}.txt'; systemctl restart xray >/dev/null 2>&1 || true"
+  if command -v systemd-run >/dev/null 2>&1; then
+    systemd-run --unit="trial-tr-${user}" --on-active="${_trial_minutes}m" /bin/bash -c "$CLEAN_TR" >/dev/null 2>&1 || true
+  elif command -v at >/dev/null 2>&1; then
+    echo "$CLEAN_TR" | at now + "${_trial_minutes}" minutes >/dev/null 2>&1 || true
+  fi
+fi
+if [[ -n "${KEY:-}" && -n "${CHATID:-}" && -n "${TEXT:-}" ]]; then
+  curl -s --max-time "${TIME:-10}" -d "chat_id=${CHATID}&disable_web_page_preview=1&text=${TEXT}&parse_mode=html" "$URL" >/dev/null 2>&1 || true
+fi
 clear
 echo -e ""
 echo -e "\033[1;93m---------------------------------------------------\033[0m"

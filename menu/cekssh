@@ -7,79 +7,112 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-# Color
-RED='\033[0;31m'
-NC='\033[0m'
-GREEN='\033[0;32m'
-ORANGE='\033[0;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-LIGHT='\033[0;37m'
-
 clear
 echo " "
-echo " "
 
-if [ -e "/var/log/auth.log" ]; then
-        LOG="/var/log/auth.log";
-fi
-if [ -e "/var/log/secure" ]; then
-        LOG="/var/log/secure";
-fi
-                
-data=( `ps aux | grep -i dropbear | awk '{print $2}'`);
-echo -e "\033[1;36m┌──────────────────────────────────────────┐\033[0m"
-echo "    ID  |  Username  |  IP Address";
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
-cat $LOG | grep -i dropbear | grep -i "Password auth succeeded" > /tmp/login-db.txt;
-for PID in "${data[@]}"
-do
-            cat /tmp/login-db.txt | grep "dropbear\[$PID\]" > /tmp/login-db-pid.txt;
-            NUM=`cat /tmp/login-db-pid.txt | wc -l`;
-            USER=`cat /tmp/login-db-pid.txt | awk '{print $10}'`;
-            IP=`cat /tmp/login-db-pid.txt | awk '{print $12}'`;
-            if [ $NUM -eq 1 ]; then
-                    echo "$PID - $USER - $IP";
-                    fi
-done
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
-echo " "
-echo -e "\033[1;36m┌──────────────────────────────────────────┐\033[0m"
-echo "    ID  |  Username  |  IP Address";
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
-cat $LOG | grep -i sshd | grep -i "Accepted password for" > /tmp/login-db.txt
-data=( `ps aux | grep "\[priv\]" | sort -k 72 | awk '{print $2}'`);
+python3 - <<'PYEOF'
+import os, re, subprocess
+from collections import deque
 
-for PID in "${data[@]}"
-do
-            cat /tmp/login-db.txt | grep "sshd\[$PID\]" > /tmp/login-db-pid.txt;
-            NUM=`cat /tmp/login-db-pid.txt | wc -l`;
-            USER=`cat /tmp/login-db-pid.txt | awk '{print $9}'`;
-            IP=`cat /tmp/login-db-pid.txt | awk '{print $11}'`;
-            if [ $NUM -eq 1 ]; then
-                    echo "$PID - $USER - $IP";
-        fi
-done
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
+def read_auth_lines():
+    lines = []
+    for path in ("/var/log/auth.log", "/var/log/secure"):
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = [ln for ln in deque(f, maxlen=5000) if ln.strip()]
+                if lines:
+                    return lines
+            except Exception:
+                pass
+    try:
+        out = subprocess.check_output(
+            ["journalctl", "-u", "dropbear", "-u", "ssh", "-u", "sshd", "-n", "2000", "--no-pager"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        )
+        return [ln for ln in out.splitlines() if ln.strip()]
+    except Exception:
+        return []
+
+def get_ps_lines():
+    try:
+        out = subprocess.check_output(["ps", "-eo", "pid,args"], stderr=subprocess.DEVNULL, text=True, timeout=5)
+        return out.splitlines()
+    except Exception:
+        return []
+
+auth_lines = read_auth_lines()
+ps_lines = get_ps_lines()
+
+dropbear_pids = set()
+sshd_pids = set()
+for ln in ps_lines:
+    parts = ln.strip().split(None, 1)
+    if len(parts) < 2 or not parts[0].isdigit():
+        continue
+    pid, cmd = parts[0], parts[1]
+    if "dropbear" in cmd.lower():
+        dropbear_pids.add(pid)
+    if "[priv]" in cmd and "sshd" in cmd.lower():
+        sshd_pids.add(pid)
+
+db_sessions = {}
+ssh_sessions = {}
+
+db_re = re.compile(r"dropbear\[(\d+)\]:.*Password auth succeeded for '([^']+)' from ([^\s]+)", re.IGNORECASE)
+ssh_re = re.compile(r"sshd(?:-session)?\[(\d+)\]:.*Accepted\s+\S+\s+for\s+(\S+)\s+from\s+(\S+)", re.IGNORECASE)
+
+for ln in auth_lines:
+    m = db_re.search(ln)
+    if m:
+        pid, user, addr = m.group(1), m.group(2), m.group(3)
+        if pid in dropbear_pids:
+            db_sessions[pid] = (user, addr)
+        continue
+    m2 = ssh_re.search(ln)
+    if m2:
+        pid, user, ip = m2.group(1), m2.group(2), m2.group(3)
+        if pid in sshd_pids:
+            ssh_sessions[pid] = (user, ip)
+
+print("\033[1;36m┌──────────────────────────────────────────┐\033[0m")
+print("  DROPBEAR : PID | Username | IP Address")
+print("\033[1;36m└──────────────────────────────────────────┘\033[0m")
+if db_sessions:
+    for pid, (user, addr) in sorted(db_sessions.items()):
+        print(f"  {pid} - {user} - {addr}")
+else:
+    print("  Tidak ada sesi Dropbear aktif.")
+print("\033[1;36m└──────────────────────────────────────────┘\033[0m\n")
+
+print("\033[1;36m┌──────────────────────────────────────────┐\033[0m")
+print("  OPENSSH  : PID | Username | IP Address")
+print("\033[1;36m└──────────────────────────────────────────┘\033[0m")
+if ssh_sessions:
+    for pid, (user, ip) in sorted(ssh_sessions.items()):
+        print(f"  {pid} - {user} - {ip}")
+else:
+    print("  Tidak ada sesi OpenSSH aktif.")
+print("\033[1;36m└──────────────────────────────────────────┘\033[0m")
+PYEOF
+
 if [ -f "/etc/openvpn/server/openvpn-tcp.log" ]; then
-echo ""
-echo -e "\033[1;36m┌──────────────────────────────────────────┐\033[0m"
-echo "    Username  |  IP Address  |  Connected";
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
-            cat /etc/openvpn/server/openvpn-tcp.log | grep -w "^CLIENT_LIST" | cut -d ',' -f 2,3,8 | sed -e 's/,/      /g' > /tmp/vpn-login-tcp.txt
-            cat /tmp/vpn-login-tcp.txt
+  echo ""
+  echo -e "\033[1;36m┌──────────────────────────────────────────┐\033[0m"
+  echo "  OPENVPN TCP : Username | IP Address | Connected"
+  echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
+  grep -w "^CLIENT_LIST" /etc/openvpn/server/openvpn-tcp.log 2>/dev/null | cut -d ',' -f 2,3,8 | sed -e 's/,/      /g' || true
+  echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
 fi
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
 
 if [ -f "/etc/openvpn/server/openvpn-udp.log" ]; then
-echo " "
-echo -e "\033[1;36m┌──────────────────────────────────────────┐\033[0m"
-echo "    Username  |  IP Address  |  Connected";
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
-            cat /etc/openvpn/server/openvpn-udp.log | grep -w "^CLIENT_LIST" | cut -d ',' -f 2,3,8 | sed -e 's/,/      /g' > /tmp/vpn-login-udp.txt
-            cat /tmp/vpn-login-udp.txt
+  echo ""
+  echo -e "\033[1;36m┌──────────────────────────────────────────┐\033[0m"
+  echo "  OPENVPN UDP : Username | IP Address | Connected"
+  echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
+  grep -w "^CLIENT_LIST" /etc/openvpn/server/openvpn-udp.log 2>/dev/null | cut -d ',' -f 2,3,8 | sed -e 's/,/      /g' || true
+  echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
 fi
-echo -e "\033[1;36m└──────────────────────────────────────────┘\033[0m"
-echo "";
 echo ""

@@ -63,21 +63,22 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/xray/config.json")
     if [ -z "$user" ]; then
     return_to_menu 1
     else
-    if ! grep -qwE "^### $user " "/etc/xray/config.json"; then
+    if ! grep -qE "^### ${user}[[:space:]]" "/etc/xray/config.json"; then
       if [[ -f "/etc/kyt/suspended/vmess/$user" ]]; then
         unsuspws --user "$user" >/dev/null 2>&1 || true
       fi
     fi
-    if ! grep -qwE "^### $user " "/etc/xray/config.json"; then
+    if ! grep -qE "^### ${user}[[:space:]]" "/etc/xray/config.json"; then
       echo "User not found"
       exit 1
     fi
     read -p "Expired (days): " masaaktif
     rm -f /etc/kyt/limit/vmess/ip/${user}
+    rm -f /etc/kyt/limit/.state/vmess/${user}.state
     rm -f /etc/vmess/$user
     read -p "Limit User (GB): " Quota
     read -p "Limit User (IP): " iplim
-    exp=$(grep -wE "^### $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
+    exp=$(grep -E "^### ${user}[[:space:]]" "/etc/xray/config.json" | awk '{print $3}' | head -n 1)
     mkdir -p /etc/kyt/limit/vmess/ip
 echo ${iplim} >> /etc/kyt/limit/vmess/ip/${user}
 if [ ! -e /etc/vmess/ ]; then
@@ -98,9 +99,10 @@ fi
     d1=$(date -d "$exp" +%s)
     d2=$(date -d "$now" +%s)
     exp2=$(( (d1 - d2) / 86400 ))
+    (( exp2 < 0 )) && exp2=0
     exp3=$(($exp2 + $masaaktif))
     exp4=`date -d "$exp3 days" +"%Y-%m-%d"`
-    sed -i "/### $user/c\### $user $exp4" /etc/xray/config.json
+    sed -i "/^### ${user} /c\### ${user} ${exp4}" /etc/xray/config.json
     update_db_expiry /etc/vmess/.vmess.db
     systemctl restart xray > /dev/null 2>&1
     clear

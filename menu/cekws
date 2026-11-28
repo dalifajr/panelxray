@@ -7,82 +7,115 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-DF='\e[39m'
-Bold='\e[1m'
-Blink='\e[5m'
-yell='\e[33m'
-red='\e[31m'
-green='\e[32m'
-blue='\e[34m'
-PURPLE='\e[35m'
-cyan='\e[36m'
-Lred='\e[91m'
-Lgreen='\e[92m'
-Lyellow='\e[93m'
-NC='\e[0m'
-GREEN='\033[0;32m'
-ORANGE='\033[0;33m'
-LIGHT='\033[0;37m'
-grenbo="\e[92;1m"
 clear
-function con() {
-    local -i bytes=$1;
-    if [[ $bytes -lt 1024 ]]; then
-        echo "${bytes}B"
-    elif [[ $bytes -lt 1048576 ]]; then
-        echo "$(( (bytes + 1023)/1024 ))KB"
-    elif [[ $bytes -lt 1073741824 ]]; then
-        echo "$(( (bytes + 1048575)/1048576 ))MB"
-    else
-        echo "$(( (bytes + 1073741823)/1073741824 ))GB"
-    fi
-}
-echo -n > /tmp/other.txt
-data=( `cat /etc/xray/config.json | grep '###' | cut -d ' ' -f 2 | sort | uniq`);
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e " \e[1;97;101m           CEK VMESS ACCOUNT            \e[0m"
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-for akun in "${data[@]}"
-do
-if [[ -z "$akun" ]]; then
-akun="tidakada"
-fi
-echo -n > /tmp/ipvmess.txt
-data2=( `cat /var/log/xray/access.log | tail -n 500 | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq`);
-for ip in "${data2[@]}"
-do
-jum=$(cat /var/log/xray/access.log | grep -w "$akun" | tail -n 500 | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | grep -w "$ip" | sort | uniq)
-if [[ "$jum" = "$ip" ]]; then
-echo "$jum" >> /tmp/ipvmess.txt
-else
-echo "$ip" >> /tmp/other.txt
-fi
-jum2=$(cat /tmp/ipvmess.txt)
-sed -i "/$jum2/d" /tmp/other.txt > /dev/null 2>&1
-done
-jum=$(cat /tmp/ipvmess.txt)
-if [[ -z "$jum" ]]; then
-echo > /dev/null
-else
-iplimit=$(cat /etc/kyt/limit/vmess/ip/${akun})
-jum2=$(cat /tmp/ipvmess.txt | wc -l)
-byte=$(cat /etc/vmess/${akun})
-lim=$(con ${byte})
-wey=$(cat /etc/limit/vmess/${akun})
-gb=$(con ${wey})
-lastlogin=$(cat /var/log/xray/access.log | grep -w "$akun" | tail -n 500 | cut -d " " -f 2 | tail -1)
-echo -e " \033[1;36m┌──────────────────────────────────────┐\033[0m"
-printf "  %-13s %-7s %-8s %2s\n" "  UserName : ${akun}"
-printf "  %-13s %-7s %-8s %2s\n" "  Login    : $lastlogin"
-printf "  %-13s %-7s %-8s %2s\n" "  Usage Quota : ${gb}" 
-printf "  %-13s %-7s %-8s %2s\n" "  Limit Quota : ${lim}" 
-printf "  %-13s %-7s %-8s %2s\n" "  Limit IP : $iplimit" 
-printf "  %-13s %-7s %-8s %2s\n" "  Login IP : $jum2" 
-echo -e " \033[1;36m└──────────────────────────────────────┘\033[0m"
-fi 
-rm -rf /tmp/ipvmess.txt
-done
-rm -rf /tmp/other.txt
+
+python3 - <<'PYEOF'
+import os, re, ipaddress
+from collections import deque
+
+def fmt_bytes(b):
+    try:
+        b = int(b)
+    except Exception:
+        return "0B"
+    if b <= 0:
+        return "0B"
+    if b < 1024:
+        return f"{b}B"
+    if b < 1048576:
+        return f"{(b + 1023)//1024}KB"
+    if b < 1073741824:
+        return f"{(b + 1048575)//1048576}MB"
+    return f"{(b + 1073741823)//1073741824}GB"
+
+def read_int(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            raw = f.read().strip()
+        return int(raw) if raw.isdigit() else 0
+    except Exception:
+        return 0
+
+def parse_ip(token):
+    t = token.strip()
+    if t.startswith("tcp:") or t.startswith("udp:"):
+        t = t[4:]
+    if t.startswith("["):
+        end = t.find("]")
+        if end != -1:
+            t = t[1:end]
+    elif t.count(":") == 1:
+        t = t.split(":", 1)[0]
+    try:
+        ip = ipaddress.ip_address(t)
+        if ip.is_loopback or ip.is_unspecified:
+            return None
+        return str(ip)
+    except Exception:
+        return None
+
+users = []
+seen = set()
+if os.path.isfile("/etc/xray/config.json"):
+    with open("/etc/xray/config.json", "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            m = re.match(r"^###\s+(\S+)\s+", line)
+            if m and m.group(1) not in seen:
+                seen.add(m.group(1))
+                users.append(m.group(1))
+
+user_ips = {u: set() for u in users}
+user_last = {}
+log_path = "/var/log/xray/access.log"
+if os.path.isfile(log_path) and users:
+    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = deque(f, maxlen=2000)
+    for line in lines:
+        if "email:" not in line or "accepted" not in line:
+            continue
+        em = re.search(r"email:\s*(\S+)", line)
+        if not em:
+            continue
+        u = em.group(1)
+        if u not in user_ips:
+            continue
+        parts = line.split()
+        ip_tok = None
+        if len(parts) >= 4 and parts[2] == "from":
+            ip_tok = parts[3]
+        elif len(parts) >= 3:
+            ip_tok = parts[2]
+        ip = parse_ip(ip_tok or "")
+        if ip:
+            user_ips[u].add(ip)
+        if len(parts) >= 2:
+            user_last[u] = parts[1].split(".")[0]
+
+found = 0
+for u in users:
+    ips = sorted(user_ips.get(u, set()))
+    if not ips:
+        continue
+    found += 1
+    iplim = read_int(f"/etc/kyt/limit/vmess/ip/{u}")
+    qlim = read_int(f"/etc/vmess/{u}")
+    qusage = read_int(f"/etc/limit/vmess/{u}")
+    print(" \033[1;36m┌──────────────────────────────────────┐\033[0m")
+    print(f"    UserName    : {u}")
+    print(f"    Login       : {user_last.get(u, '-')}")
+    print(f"    Usage Quota : {fmt_bytes(qusage)}")
+    print(f"    Limit Quota : {fmt_bytes(qlim) if qlim > 0 else 'Unlimited'}")
+    print(f"    Limit IP    : {iplim if iplim > 0 else 'Unlimited'}")
+    print(f"    Login IP    : {len(ips)} ({', '.join(ips[:5])})")
+    print(" \033[1;36m└──────────────────────────────────────┘\033[0m")
+
+if found == 0:
+    print("  Tidak ada user VMESS aktif terdeteksi di log.")
+PYEOF
+
 echo ""
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo ""

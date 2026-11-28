@@ -7,109 +7,184 @@ if [[ -r "$THEME_FILE" ]]; then
   . "$THEME_FILE"
 fi
 
-red() { echo -e "\\033[32;1m${*}\\033[0m"; }
-clear
-##----- Auto Remove Vmess
-data=($(cat /etc/xray/config.json | grep '^###' | cut -d ' ' -f 2 | sort | uniq))
-now=$(date +"%Y-%m-%d")
-for user in "${data[@]}"; do
-    exp=$(grep -w "^### $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-    d1=$(date -d "$exp" +%s)
-    d2=$(date -d "$now" +%s)
-    exp2=$(((d1 - d2) / 86400))
-    if [[ "$exp2" -le "0" ]]; then
-        sed -i "/^### $user $exp/,/^},{/d" /etc/xray/config.json
-        sed -i "/^### $user $exp/,/^},{/d" /etc/vmess/.vmess.db
-        rm -rf /etc/vmess/$user
-        rm -f /etc/kyt/limit/vmess/ip/$user
-	    rm -f /etc/limit/vmess/$user
-	    rm -f /var/www/html/vmess-$user.txt
-    fi
-done
+# 3-day Expired Grace Period:
+#   - 0 <= days_overdue < EXPIRE_GRACE_DAYS : auto-suspend (locked, admin/renew only)
+#   - days_overdue >= EXPIRE_GRACE_DAYS     : permanently delete from VPS & suspended state
+EXPIRE_GRACE_DAYS="${EXPIRE_GRACE_DAYS:-3}"
+CONFIG="/etc/xray/config.json"
+SUSPEND_ROOT="/etc/kyt/suspended"
+KYT_DB="/usr/bin/kyt/database.db"
 
-#----- Auto Remove Vless
-data=($(cat /etc/xray/config.json | grep '^#&' | cut -d ' ' -f 2 | sort | uniq))
-now=$(date +"%Y-%m-%d")
-for user in "${data[@]}"; do
-    exp=$(grep -w "^#& $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-    d1=$(date -d "$exp" +%s)
-    d2=$(date -d "$now" +%s)
-    exp2=$(((d1 - d2) / 86400))
-    if [[ "$exp2" -le "0" ]]; then
-        sed -i "/^#& $user $exp/,/^},{/d" /etc/xray/config.json
-        sed -i "/^### $user $exp/,/^},{/d" /etc/vless/.vless.db
-        rm -rf /etc/vless/$user
-        rm -f /etc/kyt/limit/vless/ip/$user
-	    rm -f /etc/limit/vless/$user
-	    rm -f /var/www/html/vless-$user.txt
-    fi
-done
+now_date="$(date +%Y-%m-%d)"
+now_epoch="$(date -d "$now_date" +%s)"
+xray_changed=0
+ssh_changed=0
 
-#----- Auto Remove Trojan
-data=($(cat /etc/xray/config.json | grep '^#!' | cut -d ' ' -f 2 | sort | uniq))
-now=$(date +"%Y-%m-%d")
-for user in "${data[@]}"; do
-    exp=$(grep -w "^#! $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-    d1=$(date -d "$exp" +%s)
-    d2=$(date -d "$now" +%s)
-    exp2=$(((d1 - d2) / 86400))
-    if [[ "$exp2" -le "0" ]]; then
-        sed -i "/^#! $user $exp/,/^},{/d" /etc/xray/config.json
-        sed -i "/^### $user $exp/,/^},{/d" /etc/trojan/.trojan.db
-        rm -rf /etc/trojan/$user
-        rm -f /etc/kyt/trojan/ip/$user
-	    rm -f /etc/limit/trojan/$user
-	    rm -f /var/www/html/trojan-$user.txt
+resolve_cmd() {
+    local cmd="$1"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        command -v "$cmd"
+        return 0
     fi
-done
-
-#----- Auto Remove SS
-data=($(cat /etc/xray/config.json | grep '^#!#' | cut -d ' ' -f 2 | sort | uniq))
-now=$(date +"%Y-%m-%d")
-for user in "${data[@]}"; do
-    exp=$(grep -w "^#!# $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-    d1=$(date -d "$exp" +%s)
-    d2=$(date -d "$now" +%s)
-    exp2=$(((d1 - d2) / 86400))
-    if [[ "$exp2" -le "0" ]]; then
-        sed -i "/^#!# $user $exp/,/^},{/d" /etc/xray/config.json
-        sed -i "/^### $user $exp/,/^},{/d" /etc/shadowsocks/.shadowsocks.db
-        rm -rf /etc/shadowsocks/$user
-        rm -f /etc/kyt/shadowsocks/ip/$user
-	    rm -f /etc/limit/shadowsocks/$user
-	    rm -f /var/www/html/sodosokws-$user.txt
-    fi
-done
-systemctl restart xray
-
-##------ Auto Remove SSH
-hariini=$(date +%d-%m-%Y)
-exp=$(grep -w "^### $user" "/etc/ssh/.ssh.db" | cut -d ' ' -f 3 | sort | uniq)
-cat /etc/shadow | cut -d: -f1,8 | sed /:$/d >/tmp/expirelist.txt
-totalaccounts=$(cat /tmp/expirelist.txt | wc -l)
-for ((i = 1; i <= $totalaccounts; i++)); do
-    tuserval=$(head -n $i /tmp/expirelist.txt | tail -n 1)
-    username=$(echo $tuserval | cut -f1 -d:)
-    userexp=$(echo $tuserval | cut -f2 -d:)
-    userexpireinseconds=$(($userexp * 86400))
-    tglexp=$(date -d @$userexpireinseconds)
-    tgl=$(echo $tglexp | awk -F" " '{print $3}')
-    while [ ${#tgl} -lt 2 ]; do
-        tgl="0"$tgl
+    local self_dir
+    self_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+    for p in "/usr/local/sbin" "/usr/bin" "/usr/sbin" "$self_dir"; do
+        if [[ -x "${p}/${cmd}" ]]; then
+            printf '%s\n' "${p}/${cmd}"
+            return 0
+        fi
     done
-    while [ ${#username} -lt 15 ]; do
-        username=$username" "
-    done
-    bulantahun=$(echo $tglexp | awk -F" " '{print $2,$6}')
-    todaystime=$(date +%s)
-    if [ $userexpireinseconds -ge $todaystime ]; then
-        :
-    else
-        userdel --force $username
-        sed -i "/^### $user $exp /,/^},{/d" /etc/ssh/.ssh.db
-        rm -f /etc/ssh/$user
-        rm -f /etc/kyt/limit/ssh/ip/${user}
-	    rm -f /var/www/html/ssh-$user.txt
+    return 1
+}
+
+update_sqlite_account() {
+    local action="$1"
+    local service="$2"
+    local user="$3"
+    [[ -f "$KYT_DB" ]] || return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    local esc_user
+    esc_user="$(printf '%s' "$user" | sed "s/'/''/g")"
+    if [[ "$action" == "suspend" ]]; then
+        sqlite3 "$KYT_DB" "UPDATE account_registry SET active=0, updated_at=datetime('now','localtime') WHERE LOWER(service)=LOWER('${service}') AND LOWER(username)=LOWER('${esc_user}');" >/dev/null 2>&1 || true
+    elif [[ "$action" == "delete" ]]; then
+        sqlite3 "$KYT_DB" "DELETE FROM account_registry WHERE LOWER(service)=LOWER('${service}') AND LOWER(username)=LOWER('${esc_user}');" >/dev/null 2>&1 || true
     fi
-done
-systemctl reload ssh
+}
+
+cleanup_xray_account() {
+    local service="$1"
+    local marker="$2"
+    local db_file="$3"
+    local html_prefix="$4"
+    local user="$5"
+    local exp="$6"
+
+    if [[ -f "$CONFIG" ]] && grep -qE "^${marker} ${user}[[:space:]]" "$CONFIG"; then
+        sed -i "/^${marker} ${user} /,/^},{/d" "$CONFIG"
+        xray_changed=1
+    fi
+    if [[ -f "$db_file" ]]; then
+        sed -i "/^\(###\|${marker}\) ${user} /d" "$db_file" 2>/dev/null || true
+    fi
+    rm -f "${SUSPEND_ROOT}/${service}/${user}"
+    rm -rf "/etc/${service}/${user}"
+    rm -f "/etc/kyt/limit/${service}/ip/${user}"
+    rm -f "/etc/kyt/limit/.state/${service}/${user}.state"
+    rm -f "/etc/limit/${service}/${user}"
+    rm -f "/var/www/html/${html_prefix}-${user}.txt"
+    rm -f "/var/www/html/${html_prefix}-${user}-tls.png" "/var/www/html/${html_prefix}-${user}-ws.png"
+    if [[ "$service" == "shadowsocks" ]]; then
+        rm -f "/var/www/html/sodosokgrpc-${user}.txt"
+    fi
+    update_sqlite_account "delete" "$service" "$user"
+}
+
+process_xray_service() {
+    local service="$1"
+    local marker="$2"
+    local db_file="$3"
+    local susp_cmd_name="$4"
+    local html_prefix="$5"
+    local susp_dir="${SUSPEND_ROOT}/${service}"
+    local susp_bin=""
+    susp_bin="$(resolve_cmd "$susp_cmd_name" || true)"
+
+    # 1. Check active accounts in Xray config.json
+    if [[ -f "$CONFIG" ]]; then
+        mapfile -t active_users < <(awk -v m="$marker" '$1 == m && NF >= 3 {print $2 " " $3}' "$CONFIG" | sort -u)
+        for row in "${active_users[@]}"; do
+            local user exp exp_epoch days_overdue grace_until reason
+            user="$(awk '{print $1}' <<< "$row")"
+            exp="$(awk '{print $2}' <<< "$row")"
+            [[ -z "$user" || -z "$exp" || "$exp" == "never" || "$exp" == "unknown" ]] && continue
+            exp_epoch="$(date -d "$exp" +%s 2>/dev/null)" || continue
+            days_overdue=$(( (now_epoch - exp_epoch) / 86400 ))
+
+            if (( days_overdue >= EXPIRE_GRACE_DAYS )); then
+                cleanup_xray_account "$service" "$marker" "$db_file" "$html_prefix" "$user" "$exp"
+            elif (( days_overdue >= 0 )); then
+                grace_until="$(date -d "${exp} +${EXPIRE_GRACE_DAYS} days" +%Y-%m-%d 2>/dev/null || echo "$now_date")"
+                reason="auto-expired:${service}:exp=${exp}:grace_until=${grace_until}"
+                if [[ -n "$susp_bin" ]]; then
+                    "$susp_bin" --user "$user" --reason "$reason" >/dev/null 2>&1 || true
+                fi
+                update_sqlite_account "suspend" "$service" "$user"
+            fi
+        done
+    fi
+
+    # 2. Check already-suspended accounts in /etc/kyt/suspended/<service> for 3-day grace deletion
+    if [[ -d "$susp_dir" ]]; then
+        for state_path in "$susp_dir"/*; do
+            [[ -f "$state_path" ]] || continue
+            local user exp uuid old_reason exp_epoch days_overdue
+            user="$(basename "$state_path")"
+            read -r exp uuid old_reason < "$state_path" || continue
+            [[ -z "$exp" || "$exp" == "never" || "$exp" == "unknown" ]] && continue
+            exp_epoch="$(date -d "$exp" +%s 2>/dev/null)" || continue
+            days_overdue=$(( (now_epoch - exp_epoch) / 86400 ))
+
+            if (( days_overdue >= EXPIRE_GRACE_DAYS )); then
+                cleanup_xray_account "$service" "$marker" "$db_file" "$html_prefix" "$user" "$exp"
+            fi
+        done
+    fi
+}
+
+process_xray_service "vmess" "###" "/etc/vmess/.vmess.db" "suspws" "vmess"
+process_xray_service "vless" "#&" "/etc/vless/.vless.db" "suspvless" "vless"
+process_xray_service "trojan" "#!" "/etc/trojan/.trojan.db" "susptr" "trojan"
+process_xray_service "shadowsocks" "#!#" "/etc/shadowsocks/.shadowsocks.db" "suspss" "sodosokws"
+
+if (( xray_changed == 1 )); then
+    systemctl restart xray >/dev/null 2>&1 || true
+fi
+
+##------ Auto Suspend (0..2 days overdue) & Auto Remove (>=3 days overdue) SSH
+today_utc_epoch="$(date -u -d "$(date -u +%Y-%m-%d)" +%s)"
+today_days=$(( today_utc_epoch / 86400 ))
+suspssh_bin="$(resolve_cmd "suspssh" || true)"
+
+while IFS=: read -r username _ _ _ _ _ _ userexp _; do
+    [[ -z "$username" || -z "$userexp" ]] && continue
+    [[ "$userexp" =~ ^[0-9]+$ ]] || continue
+    (( userexp > 0 )) || continue
+
+    uid_num="$(id -u "$username" 2>/dev/null || echo 0)"
+    (( uid_num >= 1000 )) || continue
+    [[ "$username" == "nobody" || "$username" == "root" ]] && continue
+
+    days_overdue=$(( today_days - userexp ))
+    exp_date="$(date -u -d "@$((userexp * 86400))" +%Y-%m-%d 2>/dev/null || echo "$now_date")"
+
+    if (( days_overdue >= EXPIRE_GRACE_DAYS )); then
+        userdel --force "$username" >/dev/null 2>&1 || true
+        [[ -f /etc/ssh/.ssh.db ]] && sed -i "/^\(#ssh#\|###\) ${username} /d" /etc/ssh/.ssh.db 2>/dev/null || true
+        rm -f "${SUSPEND_ROOT}/ssh/${username}"
+        rm -f "/etc/ssh/${username}"
+        rm -f "/etc/kyt/limit/ssh/ip/${username}"
+        rm -f "/etc/kyt/limit/.state/ssh/${username}.state"
+        rm -f "/var/www/html/ssh-${username}.txt"
+        update_sqlite_account "delete" "ssh" "$username"
+        ssh_changed=1
+    elif (( days_overdue >= 0 )); then
+        if [[ ! -f "${SUSPEND_ROOT}/ssh/${username}" ]]; then
+            grace_until="$(date -d "${exp_date} +${EXPIRE_GRACE_DAYS} days" +%Y-%m-%d 2>/dev/null || echo "$now_date")"
+            reason="auto-expired:ssh:exp=${exp_date}:grace_until=${grace_until}"
+            if [[ -n "$suspssh_bin" ]]; then
+                "$suspssh_bin" --user "$username" --reason "$reason" >/dev/null 2>&1 || true
+            else
+                mkdir -p "${SUSPEND_ROOT}/ssh"
+                passwd -l "$username" >/dev/null 2>&1 || usermod -L "$username" >/dev/null 2>&1 || true
+                printf '%s %s %s\n' "$exp_date" "locked" "$reason" > "${SUSPEND_ROOT}/ssh/${username}"
+            fi
+            update_sqlite_account "suspend" "ssh" "$username"
+            ssh_changed=1
+        fi
+    fi
+done < /etc/shadow
+
+if (( ssh_changed == 1 )); then
+    systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
+fi

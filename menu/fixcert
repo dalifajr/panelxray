@@ -50,7 +50,9 @@ TEXT="
 <code>====================</code>
 "
 
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+if [[ -n "${KEY:-}" && -n "${CHATID:-}" ]]; then
+  curl -s --max-time "${TIME:-10}" -d "chat_id=${CHATID}&disable_web_page_preview=1&text=${TEXT}&parse_mode=html" "$URL" >/dev/null 2>&1 || true
+fi
 }
 
 clear
@@ -60,27 +62,37 @@ function pasang_ssl() {
     sleep 2
     rm -rf /etc/xray/xray.key
     rm -rf /etc/xray/xray.crt
-    domain=$(cat /etc/xray/domain)
-    STOPWEBSERVER=$(lsof -i:80 | cut -d' ' -f1 | awk 'NR==2 {print $1}')
+    domain=$(tr -d '\r\n ' < /etc/xray/domain 2>/dev/null || echo "localhost")
+    STOPWEBSERVER=$(lsof -i:80 2>/dev/null | cut -d' ' -f1 | awk 'NR==2 {print $1}')
     rm -rf /root/.acme.sh
     mkdir -p /root/.acme.sh
-    systemctl stop $STOPWEBSERVER 2>/dev/null || true
+    if [[ -n "${STOPWEBSERVER:-}" ]]; then
+        systemctl stop "$STOPWEBSERVER" 2>/dev/null || true
+    fi
     systemctl stop nginx 2>/dev/null || true
     systemctl stop haproxy 2>/dev/null || true
-    curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
-    chmod +x /root/.acme.sh/acme.sh
-    /root/.acme.sh/acme.sh --upgrade --auto-upgrade
-    /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-    /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
-    ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
-    chmod 777 /etc/xray/xray.key
+    curl -fsSL https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh >/dev/null 2>&1 || true
+    if [[ -s /root/.acme.sh/acme.sh ]]; then
+        chmod +x /root/.acme.sh/acme.sh
+        /root/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1 || true
+        /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+        /root/.acme.sh/acme.sh --issue -d "$domain" --standalone -k ec-256 || true
+        ~/.acme.sh/acme.sh --installcert -d "$domain" --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc || true
+    fi
+    if ! openssl x509 -in /etc/xray/xray.crt -noout >/dev/null 2>&1 || ! openssl pkey -in /etc/xray/xray.key -noout >/dev/null 2>&1; then
+        openssl req -x509 -nodes -newkey rsa:2048 -keyout /etc/xray/xray.key -out /etc/xray/xray.crt -days 3650 -subj "/CN=${domain}" >/dev/null 2>&1 || true
+    fi
+    chmod 644 /etc/xray/xray.crt 2>/dev/null || true
+    chmod 640 /etc/xray/xray.key 2>/dev/null || true
+    chown root:www-data /etc/xray/xray.key 2>/dev/null || true
     
     # Update HAProxy PEM certificate bundle
     cat /etc/xray/xray.crt /etc/xray/xray.key | tee /etc/haproxy/hap.pem >/dev/null 2>&1 || true
+    cp -f /etc/haproxy/hap.pem /etc/haproxy/certs/default.pem 2>/dev/null || true
     
-    systemctl restart nginx
-    systemctl restart xray
-    systemctl restart haproxy
+    systemctl restart nginx >/dev/null 2>&1 || true
+    systemctl restart xray >/dev/null 2>&1 || true
+    systemctl restart haproxy >/dev/null 2>&1 || true
 }
 pasang_ssl
 notif_ssl

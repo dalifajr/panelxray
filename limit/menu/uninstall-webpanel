@@ -3,71 +3,93 @@
 # ==========================================
 
 if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root" 
+   echo "This script must be run as root"
    exit 1
 fi
 
 echo -e "[\e[31mWARNING\e[0m] Memulai proses uninstall Web Panel Laravel..."
-read -p "Apakah Anda yakin ingin menghapus seluruh data Web Panel? [y/N]: " confirm
-if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-    echo "Proses dibatalkan."
-    exit 0
+if [[ -t 0 ]]; then
+    read -p "Apakah Anda yakin ingin menghapus seluruh data Web Panel? [y/N]: " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "Proses dibatalkan."
+        exit 0
+    fi
 fi
 
 WEB_DIR="/var/www/webpanel-mvc"
 OLD_WEB_DIR="/etc/kyt/limit/webpanel-mvc"
 XRAY_CONF="/etc/nginx/conf.d/xray.conf"
 
-echo -e "[\e[33mINFO\e[0m] Menghapus direktori Laravel Web Panel..."
-rm -rf "$WEB_DIR"
-rm -rf "$OLD_WEB_DIR"
+echo -e "[\e[33mINFO\e[0m] Menghapus direktori Laravel Web Panel, cron, dan vpn-bridge..."
+rm -rf "$WEB_DIR" "$OLD_WEB_DIR"
+rm -f /etc/cron.d/vpnxray-webpanel
+
+if systemctl list-unit-files 2>/dev/null | grep -q '^vpn-bridge\.service'; then
+    systemctl disable --now vpn-bridge >/dev/null 2>&1 || true
+fi
+rm -f /etc/systemd/system/vpn-bridge.service /usr/local/bin/vpn-bridge.py
 
 if [ -f "$XRAY_CONF" ]; then
-    echo -e "[\e[33mINFO\e[0m] Mengembalikan konfigurasi Nginx (xray.conf)..."
-    
-    # Python script for regex replacement to avoid Bash escaping issues
+    echo -e "[\e[33mINFO\e[0m] Mengembalikan konfigurasi Nginx (xray.conf) ke mode Terminal..."
+    XRAY_CONF_BAK="/tmp/xray.conf.uninstall-webpanel.bak.$$"
+    cp -a "$XRAY_CONF" "$XRAY_CONF_BAK"
+
     cat << 'EOF' > /tmp/revert_nginx.py
 import re
 import sys
 
 path = sys.argv[1]
 try:
-    with open(path, 'r') as f:
+    with open(path, 'r', encoding='utf-8') as f:
         config = f.read()
 
-    # Hapus blok PHP
-    php_block_pattern = r'\s*index index\.php index\.html;\s*location / \{\s*try_files \$uri \$uri/ /index\.php\?\$query_string;\s*\}\s*location ~ \\\.php\$ \{\s*include fastcgi_params;\s*fastcgi_pass unix:/var/run/php/php8\.4-fpm\.sock;\s*fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;\s*\}'
-    config = re.sub(php_block_pattern, '', config)
+    # Hapus blok marker WebPanel modern maupun pola PHP/API lama
+    config = re.sub(r'\n?\s*# WEBPANEL-START.*?# WEBPANEL-END\n?', '\n', config, flags=re.S)
+    config = re.sub(r'\s*location\s+~\s+\\\.php\$\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
+    config = re.sub(r'\s*location\s+\^\~\s+/api/\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
+    config = re.sub(r'\s*location\s+~\*\s+\\\.\(txt\|ovpn\|zip(?:\|png)?\)\$\s*\{[^}]*\}\s*', '\n', config, flags=re.S)
+    config = re.sub(r'\s*index\s+index\.php\s+index\.html;\s*', '\n    index index.html index.htm;\n', config)
 
-    # Kembalikan root ke default
-    config = re.sub(r'root\s+/(var/www/webpanel-mvc/public|etc/kyt/limit/webpanel-mvc/public);', 'root /var/www/html;', config)
+    # Kembalikan root ke /var/www/html & try_files statis
+    config = re.sub(
+        r'root\s+/(var/www/webpanel-mvc/public|etc/kyt/limit/webpanel-mvc/public);',
+        'root /var/www/html;\n    index index.html index.htm;',
+        config,
+    )
+    config = re.sub(
+        r'try_files\s+\$uri\s+\$uri/\s+/index\.php\?\$query_string;',
+        'try_files $uri $uri/ =404;',
+        config,
+    )
+    # Rapikan duplikat index jika muncul berurutan
+    config = re.sub(r'(?:[ \t]*index index\.html index\.htm;\s*){2,}', '    index index.html index.htm;\n', config)
 
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         f.write(config)
 except Exception as e:
     print(f"Error: {e}")
+    sys.exit(1)
 EOF
     python3 /tmp/revert_nginx.py "$XRAY_CONF"
     rm -f /tmp/revert_nginx.py
+
+    if ! nginx -t >/dev/null 2>&1; then
+        echo -e "[\e[31mWARN\e[0m] Validasi nginx -t gagal, mengembalikan backup sementara."
+        cp -af "$XRAY_CONF_BAK" "$XRAY_CONF"
+    fi
+    rm -f "$XRAY_CONF_BAK"
 fi
 
 echo -e "[\e[33mINFO\e[0m] Membersihkan sistem cache dan service..."
 rm -f /etc/systemd/system/php8.4-fpm.service.d/override.conf
-
-# Uninstall VPN Bridge Service
-if systemctl list-unit-files | grep -q 'vpn-bridge.service'; then
-    echo -e "[\e[33mINFO\e[0m] Menghentikan dan menghapus VPN Bridge Service..."
-    systemctl stop vpn-bridge.service 2>/dev/null
-    systemctl disable vpn-bridge.service 2>/dev/null
-    rm -f /usr/local/bin/vpn-bridge.py
-    rm -f /etc/systemd/system/vpn-bridge.service
-fi
-
 systemctl daemon-reload
 
-systemctl restart nginx
-systemctl restart php8.4-fpm
+systemctl restart nginx >/dev/null 2>&1 || true
+systemctl restart php8.4-fpm >/dev/null 2>&1 || true
+systemctl restart cron >/dev/null 2>&1 || systemctl restart crond >/dev/null 2>&1 || true
 
 echo -e "[\e[32mSUCCESS\e[0m] Web Panel Laravel telah berhasil dihapus sepenuhnya!"
-sleep 3
-menu
+if [[ -t 0 ]]; then
+    sleep 2
+    menu
+fi

@@ -35,11 +35,14 @@ NUMBER_OF_CLIENTS=$(grep -c -E "#ssh# " "/etc/ssh/.ssh.db")
                         read -rp "Select one client [1-${NUMBER_OF_CLIENTS}]: " CLIENT_NUMBER
                 fi
         done
-user=$(grep -E "#ssh# " "/etc/ssh/.ssh.db" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
-domain=$(cat /etc/xray/domain)
-Pass=$(grep "$Pass" /etc/ssh/.ssh.db | cut -b 21-56 | sed -n "${CLIENT_NUMBER}"p)
-exp=$(grep -E "#ssh# " "/etc/ssh/.ssh.db" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
-hariini=`date -d "0 days" +"%Y-%m-%d"`
+user=$(grep -E "^#ssh# " "/etc/ssh/.ssh.db" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
+domain=$(cat /etc/xray/domain 2>/dev/null || echo "-")
+db_line=$(awk -v u="$user" '$1 == "#ssh#" && $2 == u {print; exit}' /etc/ssh/.ssh.db)
+Pass=$(awk '{print $3}' <<< "$db_line")
+iplim=$(cat "/etc/kyt/limit/ssh/ip/$user" 2>/dev/null || awk '{print $5}' <<< "$db_line")
+exp=$(awk '{for(i=6;i<=NF;i++) printf "%s%s", $i, (i<NF?" ":"")}' <<< "$db_line")
+[[ -z "$exp" ]] && exp=$(chage -l "$user" 2>/dev/null | awk -F": " '/Account expires/ {print $2}')
+hariini=$(date -d "0 days" +"%Y-%m-%d")
 
 clear
 echo ""
@@ -51,20 +54,17 @@ echo -e "Password         : $Pass"
 echo -e "Host             : $domain"
 echo -e "Host Slowdns     : ${NS}"
 echo -e "Pub Key          : ${PUB}"
-echo -e "Limit IP          : ${iplim} IP"
+echo -e "Limit IP         : ${iplim:-0} IP"
 echo -e "Location         : $CITY"
-echo -e "Port OpenSSH     : 443, 80, 22"
-echo -e "Port DNS         : 443, 53 ,22 "
+echo -e "Port OpenSSH     : 22, 2222, 2223"
+echo -e "Port DNS         : 53, 5300"
 echo -e "Port SSH UDP     : 1-65535"
-echo -e "Port Dropbear    : 443, 109"
-echo -e "Port SSH WS      : 80,8080,8880,2086"
-echo -e "Port SSH SSL WS  : 443"
-echo -e "Port SSL/TLS     : 442,443,444,777"
-echo -e "Port OVPN WS SSL : 443"
-echo -e "Port OVPN SSL    : 443"
-echo -e "Port OVPN TCP    : 443, 1194"
+echo -e "Port Dropbear    : 143, 109"
+echo -e "Port SSH WS      : 80, 8080, 8880, 2082"
+echo -e "Port SSH SSL WS  : 443, 8443, 2096, 2087"
+echo -e "Port OVPN TCP    : 1194"
 echo -e "Port OVPN UDP    : 2200"
-echo -e "BadVPN UDP       : 7100, 7300, 7300"
+echo -e "BadVPN UDP       : 7100, 7200, 7300"
 echo -e "\033[1;93m====================\033[0m"
 echo -e "Tinggal Copy Port 80  : ${domain}:80@$user:${Pass}"
 echo -e "Tinggal Copy Port 443 : ${domain}:443@$user:${Pass}"

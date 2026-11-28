@@ -47,10 +47,13 @@ async def handle_increase_limit_auto(event):
     new_limit = int(new_limit_str)
     
     file_path = f"/etc/kyt/limit/{service}/ip/{user}"
+    state_path = f"/etc/kyt/limit/.state/{service}/{user}.state"
     try:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w") as f:
             f.write(str(new_limit))
+        if os.path.exists(state_path):
+            os.remove(state_path)
         await upsert_message(event, f"✅ Limit IP akun `{user}` ({service.upper()}) berhasil dinaikkan menjadi {new_limit}.", buttons=None)
     except Exception as e:
         await upsert_message(event, f"❌ Gagal memperbarui limit IP: {e}", buttons=None)

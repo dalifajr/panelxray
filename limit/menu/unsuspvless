@@ -44,16 +44,16 @@ user="$(echo "$user" | tr -d '\r' | xargs)"
 
 [[ -z "$user" ]] && exit 0
 if [[ ! -f "$STATE_DIR/$user" ]]; then
-  if grep -qwE "^#& $user " "$CONFIG"; then
+  if grep -qE "^#& ${user}[[:space:]]" "$CONFIG"; then
     echo "User already active: $user"
     exit 0
   fi
   echo "User not suspended"
   exit 1
 fi
-if grep -qwE "^#& $user " "$CONFIG"; then
+if grep -qE "^#& ${user}[[:space:]]" "$CONFIG"; then
   echo "User already active: $user"
-  rm -f "$STATE_DIR/$user"
+  rm -f "$STATE_DIR/$user" "/etc/kyt/limit/.state/${SERVICE}/${user}.state"
   exit 0
 fi
 
@@ -66,6 +66,11 @@ sed -i '/#vlessgrpc$/a\#& '"$user $exp"'\
 },{"id": "'""$uuid""'","email": "'""$user""'"' "$CONFIG"
 
 rm -f "$STATE_DIR/$user"
+rm -f "/etc/kyt/limit/.state/${SERVICE}/${user}.state"
+if [[ -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+  user_sql="${user//\'/\'\'}"
+  sqlite3 /usr/bin/kyt/database.db "UPDATE account_registry SET active=1, updated_at=CURRENT_TIMESTAMP WHERE service='${SERVICE}' AND username='${user_sql}';" >/dev/null 2>&1 || true
+fi
 systemctl restart xray >/dev/null 2>&1
 
 echo "Vless account unsuspended: $user"

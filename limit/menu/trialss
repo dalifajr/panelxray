@@ -46,20 +46,18 @@ sed -i '/#ssws$/a\#!# '"$user $exp"'\
 },{"password": "'""$uuid""'","method": "'""$cipher""'","email": "'""$user""'"' /etc/xray/config.json
 sed -i '/#ssgrpc$/a\#!# '"$user $exp"'\
 },{"password": "'""$uuid""'","method": "'""$cipher""'","email": "'""$user""'"' /etc/xray/config.json
-echo $cipher:$uuid > /tmp/log
-shadowsocks_base64=$(cat /tmp/log)
-echo -n "${shadowsocks_base64}" | base64 > /tmp/log1
+tls="443"
+echo -n "${cipher}:${uuid}" | base64 -w 0 > /tmp/log1 2>/dev/null || echo -n "${cipher}:${uuid}" | base64 | tr -d '\n' > /tmp/log1
 shadowsocks_base64e=$(cat /tmp/log1)
-shadowsockslink="ss://${shadowsocks_base64e}@$domain:$tls?plugin=xray-plugin;mux=0;path=/ss-ws;host=$domain;tls#${user}"
-shadowsockslink1="ss://${shadowsocks_base64e}@$domain:$tls?plugin=xray-plugin;mux=0;serviceName=ss-grpc;host=$domain;tls#${user}"
+shadowsockslink="ss://${shadowsocks_base64e}@${domain}:${tls}?plugin=xray-plugin;mux=0;path=/ss-ws;host=${domain};tls#${user}"
+shadowsockslink1="ss://${shadowsocks_base64e}@${domain}:${tls}?plugin=xray-plugin;mux=0;serviceName=ss-grpc;host=${domain};tls#${user}"
 
 #buat ss WEBSOCKET
-sslinkws="ss://${shadowsocks_base64e}@${domain}:443?path=/ss-ws&security=tls&encryption=none&type=ws#${user}"
-nonsslinkws="ss://${shadowsocks_base64e}@${domain}:80?path=/ss-ws&security=none&encryption=none&type=ws#${user}"
+sslinkws="ss://${shadowsocks_base64e}@${domain}:443?path=/ss-ws&security=tls&encryption=none&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"
+nonsslinkws="ss://${shadowsocks_base64e}@${domain}:80?path=/ss-ws&security=none&encryption=none&host=${domain}&type=ws#${user}"
 
-#buat ss GRPC
-sslinkgrpc="ss://${shadowsocks_base64e}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=ss-grpc&sni=bug.com#${user}"
-nonsslinkgrpc="ss://${shadowsocks_base64e}@${domain}:80?mode=gun&security=none&encryption=none&type=grpc&serviceName=ss-grpc&sni=bug.com#${user}"
+#buat ss GRPC (TLS 443)
+sslinkgrpc="ss://${shadowsocks_base64e}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=ss-grpc&sni=${domain}&allowInsecure=1#${user}"
 
 systemctl restart xray
 #buatshadowsocks custom
@@ -125,7 +123,7 @@ cat > /var/www/html/sodosokws-$user.txt <<-END
         "security": "tls",
         "tlsSettings": {
           "allowInsecure": true,
-          "serverName": "isi_bug_disini"
+          "serverName": "$domain"
         },
         "wsSettings": {
           "headers": {
@@ -236,7 +234,7 @@ cat > /var/www/html/sodosokgrpc-$user.txt <<-END
         "security": "tls",
         "tlsSettings": {
           "allowInsecure": true,
-          "serverName": "isi_bug_disini"
+          "serverName": "$domain"
         }
       },
       "tag": "proxy"
@@ -277,10 +275,11 @@ cat > /var/www/html/sodosokgrpc-$user.txt <<-END
   "stats": {}
 }
 END
-systemctl reload xray >/dev/null 2>&1
-service cron restart >/dev/null 2>&1
-if [ ! -e /etc/shadowsocks ]; then
-  mkdir -p /etc/shadowsocks
+systemctl restart xray >/dev/null 2>&1 || true
+service cron restart >/dev/null 2>&1 || true
+mkdir -p /etc/shadowsocks /etc/kyt/limit/shadowsocks/ip
+if [[ "${iplimit:-0}" =~ ^[0-9]+$ ]] && (( iplimit > 0 )); then
+  echo "$iplimit" > "/etc/kyt/limit/shadowsocks/ip/${user}"
 fi
 
 if [ -z ${Quota} ]; then

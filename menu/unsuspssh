@@ -55,5 +55,9 @@ fi
 passwd -u "$user" >/dev/null 2>&1 || usermod -U "$user" >/dev/null 2>&1 || true
 rm -f "$STATE_DIR/$user"
 rm -f "/etc/kyt/limit/.state/${SERVICE}/${user}.state"
+if [[ -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+  user_sql="${user//\'/\'\'}"
+  sqlite3 /usr/bin/kyt/database.db "UPDATE account_registry SET active=1, updated_at=CURRENT_TIMESTAMP WHERE service='${SERVICE}' AND username='${user_sql}';" >/dev/null 2>&1 || true
+fi
 
 echo "SSH account unsuspended: $user"

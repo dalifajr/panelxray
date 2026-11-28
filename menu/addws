@@ -8,12 +8,12 @@ if [[ -r "$THEME_FILE" ]]; then
 fi
 
 #IZIN SCRIPT
-MYIP=$(curl -sS ipv4.icanhazip.com)
+MYIP=$(curl -sS --max-time 5 ipv4.icanhazip.com 2>/dev/null || curl -sS --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 clear
 red() { echo -e "\\033[32;1m${*}\\033[0m"; }
-# Getting bot
-CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
-KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
+# Getting bot (opsional, dari konfigurasi lokal)
+CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 3)
+KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" 2>/dev/null | cut -d ' ' -f 2)
 export TIME="10"
 export URL="https://api.telegram.org/bot$KEY/sendMessage"
 clear
@@ -392,7 +392,9 @@ Berakhir Pada  : $expe
 <code>---------------------------------------------------</code>
 "
 
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+if [[ -n "${KEY:-}" && -n "${CHATID:-}" ]]; then
+  curl -s --max-time "${TIME:-10}" -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" "$URL" >/dev/null 2>&1 || true
+fi
 clear
 clear
 echo -e "\033[1;93m---------------------------------------------------\033[0m"

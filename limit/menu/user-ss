@@ -23,7 +23,7 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^### " "/etc/shadowsocks/.shadowsocks.db")
     echo ""
     echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     read -n 1 -s -r -p "Press [ Enter ] to back on menu shadowsocks"
-    trojan
+    m-ssws
 fi
 
   echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -40,12 +40,16 @@ fi
         done
 user=$(grep -E "^### " "/etc/shadowsocks/.shadowsocks.db" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
 domain=$(cat /etc/xray/domain)
-iplim=$(cat /etc/kyt/limit/shadowsocks/ip/$user)
-Quota=$(cat /etc/shadowsocks/$user)
+iplim=$(cat "/etc/kyt/limit/shadowsocks/ip/$user" 2>/dev/null || echo "0")
+Quota=$(cat "/etc/shadowsocks/$user" 2>/dev/null || echo "0")
 uuid=$(grep -E "^### " "/etc/shadowsocks/.shadowsocks.db" | cut -d ' ' -f 4 | sed -n "${CLIENT_NUMBER}"p)
-#Quota=$(grep -E "^### " "/etc/shadowsocks/.shadowsocks.db" | cut -d ' ' -f 5 | sed -n "${CLIENT_NUMBER}"p)
 exp=$(grep -E "^### " "/etc/shadowsocks/.shadowsocks.db" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
-hariini=`date -d "0 days" +"%Y-%m-%d"`
+cipher="aes-128-gcm"
+shadowsocks_base64e=$(printf '%s' "${cipher}:${uuid}" | base64 -w 0 2>/dev/null || printf '%s' "${cipher}:${uuid}" | base64 | tr -d '\n')
+sslinkws="ss://${shadowsocks_base64e}@${domain}:443?path=/ss-ws&security=tls&encryption=none&host=${domain}&type=ws&sni=${domain}&allowInsecure=1#${user}"
+nonsslinkws="ss://${shadowsocks_base64e}@${domain}:80?path=/ss-ws&security=none&encryption=none&host=${domain}&type=ws#${user}"
+sslinkgrpc="ss://${shadowsocks_base64e}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=ss-grpc&sni=${domain}&allowInsecure=1#${user}"
+hariini=$(date -d "0 days" +"%Y-%m-%d")
 cat > /var/www/html/sodosokws-$user.txt <<-END
 
 # Format Shadowsocks WS

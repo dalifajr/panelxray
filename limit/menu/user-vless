@@ -23,7 +23,7 @@ NUMBER_OF_CLIENTS=$(grep -c -E "^#& " "/etc/xray/config.json")
     echo ""
     echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     read -n 1 -s -r -p "Press [ Enter ] to back on menu vless"
-    vless
+    m-vless
 fi
 
   echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -40,12 +40,11 @@ fi
         done
 user=$(grep -E "^#& " "/etc/xray/config.json" | cut -d ' ' -f 2 | sed -n "${CLIENT_NUMBER}"p)
 domain=$(cat /etc/xray/domain)
-iplim=$(cat /etc/kyt/limit/vless/ip/$user)
+iplim=$(cat "/etc/kyt/limit/vless/ip/$user" 2>/dev/null || echo "0")
 status_badge="ACTIVE"
 [[ -f "/etc/kyt/suspended/vless/$user" ]] && status_badge="SUSPENDED"
-Quota=$(cat /etc/vless/$user)
-uuid=$(grep -E "^### " "/etc/vless/.vless.db" | cut -d ' ' -f 4 | sed -n "${CLIENT_NUMBER}"p)
-Quota=$(grep -E "^### " "/etc/vless/.vless.db" | cut -d ' ' -f 5 | sed -n "${CLIENT_NUMBER}"p)
+uuid=$(awk -v u="$user" '($1 == "###" || $1 == "#&") && $2 == u {print $4; exit}' /etc/vless/.vless.db 2>/dev/null)
+Quota=$(awk -v u="$user" '($1 == "###" || $1 == "#&") && $2 == u {print $5; exit}' /etc/vless/.vless.db 2>/dev/null)
 exp=$(grep -E "^#& " "/etc/xray/config.json" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
 hariini=`date -d "0 days" +"%Y-%m-%d"`
 vlesslink1="vless://${uuid}@${domain}:443?path=/vless&security=tls&encryption=none&type=ws&sni=${domain}&allowInsecure=1#${user}"

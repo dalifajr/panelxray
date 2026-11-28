@@ -700,10 +700,10 @@ def manager_banner(title: str, service: str) -> str:
     server = globals().get("DOMAIN", "-")
     return (
         f"📋 **{title}**\n"
-        f"� **Server:** `{server}`\n"
+        f"🌐 **Server:** `{server}`\n"
         f"🛠️ **Service:** `{service}`\n"
-        f"� **ISP:** `{isp}`\n"
-        f"� **Country:** `{country}`\n"
+        f"📡 **ISP:** `{isp}`\n"
+        f"🌍 **Country:** `{country}`\n"
         f"✨ Gunakan tombol di bawah untuk navigasi cepat.\n"
         f"{menu_credit()}"
     )
@@ -755,9 +755,24 @@ def get_qr_url(link: str, size: int = 200) -> str:
 
 
 def fetch_qr_photo(link: str, size: int = 512):
-    """Fetch QR image bytes with resilient fallbacks, avoiding long GET URLs when possible."""
+    """Generate QR image locally via qrencode when available, fallback to HTTP endpoints."""
     if not link:
         return None
+
+    try:
+        proc = subprocess.run(
+            ["qrencode", "-s", "8", "-m", "2", "-t", "PNG", "-o", "-", link],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            photo = io.BytesIO(proc.stdout)
+            photo.seek(0)
+            photo.name = "create-qr-code.png"
+            return photo
+    except Exception:
+        pass
 
     endpoints = [
         (

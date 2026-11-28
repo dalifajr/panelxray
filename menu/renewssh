@@ -45,29 +45,38 @@ echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "           Masukan Usernamenya              "
 echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"  
 read -p "Username : " User
-egrep "^$User" /etc/passwd >/dev/null
-if [ $? -eq 0 ]; then
+User="$(echo "$User" | tr -d '\r' | xargs)"
+uid_num="$(id -u "$User" 2>/dev/null || echo 0)"
+if [[ -n "$User" && "$User" != "nobody" && "$uid_num" -ge 1000 ]] && getent passwd "$User" >/dev/null 2>&1; then
 read -p "Day Extend : " Days
 read -p "Limit User (IP): " iplim
 if [ -z "${iplim}" ]; then
 iplim="1"
 fi
-Today=`date +%s`
-Days_Detailed=$(( $Days * 86400 ))
-Expire_On=$(($Today + $Days_Detailed))
-Expiration=$(date -u --date="1970-01-01 $Expire_On sec GMT" +%Y/%m/%d)
-Expiration_Display=$(date -u --date="1970-01-01 $Expire_On sec GMT" '+%d %b %Y')
+cur_exp_raw="$(chage -l "$User" 2>/dev/null | awk -F': ' '/Account expires/ {print $2}')"
+Today="$(date -u +%s)"
+base_ts="$Today"
+if [[ -n "$cur_exp_raw" && "${cur_exp_raw,,}" != "never" ]]; then
+  cur_ts="$(date -u -d "$cur_exp_raw" +%s 2>/dev/null || echo 0)"
+  if (( cur_ts > Today )); then
+    base_ts="$cur_ts"
+  fi
+fi
+Days_Detailed=$(( Days * 86400 ))
+Expire_On=$(( base_ts + Days_Detailed ))
+Expiration="$(date -u -d "@${Expire_On}" +%Y-%m-%d)"
+Expiration_Display="$(date -u -d "@${Expire_On}" '+%d %b %Y')"
 if [[ -f "/etc/kyt/suspended/ssh/$User" ]]; then
 unsuspssh --user "$User" >/dev/null 2>&1 || true
 fi
-passwd -u $User
-usermod -e  $Expiration $User
-egrep "^$User" /etc/passwd >/dev/null
+passwd -u "$User" >/dev/null 2>&1 || usermod -U "$User" >/dev/null 2>&1 || true
+usermod -e "$Expiration" "$User"
+rm -f "/etc/kyt/limit/.state/ssh/${User}.state"
 mkdir -p /etc/kyt/limit/ssh/ip
 if [[ "${iplim}" =~ ^[0-9]+$ ]] && [[ "${iplim}" -gt 0 ]]; then
-echo "${iplim}" > /etc/kyt/limit/ssh/ip/$User
+echo "${iplim}" > "/etc/kyt/limit/ssh/ip/${User}"
 else
-rm -f /etc/kyt/limit/ssh/ip/$User
+rm -f "/etc/kyt/limit/ssh/ip/${User}"
 fi
 clear
 echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"

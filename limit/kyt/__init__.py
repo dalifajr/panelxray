@@ -436,7 +436,28 @@ def _get_stored_payment_secret() -> str:
 SECRET_KEY = _get_stored_payment_secret() or _get_env_variable("PAYMENT_SECRET_KEY", "secret123")
 BOT_MODE = _get_env_variable("BOT_MODE", globals().get("BOT_MODE", "admin_only"))
 
+
+def _is_webpanel_available() -> bool:
+	if str(os.environ.get("KYT_STANDALONE_SQLITE", "")).strip() in ("1", "true", "yes"):
+		return False
+	if str(os.environ.get("KYT_FORCE_WEBPANEL", "")).strip() in ("1", "true", "yes"):
+		return True
+	if not os.path.isfile("/var/www/webpanel-mvc/.env"):
+		return False
+	for sock_dir in ("/var/run/php", "/run/php"):
+		if os.path.isdir(sock_dir):
+			try:
+				for name in os.listdir(sock_dir):
+					if name.startswith("php") and name.endswith("-fpm.sock"):
+						return True
+			except Exception:
+				pass
+	return False
+
+
 def api_call(method: str, endpoint: str, data: dict = None) -> dict:
+	if not _is_webpanel_available():
+		return {"error": "webpanel_unavailable"}
 	url = f"https://127.0.0.1:81/api/internal{endpoint}"
 	headers = {
 		"X-Internal-Secret": SECRET_KEY,
@@ -466,51 +487,114 @@ def api_call(method: str, endpoint: str, data: dict = None) -> dict:
 		logging.error("API Call to %s failed: %s", endpoint, e)
 		return {"error": str(e)}
 
+
+def _local_touch_user(uid: str, username: str = "", full_name: str = ""):
+	now = _now()
+	primary = get_primary_admin_id()
+	default_role = "admin" if (primary and uid == primary) else "user"
+	default_status = "approved" if (default_role == "admin" or str(BOT_MODE).lower() == "public") else "pending"
+	conn = get_db()
+	try:
+		conn.execute(
+			"""
+			INSERT INTO telegram_users (tg_id, username, full_name, role, status, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(tg_id) DO UPDATE SET
+				username = CASE WHEN excluded.username != '' THEN excluded.username ELSE telegram_users.username END,
+				full_name = CASE WHEN excluded.full_name != '' THEN excluded.full_name ELSE telegram_users.full_name END,
+				role = CASE WHEN telegram_users.role = 'admin' THEN 'admin' ELSE excluded.role END,
+				status = CASE WHEN telegram_users.status = 'approved' THEN 'approved' ELSE telegram_users.status END,
+				updated_at = excluded.updated_at
+			""",
+			(uid, str(username or "").strip(), str(full_name or "").strip(), default_role, default_status, now, now),
+		)
+		conn.commit()
+	finally:
+		conn.close()
+
+
 def touch_user(tg_id, username: str = "", full_name: str = ""):
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return
-	api_call("POST", "/bot/user/touch", {
-		"tg_id": uid,
-		"tg_username": str(username or "").strip(),
-		"tg_full_name": str(full_name or "").strip(),
-		"bot_mode": BOT_MODE
-	})
+	try:
+		_local_touch_user(uid, username, full_name)
+	except Exception as exc:
+		logging.warning("Local touch_user gagal untuk %s: %s", uid, exc)
+	if _is_webpanel_available():
+		api_call("POST", "/bot/user/touch", {
+			"tg_id": uid,
+			"tg_username": str(username or "").strip(),
+			"tg_full_name": str(full_name or "").strip(),
+			"bot_mode": BOT_MODE
+		})
+
 
 def get_user_record(tg_id) -> Optional[Dict]:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return None
-	res = api_call("GET", f"/bot/user/{uid}")
-	if "error" in res:
-		return None
-	user = res.get("user")
-	if not user:
-		return None
-	return {
-		"tg_id": user.get("tg_id"),
-		"username": user.get("tg_username", ""),
-		"full_name": user.get("tg_full_name", ""),
-		"role": user.get("role", "user"),
-		"status": user.get("status", "pending"),
-		"note": user.get("note", ""),
-		"created_at": user.get("created_at", ""),
-		"updated_at": user.get("updated_at", "")
-	}
+	if _is_webpanel_available():
+		res = api_call("GET", f"/bot/user/{uid}")
+		if "error" not in res and res.get("user"):
+			user = res["user"]
+			return {
+				"tg_id": user.get("tg_id"),
+				"username": user.get("tg_username", ""),
+				"full_name": user.get("tg_full_name", ""),
+				"role": user.get("role", "user"),
+				"status": user.get("status", "pending"),
+				"note": user.get("note", ""),
+				"created_at": user.get("created_at", ""),
+				"updated_at": user.get("updated_at", "")
+			}
+	conn = get_db()
+	try:
+		row = conn.execute("SELECT * FROM telegram_users WHERE tg_id = ? LIMIT 1", (uid,)).fetchone()
+		if not row:
+			return None
+		d = dict(row)
+		return {
+			"tg_id": str(d.get("tg_id", uid)),
+			"username": d.get("username", ""),
+			"full_name": d.get("full_name", ""),
+			"role": d.get("role", "user"),
+			"status": d.get("status", "pending"),
+			"note": d.get("note", ""),
+			"created_at": d.get("created_at", ""),
+			"updated_at": d.get("updated_at", "")
+		}
+	finally:
+		conn.close()
+
 
 def get_primary_admin_id() -> str:
 	return _normalize_tg_id(globals().get("ADMIN", ""))
 
+
 def get_all_admin_ids() -> List[str]:
-	res = api_call("GET", "/bot/users?status=approved")
-	if "error" in res:
-		return [get_primary_admin_id()]
-	users = res.get("users", [])
-	admins = [str(u["tg_id"]) for u in users if u.get("role") == "admin"]
 	primary = get_primary_admin_id()
+	if _is_webpanel_available():
+		res = api_call("GET", "/bot/users?status=approved")
+		if "error" not in res:
+			users = res.get("users", [])
+			admins = [str(u["tg_id"]) for u in users if u.get("role") == "admin"]
+			if primary and primary not in admins:
+				admins.insert(0, primary)
+			return _dedupe_keep_order(admins)
+	admins = []
+	conn = get_db()
+	try:
+		rows = conn.execute(
+			"SELECT tg_id FROM telegram_users WHERE status = 'approved' AND role = 'admin'"
+		).fetchall()
+		admins = [str(r[0]) for r in rows]
+	finally:
+		conn.close()
 	if primary and primary not in admins:
 		admins.insert(0, primary)
-	return admins
+	return _dedupe_keep_order(admins)
+
 
 def is_admin_user(tg_id) -> bool:
 	uid = _normalize_tg_id(tg_id)
@@ -518,8 +602,13 @@ def is_admin_user(tg_id) -> bool:
 		return False
 	if uid == get_primary_admin_id():
 		return True
-	res = api_call("GET", f"/bot/user/{uid}/status")
-	return res.get("is_admin", False)
+	if _is_webpanel_available():
+		res = api_call("GET", f"/bot/user/{uid}/status")
+		if "error" not in res:
+			return bool(res.get("is_admin", False))
+	rec = get_user_record(uid)
+	return bool(rec and rec.get("role") == "admin" and rec.get("status") == "approved")
+
 
 def is_user_approved(tg_id) -> bool:
 	uid = _normalize_tg_id(tg_id)
@@ -527,78 +616,196 @@ def is_user_approved(tg_id) -> bool:
 		return False
 	if uid == get_primary_admin_id():
 		return True
-	res = api_call("GET", f"/bot/user/{uid}/status")
-	return res.get("is_approved", False)
+	if _is_webpanel_available():
+		res = api_call("GET", f"/bot/user/{uid}/status")
+		if "error" not in res:
+			return bool(res.get("is_approved", False))
+	rec = get_user_record(uid)
+	if rec and rec.get("status") == "approved":
+		return True
+	if str(BOT_MODE).lower() == "public":
+		return True
+	return False
+
 
 def valid(user_id):
 	if is_user_approved(user_id):
 		return "true"
 	return "false"
 
+
 def create_access_request(tg_id, username: str = "", full_name: str = "", reason: str = "") -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return {"ok": False, "status": "invalid"}
-	
-	res = api_call("POST", "/bot/access-request", {
-		"tg_id": uid,
-		"tg_username": str(username or "").strip(),
-		"tg_full_name": str(full_name or "").strip(),
-		"reason": str(reason or "").strip()
-	})
-	if "error" in res:
-		logging.error("create_access_request API error: %s", res)
-		return {"ok": False, "status": "error"}
-	return {"ok": True, "status": "created", "request": res.get("request", {})}
+
+	if _is_webpanel_available():
+		res = api_call("POST", "/bot/access-request", {
+			"tg_id": uid,
+			"tg_username": str(username or "").strip(),
+			"tg_full_name": str(full_name or "").strip(),
+			"reason": str(reason or "").strip()
+		})
+		if "error" not in res:
+			return {"ok": True, "status": "created", "request": res.get("request", {})}
+
+	now = _now()
+	_local_touch_user(uid, username, full_name)
+	conn = get_db()
+	try:
+		existing = conn.execute(
+			"SELECT * FROM access_requests WHERE tg_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1",
+			(uid,),
+		).fetchone()
+		if existing:
+			return {"ok": True, "status": "pending", "request": dict(existing)}
+		cur = conn.execute(
+			"""
+			INSERT INTO access_requests (tg_id, username, full_name, reason, status, created_at)
+			VALUES (?, ?, ?, ?, 'pending', ?)
+			""",
+			(uid, str(username or "").strip(), str(full_name or "").strip(), str(reason or "").strip(), now),
+		)
+		req_id = cur.lastrowid
+		conn.commit()
+		row = conn.execute("SELECT * FROM access_requests WHERE id = ?", (req_id,)).fetchone()
+		return {"ok": True, "status": "created", "request": dict(row) if row else {"id": req_id, "tg_id": uid}}
+	finally:
+		conn.close()
+
 
 def process_access_request(request_id, admin_id, approved: bool, note: str = "") -> Optional[Dict]:
 	action = "approve" if approved else "reject"
-	res = api_call("POST", f"/bot/access-request/{request_id}/{action}", {
-		"admin_id": str(admin_id),
-		"note": str(note or "").strip()
-	})
-	if "error" in res:
-		logging.error("process_access_request failed: %s", res)
-		return None
-	
-	req_obj = res.get("request") or {}
-	user_obj = res.get("user") or {}
-	tg_id = req_obj.get("tg_id") or user_obj.get("tg_id")
-	
+	if _is_webpanel_available():
+		res = api_call("POST", f"/bot/access-request/{request_id}/{action}", {
+			"admin_id": str(admin_id),
+			"note": str(note or "").strip()
+		})
+		if "error" not in res:
+			req_obj = res.get("request") or {}
+			user_obj = res.get("user") or {}
+			tg_id = req_obj.get("tg_id") or user_obj.get("tg_id")
+			return {
+				"ok": True,
+				"tg_id": tg_id,
+				**res
+			}
+
+	now = _now()
+	new_status = "approved" if approved else "rejected"
+	conn = get_db()
+	try:
+		row = conn.execute("SELECT * FROM access_requests WHERE id = ? LIMIT 1", (request_id,)).fetchone()
+		if not row:
+			return None
+		req_dict = dict(row)
+		tg_id = str(req_dict.get("tg_id", ""))
+		conn.execute(
+			"""
+			UPDATE access_requests
+			SET status = ?, admin_id = ?, admin_reason = ?, processed_at = ?
+			WHERE id = ?
+			""",
+			(new_status, str(admin_id), str(note or "").strip(), now, request_id),
+		)
+		conn.execute(
+			"""
+			INSERT INTO telegram_users (tg_id, username, full_name, role, status, note, created_at, updated_at)
+			VALUES (?, ?, ?, 'user', ?, ?, ?, ?)
+			ON CONFLICT(tg_id) DO UPDATE SET
+				status = excluded.status,
+				note = excluded.note,
+				updated_at = excluded.updated_at
+			""",
+			(tg_id, req_dict.get("username", ""), req_dict.get("full_name", ""), new_status, str(note or "").strip(), now, now),
+		)
+		conn.commit()
+		req_dict["status"] = new_status
+		req_dict["admin_id"] = str(admin_id)
+		req_dict["admin_reason"] = str(note or "").strip()
+		req_dict["processed_at"] = now
+	finally:
+		conn.close()
+
+	try:
+		_sync_allow_list_from_db()
+	except Exception:
+		pass
 	return {
 		"ok": True,
 		"tg_id": tg_id,
-		**res
+		"request": req_dict,
+		"user": get_user_record(tg_id) or {"tg_id": tg_id, "status": new_status},
 	}
+
 
 def get_user_limits(tg_id) -> Dict:
 	uid = _normalize_tg_id(tg_id)
 	if not uid:
 		return {"tg_id": "", "ssh_limit": 0, "xray_limit": 0}
-	res = api_call("GET", f"/bot/user/{uid}/quota")
-	return {
-		"tg_id": uid,
-		"ssh_limit": res.get("ssh_limit", 0),
-		"xray_limit": res.get("xray_limit", 0)
-	}
+	if _is_webpanel_available():
+		res = api_call("GET", f"/bot/user/{uid}/quota")
+		if "error" not in res:
+			return {
+				"tg_id": uid,
+				"ssh_limit": int(res.get("ssh_limit", 0) or 0),
+				"xray_limit": int(res.get("xray_limit", 0) or 0)
+			}
+	conn = get_db()
+	try:
+		row = conn.execute("SELECT ssh_limit, xray_limit FROM quota_limits WHERE tg_id = ? LIMIT 1", (uid,)).fetchone()
+		if not row:
+			return {"tg_id": uid, "ssh_limit": 0, "xray_limit": 0}
+		return {"tg_id": uid, "ssh_limit": int(row[0] or 0), "xray_limit": int(row[1] or 0)}
+	finally:
+		conn.close()
+
+
+def _local_user_counts(uid: str, active_only: bool = False) -> Dict:
+	conn = get_db()
+	try:
+		where = "WHERE tg_id = ?" + (" AND active = 1" if active_only else "")
+		ssh_row = conn.execute(f"SELECT COUNT(*) FROM account_registry {where} AND service = 'ssh'", (uid,)).fetchone()
+		xray_row = conn.execute(f"SELECT COUNT(*) FROM account_registry {where} AND service != 'ssh'", (uid,)).fetchone()
+		return {
+			"ssh": int(ssh_row[0] if ssh_row else 0),
+			"xray": int(xray_row[0] if xray_row else 0),
+		}
+	finally:
+		conn.close()
+
 
 def get_user_usage(tg_id, category: str, active_only: bool = False) -> int:
 	uid = _normalize_tg_id(tg_id)
-	res = api_call("GET", f"/bot/user/{uid}/quota")
 	cat = str(category or "").strip().lower()
-	if cat == "ssh":
-		return res.get("ssh_total", 0)
-	return res.get("xray_total", 0)
+	if _is_webpanel_available():
+		res = api_call("GET", f"/bot/user/{uid}/quota")
+		if "error" not in res:
+			return int(res.get("ssh_total", 0) if cat == "ssh" else res.get("xray_total", 0))
+	counts = _local_user_counts(uid, active_only=active_only)
+	return counts["ssh"] if cat == "ssh" else counts["xray"]
+
 
 def get_user_stats(tg_id) -> Dict:
 	uid = _normalize_tg_id(tg_id)
-	res = api_call("GET", f"/bot/user/{uid}/quota")
+	if _is_webpanel_available():
+		res = api_call("GET", f"/bot/user/{uid}/quota")
+		if "error" not in res:
+			return {
+				"ssh_total": int(res.get("ssh_total", 0) or 0),
+				"xray_total": int(res.get("xray_total", 0) or 0),
+				"ssh_active": int(res.get("ssh_total", 0) or 0),
+				"xray_active": int(res.get("xray_total", 0) or 0)
+			}
+	tot = _local_user_counts(uid, active_only=False)
+	act = _local_user_counts(uid, active_only=True)
 	return {
-		"ssh_total": res.get("ssh_total", 0),
-		"xray_total": res.get("xray_total", 0),
-		"ssh_active": res.get("ssh_total", 0),
-		"xray_active": res.get("xray_total", 0)
+		"ssh_total": tot["ssh"],
+		"xray_total": tot["xray"],
+		"ssh_active": act["ssh"],
+		"xray_active": act["xray"],
 	}
+
 
 def check_creation_quota(tg_id, category: str) -> Dict:
 	uid = _normalize_tg_id(tg_id)
@@ -620,25 +827,79 @@ def check_creation_quota(tg_id, category: str) -> Dict:
 	
 	return {"ok": False, "message": f"Limit pembuatan akun {cat.upper()} tercapai ({used}/{limit_value})."}
 
+
 def register_account_creation(tg_id, service: str, username: str, expires_at: str = "", is_trial: bool = False):
 	uid = _normalize_tg_id(tg_id)
-	api_call("POST", "/bot/account/register", {
-		"tg_id": uid,
-		"service": str(service or "").strip().lower(),
-		"category": "create",
-		"username": str(username or "").strip(),
-		"expires_at": str(expires_at or "").strip(),
-		"is_trial": is_trial
-	})
+	svc = str(service or "").strip().lower()
+	uname = str(username or "").strip()
+	exp = str(expires_at or "").strip()
+	now = _now()
+	try:
+		conn = get_db()
+		try:
+			conn.execute(
+				"""
+				INSERT INTO account_registry (tg_id, service, category, username, expires_at, is_trial, active, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+				""",
+				(uid, svc, "ssh" if svc == "ssh" else "xray", uname, exp, 1 if is_trial else 0, now, now),
+			)
+			conn.commit()
+		finally:
+			conn.close()
+	except Exception as exc:
+		logging.warning("Local register_account_creation gagal: %s", exc)
+	if _is_webpanel_available():
+		api_call("POST", "/bot/account/register", {
+			"tg_id": uid,
+			"service": svc,
+			"category": "create",
+			"username": uname,
+			"expires_at": exp,
+			"is_trial": is_trial
+		})
+
 
 def refresh_account_expiry(service: str, username: str, expires_at: str):
-	pass
+	svc = str(service or "").strip().lower()
+	uname = str(username or "").strip()
+	exp = str(expires_at or "").strip()
+	if not svc or not uname or not exp:
+		return
+	try:
+		conn = get_db()
+		try:
+			conn.execute(
+				"UPDATE account_registry SET expires_at = ?, active = 1, updated_at = ? WHERE service = ? AND username = ?",
+				(exp, _now(), svc, uname),
+			)
+			conn.commit()
+		finally:
+			conn.close()
+	except Exception as exc:
+		logging.warning("Local refresh_account_expiry gagal: %s", exc)
+
 
 def mark_account_inactive(service: str, username: str):
-	api_call("POST", "/bot/account/deactivate", {
-		"service": str(service or "").strip().lower(),
-		"username": str(username or "").strip()
-	})
+	svc = str(service or "").strip().lower()
+	uname = str(username or "").strip()
+	try:
+		conn = get_db()
+		try:
+			conn.execute(
+				"UPDATE account_registry SET active = 0, updated_at = ? WHERE service = ? AND username = ?",
+				(_now(), svc, uname),
+			)
+			conn.commit()
+		finally:
+			conn.close()
+	except Exception as exc:
+		logging.warning("Local mark_account_inactive gagal: %s", exc)
+	if _is_webpanel_available():
+		api_call("POST", "/bot/account/deactivate", {
+			"service": svc,
+			"username": uname
+		})
 
 
 XRAY_ACCOUNT_MARKERS = {

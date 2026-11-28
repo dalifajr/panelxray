@@ -68,16 +68,16 @@ case $AutoKill in
                 read -p "Multilogin Maximum Number Of Allowed: " max
                 sleep 1
                 clear
-                echo > /etc/cron.d/tendang
-                echo "# Autokill" >>/etc/cron.d/tendang
-                echo "*/1 * * * *  root /usr/sbin/tendang $max" >>/etc/cron.d/tendang
+                echo "# Autokill" > /etc/cron.d/tendang
+                echo "*/1 * * * * root /usr/local/sbin/tendang $max" >> /etc/cron.d/tendang
                 echo -e ""
                 echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
                 echo -e ""
                 echo -e "        Allowed MultiLogin : $max"
                 echo -e "        AutoKill Every     : 1 Minutes"      
                 echo -e ""
-                echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"                         read -n 1 -s -r -p "Press [ Enter ] to back on menu"
+                echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
+                read -n 1 -s -r -p "Press [ Enter ] to back on menu"
                 menu                                
                 ;;
                 2)
@@ -85,9 +85,8 @@ case $AutoKill in
                 read -p "Multilogin Maximum Number Of Allowed: " max
                 sleep 1
                 clear
-                echo > /etc/cron.d/tendang
-                echo "# Autokill" >>/etc/cron.d/tendang
-                echo "*/2 * * * *  root /usr/sbin/tendang $max" >>/etc/cron.d/tendang
+                echo "# Autokill" > /etc/cron.d/tendang
+                echo "*/2 * * * * root /usr/local/sbin/tendang $max" >> /etc/cron.d/tendang
                 echo -e ""
                 echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
                 echo -e ""
@@ -103,9 +102,8 @@ case $AutoKill in
                 read -p "Multilogin Maximum Number Of Allowed: " max
                 sleep 1
                 clear
-                echo > /etc/cron.d/tendang
-                echo "# Autokill" >>/etc/cron.d/tendang
-                echo "*/3 * * * *  root /usr/sbin/tendang $max" >>/etc/cron.d/tendang
+                echo "# Autokill" > /etc/cron.d/tendang
+                echo "*/3 * * * * root /usr/local/sbin/tendang $max" >> /etc/cron.d/tendang
                 echo -e ""
                 echo -e "\033[1;93m┌──────────────────────────────────────────┐\033[0m"
                 echo -e ""
@@ -113,7 +111,7 @@ case $AutoKill in
                 echo -e "        AutoKill Every     : 3 Minutes"
                 echo -e ""
                 echo -e "\033[1;93m└──────────────────────────────────────────┘\033[0m"
-                read -n 1 -s -r -p "Press [ Enter ] to back on menu"menu
+                read -n 1 -s -r -p "Press [ Enter ] to back on menu"
                 menu
                 ;;
                 4)

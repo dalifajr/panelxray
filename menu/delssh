@@ -43,15 +43,27 @@ echo -e "                DELETE SSH                   "
 echo -e "${ORANGE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo ""
 read -p "Ketik Usernamenya : " user
+user="$(echo "$user" | tr -d '\r' | xargs)"
+[[ -z "$user" ]] && exit 0
 
-if getent passwd $user > /dev/null 2>&1; then
-        userdel $user > /dev/null 2>&1
-        exp=$(grep -w "^### $user" "/etc/ssh/.ssh.db" | cut -d ' ' -f 3 | sort | uniq)
-        sed -i "/^### $user $exp /,/^},{/d" /etc/ssh/.ssh.db
-        rm -f /etc/ssh/$user
-        rm -f /etc/kyt/limit/ssh/ip/${user}
-	    rm -f /var/www/html/ssh-$user.txt
-        echo -e "User $user Berhasil Di Hapus Sayang."
+uid_num="$(id -u "$user" 2>/dev/null || echo 0)"
+if [[ "$user" != "root" && "$user" != "nobody" && "$uid_num" -ge 1000 ]] && getent passwd "$user" > /dev/null 2>&1; then
+        userdel --force "$user" > /dev/null 2>&1 || true
+        [[ -f /etc/ssh/.ssh.db ]] && sed -i "/^\(#ssh#\|###\) ${user} /d" /etc/ssh/.ssh.db
+        rm -f "/etc/ssh/${user}"
+        rm -f "/etc/kyt/limit/ssh/ip/${user}"
+        rm -f "/etc/kyt/limit/.state/ssh/${user}.state"
+        rm -f "/etc/kyt/suspended/ssh/${user}"
+        rm -f "/var/www/html/ssh-${user}.txt"
+        if [[ -f /usr/bin/kyt/database.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+            esc_user="${user//\'/\'\'}"
+            sqlite3 /usr/bin/kyt/database.db "DELETE FROM account_registry WHERE LOWER(service)='ssh' AND LOWER(username)=LOWER('${esc_user}');" >/dev/null 2>&1 || true
+        fi
+        echo -e "User $user Berhasil Di Hapus."
+elif [[ -f "/etc/kyt/suspended/ssh/${user}" ]]; then
+        rm -f "/etc/kyt/suspended/ssh/${user}" "/etc/kyt/limit/ssh/ip/${user}" "/etc/kyt/limit/.state/ssh/${user}.state" "/etc/ssh/${user}" "/var/www/html/ssh-${user}.txt"
+        [[ -f /etc/ssh/.ssh.db ]] && sed -i "/^\(#ssh#\|###\) ${user} /d" /etc/ssh/.ssh.db
+        echo -e "State user $user Berhasil Dibersihkan."
 else
-        echo -e "Failure: User $user Tidak Di Temukan."
+        echo -e "Failure: User $user Tidak Di Temukan atau Akun Sistem."
 fi
